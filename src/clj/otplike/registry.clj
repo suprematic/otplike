@@ -6,8 +6,7 @@
 
     [otplike.process :as process :refer [!]]
     [otplike.timer :as timer]
-    [otplike.gen-server :as gs :refer [ok reply noreply]]
-    [otplike.pubsub :as pubsub]))
+    [otplike.gen-server :as gs :refer [ok reply noreply]]))
 
 (defn bidi-make []
   {:l->r {} :r->l {}})
