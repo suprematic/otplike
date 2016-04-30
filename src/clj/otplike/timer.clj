@@ -1,7 +1,8 @@
 (ns otplike.timer
   (:require [otplike.process :as process]
             [clojure.core.match :refer [match]]
-            [clojure.core.async :as async :refer [<! >! put! go go-loop]]))
+            [clojure.core.async :as async :refer [<! >! put! go go-loop]]
+            [otplike.gen-server :as gs]))
 
 (defrecord TRef [id])
 
@@ -31,6 +32,10 @@
 (defn exit-after [delay process reason] ; -> tref
   (action-after delay process
     #(process/exit process reason)))
+
+(defn cast-after [delay server message]
+  (action-after delay server
+    #(gs/cast server message)))
 
 (defn kill-after [delay process]
   (exit-after delay process :kill))
@@ -81,7 +86,7 @@
 
     (send-after 5000 process :stop)
 
-      ;(async/put! process :msg)
+    ;(async/put! process :msg)
 
     ) :ok)
 
