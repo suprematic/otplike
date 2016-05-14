@@ -17,7 +17,9 @@
 (defn- new-tref []
   (TRef. (swap! *tcount inc)))
 
-(defn- action-after [msecs pid f]
+(defn- action-after
+  "Calls f after msecs. Returns the timer reference."
+  [msecs pid f]
   (let [tref (new-tref)]
     (swap! *timers assoc tref
            (process/spawn
@@ -34,19 +36,32 @@
               :name (str tref)}))
     tref))
 
-(defn send-after [msecs pid message]
+(defn send-after
+  "Sends message to process with pid after msecs. Returns the timer
+  reference."
+  [msecs pid message]
   (action-after msecs pid #(async/put! pid message)))
 
-(defn exit-after [msecs pid reason]
+(defn exit-after
+  "Exits process with pid with reason after msecs. Returns the timer
+  reference."
+  [msecs pid reason]
   (action-after msecs pid #(process/exit pid reason)))
 
-(defn cast-after [msecs pid message]
+(defn cast-after
+  "Casts message to gen-server with pid after msecs. Returns the timer
+  reference."
+  [msecs pid message]
   (action-after msecs pid #(gs/cast pid message)))
 
 (defn kill-after [msecs pid]
+  "Kills process with pid after msecs. Returns the timer reference."
   (exit-after msecs pid :kill))
 
-(defn send-interval [msecs pid message]
+(defn send-interval
+  "Sends message to process with pid repeatedly at intervals of msecs.
+  Returns the timer reference."
+  [msecs pid message]
   (let [tref (new-tref)]
     (swap! *timers assoc tref
            (process/spawn
@@ -69,7 +84,10 @@
               :name (str tref)}))
     tref))
 
-(defn cancel [tref]
+(defn cancel
+  "Cancels a previously requested timeout. tref is a unique timer
+  reference returned by the timer function in question."
+  [tref]
   (when-let [pid (@*timers tref)]
     (process/exit pid :normal)))
 
