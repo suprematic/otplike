@@ -165,17 +165,21 @@
     (some-> form
       resolve var-get)))
 
-(defn spawn [proc-func params {:keys [link-to inbox-size flags name register] :as options}]
+(defn spawn
+  "Returns the pid of newly created process."
+  [proc-func params {:keys [link-to inbox-size flags name register] :as options}]
   (assert (or (fn? proc-func) (symbol? proc-func)))
   (assert (sequential? params))
   (assert (map? options))
 
   (let [proc-func (resolve-proc-func proc-func)
-        id      (swap! *pids inc)
-        inbox   (async/chan (or inbox-size 1024)) pid (Pid. id (or name (str "proc" id)))
-        control (async/chan 128) linked (atom #{})
-        monitors (atom #{})
-        flags   (atom (or flags {}))]
+        id        (swap! *pids inc)
+        inbox     (async/chan (or inbox-size 1024))
+        pid       (Pid. id (or name (str "proc" id)))
+        control   (async/chan 128)
+        linked    (atom #{})
+        monitors  (atom #{})
+        flags     (atom (or flags {}))]
 
     (locking *processes
       (let [outbox  (outbox pid inbox)
@@ -193,17 +197,19 @@
 
         (go
           (when link-to
-            (let [reply (async/chan) timeout (async/timeout 100)]
+            (let [reply (async/chan)
+                  timeout (async/timeout 100)]
               (!control link-to [:link pid reply])
               (match (async/alts!! [reply timeout])
-                [nil reply]
-                (swap! linked conj link-to)
+                     [nil reply]
+                     (swap! linked conj link-to)
 
-                [nil timout]
-                (exit pid :noproc))))
+                     [nil timout]
+                     (exit pid :noproc))))
 
 
-          (let [return (start-process proc-func pid outbox params) process (assoc process :return return)]
+          (let [return (start-process proc-func pid outbox params)
+                process (assoc process :return return)]
             (loop []
               (let [vp (async/alts! [control return])]
                 (if-let [reason (dispatch process vp)]
@@ -227,7 +233,8 @@
 
                     (doseq [p @monitors]
                       (! p [:down pid reason])))
-                  (recur)))))))) pid))
+                  (recur))))))))
+    pid))
 
 (defn pipe [from to]
   (go-loop []
@@ -293,3 +300,4 @@
 ; 2. Process Dictionary
 
 
+; go-proc wraps go-loop into try-catch
