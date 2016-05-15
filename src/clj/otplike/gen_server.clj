@@ -5,23 +5,6 @@
     [clojure.core.match :refer [match]]
     [otplike.process :as process :refer [!]]))
 
-(defn ok [state]
-  [:ok state])
-
-(defn reply [value state]
-  [:reply value state])
-
-(defn noreply [state]
-  [:noreply state])
-
-(defn stop
-  ([reason]
-    [:stop reason])
-  ([reason state]
-     [:stop reason state])
-  ([reason reply state]
-     [:stop reason reply state]))
-
 (defprotocol IGenServer
   (init [_ self args]
     #_[:ok, State]
@@ -182,22 +165,22 @@
     (init [_ self args]
       (if init
         (init self args)
-        (stop :no-init)))
+        [:stop :no-init]))
 
     (handle-cast [_ self request state]
       (if handle-cast
         (handle-cast self request state)
-        (stop :no-handle-cast state)))
+        [:stop :no-handle-cast state]))
 
     (handle-call [_ self request from state]
       (if handle-call
         (handle-call self request from state)
-        (stop :no-handle-call state)))
+        [:stop :no-handle-call state]))
 
     (handle-info [_ self request state]
       (if handle-info
         (handle-info self request state)
-        (stop :no-handle-info state)))
+        [:stop :no-handle-info state]))
 
     (terminate [_ self reason state] ; terminate is optional
       (if terminate
@@ -221,22 +204,22 @@
     (init [_ self args]
       (if-let [init (ns-function ns 'init)]
         (init self args)
-        (stop :no-init)))
+        [:stop :no-init]))
 
     (handle-cast [_ self request state]
       (if-let [handle-cast (ns-function ns 'handle-cast)]
         (handle-cast self request state)
-        (stop :no-handle-cast state)))
+        [:stop :no-handle-cast state]))
 
     (handle-call [_ self request from state]
       (if-let [handle-call (ns-function ns 'handle-call)]
         (handle-call self request from state)
-        (stop :no-handle-call state)))
+        [:stop :no-handle-call state]))
 
     (handle-info [_ self request state]
       (if-let [handle-info (ns-function ns 'handle-info)]
         (handle-info self request state)
-        (stop :no-handle-info state)))
+        [:stop :no-handle-info state]))
 
     (terminate [_ self reason state] ; terminate is optional
       (if-let [terminate (ns-function ns 'terminate)]
@@ -253,7 +236,7 @@
     (init [_ self [n]]
       (println "init: " n)
       (async/put! self :init-message)
-      (ok n))
+      [:ok n])
 
     (terminate [_ self reason state]
       (println "terminate: " reason ", state: " state))
@@ -264,19 +247,19 @@
         :get-async
         (do
           (async/put! from state)
-          (noreply state))
+          [:noreply state])
 
         :get-sync
-        (reply state state)))
+        [:reply state state]))
 
     (handle-cast [_ self message state]
       (println "handle-cast: " message ", state: " state)
       (match message
         :dec
-        (noreply (dec state))
+        [:noreply (dec state)]
 
         :inc
-        (noreply (inc state))))
+        [:noreply (inc state)]))
 
     (handle-info [_ self message state]
       (println "handle-info: " message ", state: " state)
@@ -290,7 +273,7 @@
     (fn [ self [n]]
       (println "init: " n)
       (async/put! self :init-message)
-      (ok n))
+      [:ok n])
 
     :terminate
     (fn [self reason state]
@@ -303,20 +286,20 @@
         :get-async
         (do
           (async/put! from state)
-          (noreply state))
+          [:noreply state])
 
         :get-sync
-        (reply state state)))
+        [:reply state state]))
 
     :handle-cast
     (fn [self message state]
       (println "handle-cast: " message ", state: " state)
       (match message
         :dec
-        (noreply (dec state))
+        [:noreply (dec state)]
 
         :inc
-        (noreply (inc state))))
+        [:noreply (inc state)]))
 
     :handle-info
     (fn [self message state]

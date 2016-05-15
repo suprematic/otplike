@@ -6,7 +6,10 @@
 
     [otplike.process :as process :refer [!]]
     [otplike.timer :as timer]
-    [otplike.gen-server :as gs :refer [ok reply noreply]]))
+    [otplike.gen-server :as gs]))
+
+;==========
+; Bidirectional map
 
 (defn bidi-make []
   {:l->r {} :r->l {}})
@@ -28,6 +31,9 @@
 (defn bidi-get-r [{:keys [r->l]} r]
   (r->l r))
 
+;============
+; Multimap
+
 (defn mult-make []
   {})
 
@@ -46,7 +52,13 @@
   (if-let [r (m k)]
     (assoc m k (disj r item)) m))
 
+;============
+; Registry
+
 (def server :registry)
+
+;--------
+; API
 
 (defn reg-name [pid name]
   (gs/call server [:reg-name pid name]))
@@ -58,7 +70,8 @@
   (gs/call server [:send key value]))
 
 (defn wait-name [name]
-  (let [ch (gs/call server [:wait-name name]) timeout (async/timeout 5000)]
+  (let [ch (gs/call server [:wait-name name])
+        timeout (async/timeout 5000)]
     (match (async/alts!! [ch timeout])
       [[name pid] ch]
       pid
@@ -66,25 +79,32 @@
       :timeout)))
 
 (defn start []
-  (gs/start (gs/coerce-current-ns) [] {:name server :register server :flags {:trap-exit true}}))
+  (gs/start
+    (gs/coerce-current-ns)
+    []
+    {:name server :register server :flags {:trap-exit true}}))
 
 (defn stop []
   (process/exit server :normal))
 
+;---------
+; gen-server callbacks
+
 (defn init [self []]
-  (ok {:names (bidi-make) :waiters (mult-make) :props #{}}))
+  [:ok {:names (bidi-make) :waiters (mult-make) :props #{}}])
 
 (defn- waiter-proc [_pid inbox name ch]
   (go
     (match (<! inbox)
       [:available [name pid]]
       (do
-        (async/put! ch [name pid]) :normal))))
+        (async/put! ch [name pid])
+        :normal))))
 
 (defn handle-call [self request _sender {:keys [props names waiters] :as state}]
   (match request
     [:reg-prop pid prop]
-    (reply :ok (assoc state :props (conj props [pid prop])))
+    [:reply :ok (assoc state :props (conj props [pid prop]))]
 
     [:send key value]
     (do
@@ -92,23 +112,23 @@
         (when (= prop key)
           (! pid value)))
 
-      (reply :ok state))
+      [:reply :ok state])
 
     [:reg-name pid name]
     (do
       (process/monitor self pid)
       (gs/cast self [:notify-waiters name pid])
-      (reply :ok (assoc state :names (bidi-put names pid name))))
+      [:reply :ok (assoc state :names (bidi-put names pid name))])
 
     [:wait-name name]
     (let [ch (async/chan)]
       (if-let [pid (bidi-get-r names name)]
         (do
           (async/put! ch [name pid])
-          (reply ch state))
+          [:reply ch state])
 
         (let [waiter (process/spawn waiter-proc [name ch] {:link-to self})]
-          (reply ch (assoc state :waiters (multi-conj waiters name waiter))))))))
+          [:reply ch (assoc state :waiters (multi-conj waiters name waiter))])))))
 
 (defn handle-cast [self request {:keys [waiters] :as state}]
   (match request
@@ -117,20 +137,24 @@
       (doseq [w (waiters name)]
         (! w [:available [name pid]]))
 
-      (noreply (assoc state :waiters (dissoc waiters name))))))
+      [:noreply (assoc state :waiters (dissoc waiters name))])))
 
 (defn handle-info [self message {:keys [names] :as state}]
   (match message
     [:down pid _]
-    (noreply (assoc state :names (bidi-dissoc-l names pid)))))
+    [:noreply (assoc state :names (bidi-dissoc-l names pid))]))
 
+;==============
+; tests
 
 (defn p1 [pid inbox]
   (go
     (reg-name pid [:my-name])
     (<! (async/timeout 10000))
-    (println "p1 terminate") :normal))
+    (println "p1 terminate")
+    :normal))
 
 (defn p2 [pid inbox]
   (go
-    (println "wait success: " (wait-name [:my-name])) :normal))
+    (println "wait success: " (wait-name [:my-name]))
+    :normal))

@@ -4,7 +4,9 @@
             [clojure.core.async :as async :refer [<! >! put! go go-loop]]
             [otplike.gen-server :as gs]))
 
-(defrecord TRef [id])
+(defrecord TRef [id]
+  Object
+  (toString [_this] (str "timer_" id)))
 
 (def *tcount
   (atom 0))
@@ -12,59 +14,85 @@
 (def *timers
   (atom {}))
 
-(defn- action-after [delay process afn] ; -> tref
-  (let [tid (str "timer" (swap! *tcount inc)) tref (TRef. tid)]
+(defn- new-tref []
+  (TRef. (swap! *tcount inc)))
+
+(defn- action-after
+  "Calls f after msecs. Returns the timer reference."
+  [msecs pid f]
+  (let [tref (new-tref)]
     (swap! *timers assoc tref
-      (process/spawn
-        (fn [pid inbox]
-          (process/monitor pid process)
-          (go
-            (let [[_ port] (async/alts! [inbox (async/timeout delay)])]
-              (when (not= port inbox)
-                (afn)))
-            (swap! *timers dissoc tref)
-            :normal)) [] {:flags {:trap-exit true} :name tid})) tref))
+           (process/spawn
+             (fn [my-pid inbox]
+               (process/monitor my-pid pid)
+               (go
+                 (let [[_ port] (async/alts! [inbox (async/timeout msecs)])]
+                   (when (not= port inbox)
+                     (f)))
+                 (swap! *timers dissoc tref)
+                 :normal))
+             []
+             {:flags {:trap-exit true}
+              :name (str tref)}))
+    tref))
 
-(defn send-after [delay process message]
-  (action-after delay process
-    #(async/put! process message)))
+(defn send-after
+  "Sends message to process with pid after msecs. Returns the timer
+  reference."
+  [msecs pid message]
+  (action-after msecs pid #(async/put! pid message)))
 
-(defn exit-after [delay process reason] ; -> tref
-  (action-after delay process
-    #(process/exit process reason)))
+(defn exit-after
+  "Exits process with pid with reason after msecs. Returns the timer
+  reference."
+  [msecs pid reason]
+  (action-after msecs pid #(process/exit pid reason)))
 
-(defn cast-after [delay server message]
-  (action-after delay server
-    #(gs/cast server message)))
+(defn cast-after
+  "Casts message to gen-server with pid after msecs. Returns the timer
+  reference."
+  [msecs pid message]
+  (action-after msecs pid #(gs/cast pid message)))
 
-(defn kill-after [delay process]
-  (exit-after delay process :kill))
+(defn kill-after [msecs pid]
+  "Kills process with pid after msecs. Returns the timer reference."
+  (exit-after msecs pid :kill))
 
-(defn send-interval [period process message]
-  (let [tid (str "timer" (swap! *tcount inc)) tref (TRef. tid)]
+(defn send-interval
+  "Sends message to process with pid repeatedly at intervals of msecs.
+  Returns the timer reference."
+  [msecs pid message]
+  (let [tref (new-tref)]
     (swap! *timers assoc tref
-      (process/spawn
-        (fn [pid inbox]
-          (process/monitor pid process)
-          (go
-            (loop []
-              (let [timeout (async/timeout period)]
-                (match (async/alts! [inbox timeout])
-                  [nil timeout]
-                  (do
-                    (async/put! process message)
-                    (recur))
+           (process/spawn
+             (fn [my-pid inbox]
+               (process/monitor my-pid pid)
+               (go
+                 (loop []
+                   (let [timeout (async/timeout msecs)]
+                     (match (async/alts! [inbox timeout])
+                            [nil timeout]
+                            (do
+                              (async/put! pid message)
+                              (recur))
+                            [_ inbox]
+                            (do
+                              (swap! *timers dissoc tref)
+                              :normal))))))
+             []
+             {:flags {:trap-exit true}
+              :name (str tref)}))
+    tref))
 
-                  [_ inbox]
-                  (do
-                    (swap! *timers dissoc tref)
-                    :normal)))))) [] {:flags {:trap-exit true} :name tid})) tref))
-
-(defn cancel [tref]
-  (when-let [proc (@*timers tref)]
-    (process/exit proc :normal)))
+(defn cancel
+  "Cancels a previously requested timeout. tref is a unique timer
+  reference returned by the timer function in question."
+  [tref]
+  (when-let [pid (@*timers tref)]
+    (process/exit pid :normal)))
 
 
+;******* tests
 (defn test-1 []
   (let [process (process/spawn
                   (fn [self]
@@ -73,22 +101,17 @@
                       (loop []
                         (let [message (<! self)]
                           #_(process/trace "user" (str "message: " message))
-
                           (when (not= message :stop)
-                            (recur)))) :normal)) [] {:name "user" :flags {:trap-exit false}})]
-
+                            (recur))))
+                      :normal))
+                  []
+                  {:name "user"
+                   :flags {:trap-exit false}})]
     (let [tref (send-after 1000 process :cancelled)]
       (cancel tref))
-
     (let [tref (send-interval 1000 process :interval)]
       #_(cancel tref))
-
-
     (send-after 5000 process :stop)
-
     ;(async/put! process :msg)
-
-    ) :ok)
-
-
-
+    )
+  :ok)

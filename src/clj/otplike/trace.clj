@@ -26,7 +26,10 @@
   (reset! *trace-fn tracefn))
 
 (defn trace-collector [stop-list]
-  (let [result (async/chan) traces (atom []) stop-list (atom (apply hash-set stop-list)) saved @*trace-fn]
+  (let [result (async/chan)
+        traces (atom [])
+        stop-list (atom (apply hash-set stop-list))
+        saved @*trace-fn]
     (set-trace
       (fn [pid event]
         (swap! traces conj [pid event])
