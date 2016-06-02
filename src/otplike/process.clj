@@ -146,8 +146,8 @@
         (async/close! stop)))))
 
 ; TODO check exception thrown from proc-func
-(defn- start-process [proc-func pid inbox params]
-  (let [return (apply proc-func pid inbox params)]
+(defn- start-process [proc-func inbox params]
+  (let [return (apply proc-func inbox params)]
     (if (satisfies? ap/ReadPort return)
       return
       (let [wrap (async/chan)]
@@ -211,7 +211,7 @@
                      [nil timeout]
                      (exit pid :noproc)))))
 
-            (let [return (start-process proc-func pid outbox params)
+            (let [return (start-process proc-func outbox params)
                   process (assoc process :return return)]
               (loop []
                 (let [vp (async/alts! [control return])]
@@ -256,8 +256,8 @@
 (deftest spawn-terminate-normal []
   (let [result (trace/trace-collector [:p1])]
     (spawn
-      (fn [self inbox p1 p2 & other]
-        (is (instance? Pid self) "self must be instance of Pid")
+      (fn [inbox p1 p2 & other]
+        (is (instance? Pid *self*) "self must be instance of Pid")
         (is (satisfies? ap/ReadPort inbox) "inbox must be a ReadPort")
         (is (and (= p1 :p1) (= p2 :p2) "formal parameters must match actuals"))
         (is (= (count other) 0) "no extra parameters")
@@ -273,7 +273,7 @@
 (deftest spawn-terminate-nil []
   (let [result (trace/trace-collector [:p1])]
     (spawn
-      (fn [_self _inbox]) [] {:name :p1})
+      (fn [_inbox]) [] {:name :p1})
 
     (let [trace (result 1000)]
       (is
@@ -285,8 +285,8 @@
 
 (deftest link-to-normal []
   (let [result (trace/trace-collector [:p1 :p2])]
-    (let [p1 (spawn (fn [_self _inbox] (go (async/<! (async/timeout 500)) :blah) ) [] {:name :p1})
-          p2 (spawn (fn [_self inbox]  (go (<! inbox))) [] {:name :p2 :link-to p1})]
+    (let [p1 (spawn (fn [_inbox] (go (async/<! (async/timeout 500)) :blah) ) [] {:name :p1})
+          p2 (spawn (fn [inbox]  (go (<! inbox))) [] {:name :p2 :link-to p1})]
       (let [trace (result 1000)]
         (is (trace/terminated? trace p1 :blah))
         (is (trace/terminated? trace p2 :blah))))))
@@ -294,9 +294,9 @@
 
 (deftest link-to-terminated []
   (let [result (trace/trace-collector [:p1 :p2])]
-    (let [p1 (spawn (fn [_self _inbox]) [] {:name :p1})
+    (let [p1 (spawn (fn [_inbox]) [] {:name :p1})
           _  (async/<!! (async/timeout 500))
-          p2 (spawn (fn [_self inbox]  (go (<! inbox))) [] {:name :p2 :link-to p1})]
+          p2 (spawn (fn [inbox]  (go (<! inbox))) [] {:name :p2 :link-to p1})]
       (let [trace (result 1000)]
         (is (trace/terminated? trace p1 :nil))
         (is (trace/terminated? trace p2 :noproc))))))

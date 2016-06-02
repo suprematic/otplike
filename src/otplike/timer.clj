@@ -23,8 +23,8 @@
   (let [tref (new-tref)]
     (swap! *timers assoc tref
            (process/spawn
-             (fn [my-pid inbox]
-               (process/monitor my-pid pid)
+             (fn [inbox]
+               (process/monitor process/*self* pid)
                (go
                  (let [[_ port] (async/alts! [inbox (async/timeout msecs)])]
                    (when (not= port inbox)
@@ -65,8 +65,8 @@
   (let [tref (new-tref)]
     (swap! *timers assoc tref
            (process/spawn
-             (fn [my-pid inbox]
-               (process/monitor my-pid pid)
+             (fn [inbox]
+               (process/monitor process/*self* pid)
                (go
                  (loop []
                    (let [timeout (async/timeout msecs)]
@@ -95,11 +95,11 @@
 ;******* tests
 (defn test-1 []
   (let [process (process/spawn
-                  (fn [self]
+                  (fn [inbox]
                     ;(send-after 5000 self :timer-message)
                     (go
                       (loop []
-                        (let [message (<! self)]
+                        (let [message (<! inbox)]
                           #_(process/trace "user" (str "message: " message))
                           (when (not= message :stop)
                             (recur))))
