@@ -113,25 +113,26 @@
   (init impl self args))
 
 
-(defn gen-server-proc [pid inbox impl init-args response]
-  (go
-    (match (call-init impl pid init-args) ;TODO handle wrong return from init
-      [:ok initial-state]
-      (do
-        (put!* response [:ok pid])
-        (loop [state initial-state]
-          (if-let [message (<! inbox)]
-            (match (dispatch impl pid state message)
-              [:recur new-state]
-              (recur new-state)
+(defn gen-server-proc [__pid inbox impl init-args response]
+  (let [self process/*self*]
+    (go
+      (match (call-init impl self init-args) ;TODO handle wrong return from init
+        [:ok initial-state]
+        (do
+          (put!* response [:ok self])
+          (loop [state initial-state]
+            (if-let [message (<! inbox)]
+              (match (dispatch impl self state message)
+                [:recur new-state]
+                (recur new-state)
 
-              [:terminate reason]
-              reason))))
+                [:terminate reason]
+                reason))))
 
-      [:stop reason]
-      (do
-        (put!* response [:error reason])
-        :normal))))
+        [:stop reason]
+        (do
+          (put!* response [:error reason])
+          :normal)))))
 
 ; API functions
 (defn start [impl args options]
