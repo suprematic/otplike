@@ -200,16 +200,16 @@
         (binding [*self* pid] ; workaround for ASYNC-170. once fixed, binding should move to (start-process...)
           (go
             (when link-to
-              (let [reply (async/chan)
-                    timeout (async/timeout 100)]
-                (!control link-to [:link pid reply])
-                (match (async/alts!! [reply timeout])
-                 [nil reply]
-                 (swap! linked conj link-to)
+              (doseq [link-to (apply hash-set (flatten [link-to]))] ; ??? probably optimize by sending link requests concurently
+                (let [reply (async/chan)
+                      timeout (async/timeout 100)]
+                  (!control link-to [:link pid reply])
+                  (match (async/alts!! [reply timeout])
+                     [nil reply]
+                     (swap! linked conj link-to)
 
-                 [nil timout]
-                 (exit pid :noproc))))
-
+                     [nil timeout]
+                     (exit pid :noproc)))))
 
             (let [return (start-process proc-func pid outbox params)
                   process (assoc process :return return)]
@@ -237,6 +237,12 @@
                       (doseq [p @monitors]
                         (! p [:down pid reason])))
                     (recur))))))))) pid))
+
+(defn spawn-link [proc-func params opts]
+  (if *self*
+    (let [opts (update-in opts [:link-to] conj *self*)]
+      (spawn proc-func params opts))
+    (throw (Exception. "spawn-link can only be called in process context"))))
 
 (defn pipe [from to]
   (go-loop []
