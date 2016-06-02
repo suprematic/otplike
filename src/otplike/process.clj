@@ -165,6 +165,8 @@
     (some-> form
       resolve var-get)))
 
+(def ^:dynamic *self* nil)
+
 (defn spawn
   "Returns the pid of newly created process."
   [proc-func params {:keys [link-to inbox-size flags name register] :as options}]
@@ -195,46 +197,46 @@
 
         (trace/trace pid [:start (str proc-func) params options])
 
-        (go
-          (when link-to
-            (let [reply (async/chan)
-                  timeout (async/timeout 100)]
-              (!control link-to [:link pid reply])
-              (match (async/alts!! [reply timeout])
-                     [nil reply]
-                     (swap! linked conj link-to)
+        (binding [*self* pid] ; workaround for ASYNC-170. once fixed, binding should move to (start-process...)
+          (go
+            (when link-to
+              (let [reply (async/chan)
+                    timeout (async/timeout 100)]
+                (!control link-to [:link pid reply])
+                (match (async/alts!! [reply timeout])
+                 [nil reply]
+                 (swap! linked conj link-to)
 
-                     [nil timout]
-                     (exit pid :noproc))))
+                 [nil timout]
+                 (exit pid :noproc))))
 
 
-          (let [return (start-process proc-func pid outbox params)
-                process (assoc process :return return)]
-            (loop []
-              (let [vp (async/alts! [control return])]
-                (if-let [reason (dispatch process vp)]
-                  (do
-                    (trace/trace pid [:terminate reason])
+            (let [return (start-process proc-func pid outbox params)
+                  process (assoc process :return return)]
+              (loop []
+                (let [vp (async/alts! [control return])]
+                  (if-let [reason (dispatch process vp)]
+                    (do
+                      (trace/trace pid [:terminate reason])
 
-                    (close! outbox)
+                      (close! outbox)
 
-                    (dosync
-                      (swap! *processes dissoc pid)
+                      (dosync
+                        (swap! *processes dissoc pid)
 
-                      (when register
-                        (swap! *registered dissoc register))
+                        (when register
+                          (swap! *registered dissoc register))
+
+                        (doseq [p @linked]
+                          (when-let [p (@*processes p)]
+                            (swap! (:linked p) disj process))))
 
                       (doseq [p @linked]
-                        (when-let [p (@*processes p)]
-                          (swap! (:linked p) disj process))))
+                        (!control p [:linked-exit pid reason]))
 
-                    (doseq [p @linked]
-                      (!control p [:linked-exit pid reason]))
-
-                    (doseq [p @monitors]
-                      (! p [:down pid reason])))
-                  (recur))))))))
-    pid))
+                      (doseq [p @monitors]
+                        (! p [:down pid reason])))
+                    (recur))))))))) pid))
 
 (defn pipe [from to]
   (go-loop []
@@ -292,6 +294,21 @@
       (let [trace (result 1000)]
         (is (trace/terminated? trace p1 :nil))
         (is (trace/terminated? trace p2 :noproc))))))
+
+
+
+(def ^:dynamic *x* 1)
+
+(defn bind-test []
+  (println "initial:" *x*)
+
+  (binding [*x* 2]
+    (println "before go:" *x*)
+
+    (go
+      (println "outer go:" *x*)
+      (go
+        (println "inner go:" *x*)))))
 
 
 
