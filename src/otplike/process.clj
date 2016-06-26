@@ -15,6 +15,10 @@
 (def *registered
   (atom {}))
 
+(def *control-timout 100)
+
+(def ^:dynamic *self* nil)
+
 (defn pid->str [{:keys [id name]}]
   (str "<" (if name (str (str name) "@" id) id) ">"))
 
@@ -61,11 +65,10 @@
   (when-let [{:keys [flags]} (find-process pid)]
     (swap! flags assoc flag value)) :ok)
 
-(defn link [pid1 pid2]
-  (let [proc1 (@*processes pid1) proc2 (@*processes pid2)]
-    (when (and proc1 proc2)
-      (swap! (:linked proc1) conj pid2)
-      (swap! (:linked proc2) conj pid1))))
+(defn link [pid]
+  (if *self*
+    (!control *self* [:link-request pid])
+    (throw (Exception. "link can only be called in process context"))))
 
 (defn- monitor* [func pid1 pid2]
   (if-let [{:keys [monitors] :as process} (find-process pid2)]
@@ -88,6 +91,7 @@
 
   (let [trap-exit (:trap-exit @flags)]
     (match message
+      ; check if xpid is really linked to pid
       [:linked-exit xpid :kill] ; if neighbour is killed, we terminate unconditionally
         :kill
 
@@ -107,9 +111,25 @@
           (do
             (async/put! pid [:exit reason]) nil)))
 
-      [:link xpid confirm]
+      [:link-request other]
+      (let [confirm (async/chan) timeout (async/timeout *control-timout)]
+        (trace/trace pid [:link-request other])
+        (!control other [:link-other pid confirm])
+        (match (async/alts!! [confirm timeout])
+          [nil confirm]
+          (do
+            (trace/trace pid [:link-confirm other])
+            (swap! linked conj other) nil)
+
+          [nil timeout]
+          (do
+            (trace/trace pid [:link-confirm-timeout other])
+            (exit pid :noproc) nil))) ; TODO crash :noproc vs. exit :noproc
+
+      [:link-other other confirm]
       (do
-        (swap! linked conj xpid)
+        (trace/trace pid [:link-other other])
+        (swap! linked conj other)
         (async/close! confirm) nil))))
 
 (defn- dispatch [{:keys [pid control return] :as process} [message port]]
@@ -165,8 +185,6 @@
     (some-> form
       resolve var-get)))
 
-(def ^:dynamic *self* nil)
-
 (defn spawn
   "Returns the pid of newly created process."
   [proc-func params {:keys [link-to inbox-size flags name register] :as options}]
@@ -202,8 +220,8 @@
             (when link-to
               (doseq [link-to (apply hash-set (flatten [link-to]))] ; ??? probably optimize by sending link requests concurently
                 (let [reply (async/chan)
-                      timeout (async/timeout 100)]
-                  (!control link-to [:link pid reply])
+                      timeout (async/timeout *control-timout)]
+                  (!control link-to [:link-other pid reply])
                   (match (async/alts!! [reply timeout])
                      [nil reply]
                      (swap! linked conj link-to)
@@ -300,6 +318,8 @@
       (let [trace (result 1000)]
         (is (trace/terminated? trace p1 :nil))
         (is (trace/terminated? trace p2 :noproc))))))
+
+
 
 
 
