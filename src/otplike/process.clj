@@ -1,7 +1,7 @@
 (ns otplike.process
   (:require
     [clojure.test :refer [deftest run-tests is]]
-    [clojure.core.async :as async :refer [<! >! put! go go-loop]]
+    [clojure.core.async :as async :refer [<!! <! >! put! go go-loop]]
     [clojure.core.async.impl.protocols :as ap]
     [clojure.core.match :refer [match]]
     [otplike.trace :as trace]))
@@ -65,10 +65,7 @@
   (when-let [{:keys [flags]} (find-process pid)]
     (swap! flags assoc flag value)) :ok)
 
-(defn link [pid]
-  (if *self*
-    (!control *self* [:link-request pid])
-    (throw (Exception. "link can only be called in process context"))))
+
 
 (defn- monitor* [func pid1 pid2]
   (if-let [{:keys [monitors] :as process} (find-process pid2)]
@@ -86,7 +83,42 @@
 
 (defrecord ProcessRecord [pid inbox control monitors exit outbox linked flags])
 
-(defn- dispatch-control [{:keys [flags pid linked]} message]
+(defn- two-phase [process p1pid p2pid cfn]
+  (go
+    (let [p1result-chan (async/chan) timeout (async/timeout *control-timout)]
+      (!control p1pid [:two-phase-p1 p1result-chan p2pid cfn])
+      (match (async/alts! [p1result-chan timeout])
+        [_ p1result-chan]
+        (do
+          (cfn :phase-two process p1pid) nil)
+
+        [nil timeout]
+        (do
+          (cfn :timeout process p1pid) nil)))))
+
+(defn- link-fn [phase {:keys [linked pid]} other-pid]
+  (case phase
+    :phase-one
+    (do
+      (trace/trace pid [:link-phase-one other-pid])
+      (swap! linked conj other-pid))
+
+    :phase-two
+    (do
+      (trace/trace pid [:link-phase-two other-pid])
+      (swap! linked conj other-pid))
+
+    :timeout
+    (do
+      (trace/trace pid [:link-timeout other-pid])
+      (exit pid :noproc)))) ; TODO crash :noproc vs. exit :noproc
+
+(defn link [pid]
+  (if *self*
+    (!control *self* [:two-phase pid link-fn])
+    (throw (Exception. "link can only be called in process context"))))
+
+(defn- dispatch-control [{:keys [flags pid linked] :as process} message]
   (trace/trace pid [:control message])
 
   (let [trap-exit (:trap-exit @flags)]
@@ -111,26 +143,14 @@
           (do
             (async/put! pid [:exit reason]) nil)))
 
-      [:link-request other]
-      (let [confirm (async/chan) timeout (async/timeout *control-timout)]
-        (trace/trace pid [:link-request other])
-        (!control other [:link-other pid confirm])
-        (match (async/alts!! [confirm timeout])
-          [nil confirm]
-          (do
-            (trace/trace pid [:link-confirm other])
-            (swap! linked conj other) nil)
+      [:two-phase other cfn]
+        (let [p1result (two-phase process other pid cfn)]
+          (<!! p1result))
 
-          [nil timeout]
-          (do
-            (trace/trace pid [:link-confirm-timeout other])
-            (exit pid :noproc) nil))) ; TODO crash :noproc vs. exit :noproc
-
-      [:link-other other confirm]
+      [:two-phase-p1 result other-pid cfn]
       (do
-        (trace/trace pid [:link-other other])
-        (swap! linked conj other)
-        (async/close! confirm) nil))))
+        (async/put! result
+          (cfn :phase-one process other-pid)) nil))))
 
 (defn- dispatch [{:keys [pid control return] :as process} [message port]]
   (condp = port
@@ -219,15 +239,7 @@
           (go
             (when link-to
               (doseq [link-to (apply hash-set (flatten [link-to]))] ; ??? probably optimize by sending link requests concurently
-                (let [reply (async/chan)
-                      timeout (async/timeout *control-timout)]
-                  (!control link-to [:link-other pid reply])
-                  (match (async/alts!! [reply timeout])
-                     [nil reply]
-                     (swap! linked conj link-to)
-
-                     [nil timeout]
-                     (exit pid :noproc)))))
+                (<!! (two-phase process link-to pid link-fn)))) ; wait for protocol to complete))
 
             (let [return (start-process proc-func outbox params)
                   process (assoc process :return return)]
@@ -269,7 +281,6 @@
       (when message
         (recur)))))
 
-
 ;******* tests
 (deftest spawn-terminate-normal []
   (let [result (trace/trace-collector [:p1])]
@@ -300,31 +311,30 @@
            [_ [:return :nil]]
            [_ [:terminate :nil]]] true)))))
 
+(defn link-to-normal* []
+  (let [p1 (spawn (fn [_inbox] (go (async/<! (async/timeout 500)) :blah)) [] {:name :p1})
+        p2 (spawn (fn [inbox] (go (<! inbox))) [] {:name :p2 :link-to p1})] [p1 p2]))
 
 (deftest link-to-normal []
   (let [result (trace/trace-collector [:p1 :p2])]
-    (let [p1 (spawn (fn [_inbox] (go (async/<! (async/timeout 500)) :blah) ) [] {:name :p1})
-          p2 (spawn (fn [inbox]  (go (<! inbox))) [] {:name :p2 :link-to p1})]
+    (let [[p1 p2] (link-to-normal*)]
       (let [trace (result 1000)]
         (is (trace/terminated? trace p1 :blah))
         (is (trace/terminated? trace p2 :blah))))))
 
+(defn link-to-terminated* []
+  (let [p1 (spawn (fn [_inbox]) [] {:name :p1})
+        _  (async/<!! (async/timeout 500))
+        p2 (spawn (fn [inbox]  (go (<! inbox))) [] {:name :p2 :link-to p1})] [p1 p2]))
 
 (deftest link-to-terminated []
   (let [result (trace/trace-collector [:p1 :p2])]
-    (let [p1 (spawn (fn [_inbox]) [] {:name :p1})
-          _  (async/<!! (async/timeout 500))
-          p2 (spawn (fn [inbox]  (go (<! inbox))) [] {:name :p2 :link-to p1})]
-      (let [trace (result 1000)]
-        (is (trace/terminated? trace p1 :nil))
-        (is (trace/terminated? trace p2 :noproc))))))
-
-
-
-
+    (let [[p1 p2] (link-to-terminated*)]
+     (let [trace (result 1000)]
+       (is (trace/terminated? trace p1 :nil))
+       (is (trace/terminated? trace p2 :noproc))))))
 
 (def ^:dynamic *x* 1)
-
 (defn bind-test []
   (println "initial:" *x*)
 
@@ -335,12 +345,3 @@
       (println "outer go:" *x*)
       (go
         (println "inner go:" *x*)))))
-
-
-
-; TODO
-; 1. link/monitor should send notification if process died
-; 2. Process Dictionary
-
-
-; go-proc wraps go-loop into try-catch
