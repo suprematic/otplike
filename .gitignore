@@ -2,3 +2,5 @@
 target/
 *.iml
 pom.xml
+.nrepl-port
+.lein-repl-history
