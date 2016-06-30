@@ -230,7 +230,7 @@
             process (->ProcessRecord pid inbox control monitors exit outbox linked flags)]
 
         (dosync
-          (when register
+          (when (some? register)
             (when (@*registered register)
               (throw (Exception. (str "already registered: " register))))
             (swap! *registered assoc register pid))
