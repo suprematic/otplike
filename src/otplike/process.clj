@@ -5,18 +5,21 @@
     [clojure.core.match :refer [match]]
     [otplike.trace :as trace]))
 
-(def *pids
+(def ^:private *pids
   (atom 0))
 
-(def *processes
+(def ^:private *processes
   (atom {}))
 
-(def *registered
+(def ^:private *registered
   (atom {}))
 
-(def *control-timout 100)
+(def ^:private *control-timout 100)
 
-(def ^:dynamic *self* nil)
+(def ^:private ^:dynamic *self* nil)
+
+(defn self []
+  *self*)
 
 (defn pid->str [{:keys [id name]}]
   (str "<" (if name (str (str name) "@" id) id) ">"))

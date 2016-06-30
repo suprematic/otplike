@@ -114,7 +114,7 @@
 
 
 (defn gen-server-proc [inbox impl init-args response]
-  (let [self process/*self*]
+  (let [self (process/self)]
     (go
       (match (call-init impl self init-args) ;TODO handle wrong return from init
         [:ok initial-state]

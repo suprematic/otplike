@@ -10,7 +10,7 @@
   (let [result (trace/trace-collector [:p1])]
     (process/spawn
       (fn [inbox p1 p2 & other]
-        (is (process/pid? process/*self*) "self must be instance of Pid")
+        (is (process/pid? (process/self)) "self must be instance of Pid")
         (is (satisfies? ap/ReadPort inbox) "inbox must be a ReadPort")
         (is (and (= p1 :p1) (= p2 :p2) "formal parameters must match actuals"))
         (is (= (count other) 0) "no extra parameters")
