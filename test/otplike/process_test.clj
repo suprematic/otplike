@@ -14,7 +14,9 @@
         (is (satisfies? ap/ReadPort inbox) "inbox must be a ReadPort")
         (is (and (= p1 :p1) (= p2 :p2) "formal parameters must match actuals"))
         (is (= (count other) 0) "no extra parameters")
-        :normal) [:p1 :p2] {:name :p1})
+        :normal)
+      [:p1 :p2]
+      {:name :p1})
     (let [trace (result 1000)]
       (is
         (match trace
@@ -42,20 +44,21 @@
         p2 (process/spawn p2-fn [] {:name :p2 :link-to p1})] [p1 p2]))
 
 (deftest link-to-normal []
-  (let [result (trace/trace-collector [:p1 :p2])]
-    (let [[p1 p2] (link-to-normal*)]
-      (let [trace (result 1000)]
-        (is (trace/terminated? trace p1 :blah))
-        (is (trace/terminated? trace p2 :blah))))))
+  (let [result (trace/trace-collector [:p1 :p2])
+        [p1 p2] (link-to-normal*)
+        trace (result 1000)]
+    (is (trace/terminated? trace p1 :blah))
+    (is (trace/terminated? trace p2 :blah))))
 
 (defn- link-to-terminated* []
   (let [p1 (process/spawn (fn [_inbox]) [] {:name :p1})
         _  (async/<!! (async/timeout 500))
-        p2 (process/spawn (fn [inbox]  (go (<! inbox))) [] {:name :p2 :link-to p1})] [p1 p2]))
+        p2 (process/spawn (fn [inbox] (go (<! inbox))) [] {:name :p2 :link-to p1})]
+    [p1 p2]))
 
 (deftest link-to-terminated []
-  (let [result (trace/trace-collector [:p1 :p2])]
-    (let [[p1 p2] (link-to-terminated*)]
-     (let [trace (result 1000)]
-       (is (trace/terminated? trace p1 :nil))
-       (is (trace/terminated? trace p2 :noproc))))))
+  (let [result (trace/trace-collector [:p1 :p2])
+        [p1 p2] (link-to-terminated*)
+        trace (result 1000)]
+    (is (trace/terminated? trace p1 :nil))
+    (is (trace/terminated? trace p2 :noproc))))
