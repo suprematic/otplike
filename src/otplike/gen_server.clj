@@ -28,7 +28,7 @@
 
   (terminate [_ self reason state]))
 
-(defn bad-return [impl self state return from]
+(defn- bad-return [impl self state return from]
   ;(process/trace (:name impl) (str "invalid return: " return " from " from ", state: " state))
 
   (let [reason [:bad-return return from]]
