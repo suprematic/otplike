@@ -137,11 +137,10 @@
           (! pid [:down xpid reason]) nil) reason)
 
       [:exit reason]
-      (let [trap-exit (:trap-exit @flags)]
-        (if (or (not trap-exit) (= reason :normal) (= reason :kill))
-          reason
-          (do
-            (async/put! pid [:exit reason]) nil)))
+      (if (or (not trap-exit) (= reason :normal) (= reason :kill))
+        reason
+        (do
+          (async/put! pid [:exit reason]) nil))
 
       [:two-phase other cfn]
         (let [p1result (two-phase process other pid cfn)]
