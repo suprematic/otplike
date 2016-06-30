@@ -1,6 +1,5 @@
 (ns otplike.process
   (:require
-    [clojure.test :refer [deftest run-tests is]]
     [clojure.core.async :as async :refer [<!! <! >! put! go go-loop]]
     [clojure.core.async.impl.protocols :as ap]
     [clojure.core.match :refer [match]]
@@ -283,68 +282,3 @@
       (! to [from message])
       (when message
         (recur)))))
-
-;******* tests
-(deftest spawn-terminate-normal []
-  (let [result (trace/trace-collector [:p1])]
-    (spawn
-      (fn [inbox p1 p2 & other]
-        (is (instance? Pid *self*) "self must be instance of Pid")
-        (is (satisfies? ap/ReadPort inbox) "inbox must be a ReadPort")
-        (is (and (= p1 :p1) (= p2 :p2) "formal parameters must match actuals"))
-        (is (= (count other) 0) "no extra parameters")
-        :normal) [:p1 :p2] {:name :p1})
-
-    (let [trace (result 1000)]
-      (is
-        (match trace
-          [[_ [:start _ _ _]]
-           [_ [:return :normal]]
-           [_ [:terminate :normal]]] true)))))
-
-(deftest spawn-terminate-nil []
-  (let [result (trace/trace-collector [:p1])]
-    (spawn
-      (fn [_inbox]) [] {:name :p1})
-
-    (let [trace (result 1000)]
-      (is
-        (match trace
-          [[_ [:start _ _ _]]
-           [_ [:return :nil]]
-           [_ [:terminate :nil]]] true)))))
-
-(defn link-to-normal* []
-  (let [p1 (spawn (fn [_inbox] (go (async/<! (async/timeout 500)) :blah)) [] {:name :p1})
-        p2 (spawn (fn [inbox] (go (<! inbox))) [] {:name :p2 :link-to p1})] [p1 p2]))
-
-(deftest link-to-normal []
-  (let [result (trace/trace-collector [:p1 :p2])]
-    (let [[p1 p2] (link-to-normal*)]
-      (let [trace (result 1000)]
-        (is (trace/terminated? trace p1 :blah))
-        (is (trace/terminated? trace p2 :blah))))))
-
-(defn link-to-terminated* []
-  (let [p1 (spawn (fn [_inbox]) [] {:name :p1})
-        _  (async/<!! (async/timeout 500))
-        p2 (spawn (fn [inbox]  (go (<! inbox))) [] {:name :p2 :link-to p1})] [p1 p2]))
-
-(deftest link-to-terminated []
-  (let [result (trace/trace-collector [:p1 :p2])]
-    (let [[p1 p2] (link-to-terminated*)]
-     (let [trace (result 1000)]
-       (is (trace/terminated? trace p1 :nil))
-       (is (trace/terminated? trace p2 :noproc))))))
-
-(def ^:dynamic *x* 1)
-(defn bind-test []
-  (println "initial:" *x*)
-
-  (binding [*x* 2]
-    (println "before go:" *x*)
-
-    (go
-      (println "outer go:" *x*)
-      (go
-        (println "inner go:" *x*)))))
