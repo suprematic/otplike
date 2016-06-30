@@ -54,7 +54,7 @@
   (match (handle-call impl self request from state)
     [:reply reply new-state]
     (do
-      (if reply
+      (if (some? reply)
         (async/put! from reply)
         (async/close! from))
 
@@ -66,7 +66,7 @@
 
     [:stop reason reply new-state]
     (do
-      (if reply
+      (if (some? reply)
         (async/put! from reply)
         (async/close! from))
 
