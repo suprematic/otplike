@@ -20,9 +20,9 @@
     (let [trace (result 1000)]
       (is
         (match trace
-          [[_ [:start _ _ _]]
-           [_ [:return :normal]]
-           [_ [:terminate :normal]]] true)))))
+          [[_ _ [:start _ _ _]]
+           [_ _ [:return :normal]]
+           [_ _ [:terminate :normal]]] true)))))
 
 (deftest spawn-terminate-nil []
   (let [result (trace/trace-collector [:p1])]
@@ -30,9 +30,9 @@
     (let [trace (result 1000)]
       (is
         (match trace
-          [[_ [:start _ _ _]]
-           [_ [:return :nil]]
-           [_ [:terminate :nil]]] true)))))
+          [[_ _ [:start _ _ _]]
+           [_ _ [:return :nil]]
+           [_ _ [:terminate :nil]]] true)))))
 
 (defn- link-to-normal* []
   (let [p1-fn (fn [_inbox]
