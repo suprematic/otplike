@@ -215,7 +215,7 @@
   "Returns the pid of newly created process."
   [proc-func params {:keys [link-to inbox-size flags name register] :as options}]
   {:pre [(or (fn? proc-func) (symbol? proc-func))
-         (sequential? params)
+         (coll? params)
          (map? options)
          (or (nil? link-to) (pid? link-to) (every? pid? link-to))
          (or (nil? inbox-size) (not (neg? inbox-size)))
