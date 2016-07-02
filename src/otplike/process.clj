@@ -81,11 +81,15 @@
    :post [(or (true? %) (false? %))]}
   (!control pid [:exit reason]))
 
-(defn flag [pid flag value]
-  (when-let [{:keys [flags]} (find-process pid)]
-    (swap! flags assoc flag value)) :ok)
-
-
+(defn flag [flag value]
+  {:pre [(#{:trap-exit} flag)]
+   :post [(or (true? %) (false? %))]}
+  (if-let [^ProcessRecord {:keys [flags]} (find-process (self))]
+    (dosync
+      (let [old-value (flag @flags)]
+        (swap! flags assoc flag (boolean value))
+        (boolean old-value)))
+    (throw (Exception. "stopped"))))
 
 (defn- monitor* [func pid1 pid2]
   (if-let [{:keys [monitors] :as process} (find-process pid2)]
