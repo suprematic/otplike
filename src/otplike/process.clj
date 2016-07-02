@@ -35,8 +35,7 @@
   (str "<" (if name (str (str name) "@" id) id) ">"))
 
 (defmethod print-method Pid [o w]
-  (print-simple
-    (pid->str o) w))
+  (print-simple (pid->str o) w))
 
 (defn pid? [pid]
   (instance? Pid pid))
@@ -54,16 +53,6 @@
    :post [(instance? ProcessRecord %)]}
   (->ProcessRecord pid inbox control monitors exit outbox linked flags))
 
-(defn- !control [pid message]
-  {:pre [(pid? pid)
-         (vector? message) (keyword? (first message))]
-   :post [(or (true? %) (false? %))]}
-  (if-let [{:keys [control]} (@*processes pid)]
-    (do
-      (async/put! control message)
-      true)
-    false))
-
 (defn self []
   {:post [(pid? %)]}
   (or *self* (throw (Exception. "not in process"))))
@@ -75,7 +64,7 @@
 
 (defn- find-process [id]
   {:post [(or (nil? %) (instance? ProcessRecord %))]}
-  (if (instance? Pid id)
+  (if (pid? id)
     (@*processes id)
     (when-let [pid (whereis id)]
       (@*processes pid))))
@@ -86,6 +75,16 @@
   (if-let [{:keys [inbox]} (find-process pid)]
     (do
       (async/put! inbox message)
+      true)
+    false))
+
+(defn- !control [pid message]
+  {:pre [(pid? pid)
+         (vector? message) (keyword? (first message))]
+   :post [(or (true? %) (false? %))]}
+  (if-let [{:keys [control]} (@*processes pid)]
+    (do
+      (async/put! control message)
       true)
     false))
 
@@ -108,7 +107,8 @@
 (defn- monitor* [func pid1 pid2]
   (if-let [{:keys [monitors] :as process} (find-process pid2)]
     (do
-      (swap! monitors func pid1) :ok)))
+      (swap! monitors func pid1)
+      :ok)))
 
 (def monitor
   (partial monitor* conj))
@@ -128,33 +128,30 @@
          (pid? p2pid)]
    :post [(satisfies? ap/ReadPort %)]}
   (go
-    (let [p1result-chan (async/chan) timeout (async/timeout *control-timout)]
+    (let [p1result-chan (async/chan)
+          timeout (async/timeout *control-timout)]
       (!control p1pid [:two-phase-p1 p1result-chan p2pid cfn])
       (match (async/alts! [p1result-chan timeout])
         [_ p1result-chan]
         (do
-          (cfn :phase-two process p1pid) nil)
-
+          (cfn :phase-two process p1pid)
+          nil)
         [nil timeout]
         (do
-          (cfn :timeout process p1pid) nil)))))
+          (cfn :timeout process p1pid)
+          nil)))))
 
 (defn- link-fn [phase {:keys [linked pid]} other-pid]
   (case phase
-    :phase-one
-    (do
-      (trace/trace pid [:link-phase-one other-pid])
-      (swap! linked conj other-pid))
-
-    :phase-two
-    (do
-      (trace/trace pid [:link-phase-two other-pid])
-      (swap! linked conj other-pid))
-
-    :timeout
-    (do
-      (trace/trace pid [:link-timeout other-pid])
-      (exit pid :noproc)))) ; TODO crash :noproc vs. exit :noproc
+    :phase-one (do
+                 (trace/trace pid [:link-phase-one other-pid])
+                 (swap! linked conj other-pid))
+    :phase-two (do
+                 (trace/trace pid [:link-phase-two other-pid])
+                 (swap! linked conj other-pid))
+    :timeout (do
+               (trace/trace pid [:link-timeout other-pid])
+               (exit pid :noproc)))) ; TODO crash :noproc vs. exit :noproc
 
 (defn link [pid]
   {:pre [(pid? pid)]
@@ -174,30 +171,30 @@
       ; check if xpid is really linked to pid
       [:linked-exit xpid :kill] ; if neighbour is killed, we terminate unconditionally
         :kill
-
       [:linked-exit xpid :normal] ; if neighbour terminates normally we do nothing unless we have :trap-exit
       (when trap-exit
-        (! pid [:down xpid :normal]) nil)
-
+        (! pid [:down xpid :normal])
+        nil)
       [:linked-exit xpid reason] ; if neighbour terminates with non-normal reason, we terminate as well, unless we have :trap-exit
       (if trap-exit
         (do
-          (! pid [:down xpid reason]) nil) reason)
-
+          (! pid [:down xpid reason])
+          nil)
+        reason)
       [:exit reason]
       (if (or (not trap-exit) (= reason :normal) (= reason :kill))
         reason
         (do
-          (async/put! pid [:exit reason]) nil))
-
+          (async/put! pid [:exit reason])
+          nil))
       [:two-phase other cfn]
         (let [p1result (two-phase process other pid cfn)]
-          (<!! p1result) nil)
-
+          (<!! p1result)
+          nil)
       [:two-phase-p1 result other-pid cfn]
       (do
-        (async/put! result
-          (cfn :phase-one process other-pid)) nil))))
+        (async/put! result (cfn :phase-one process other-pid))
+        nil))))
 
 ; TODO get rid of this fn moving its code to calling fn
 (defn- dispatch
@@ -206,13 +203,10 @@
          (satisfies? ap/ReadPort port)
          (vector? mp) (= 2 (count mp))]}
   (condp = port
-    return
-    (do
-      (trace/trace pid [:return (or message :nil)])
-      (or message :nil))
-
-    control
-    (dispatch-control process message)))
+    return (do
+             (trace/trace pid [:return (or message :nil)])
+             (or message :nil))
+    control (dispatch-control process message)))
 
 (defprotocol IClose
   (close! [_]))
@@ -221,10 +215,11 @@
   {:pre [(pid? pid)
          (satisfies? ap/ReadPort inbox)]
    :post [(satisfies? ap/ReadPort %) (satisfies? IClose %)]}
-  (let [outbox (async/chan 1) stop (async/chan)]
+  (let [outbox (async/chan 1)
+        stop (async/chan)]
     (go-loop []
       (let [[value _] (async/alts! [stop inbox] :priority true)]
-        (if (not (nil? value))
+        (if (some? value)
           (do
             (trace/trace pid [:deliver value])
             (>! outbox value)
@@ -259,12 +254,8 @@
   {:pre [(or (fn? form) (symbol? form))]
    :post [(fn? %)]}
   (cond
-    (fn? form)
-    form
-
-    (symbol? form)
-    (some-> form
-      resolve var-get)))
+    (fn? form) form
+    (symbol? form) (some-> form resolve var-get)))
 
 (defn spawn
   "Returns the pid of newly created process."
@@ -276,7 +267,6 @@
          (or (nil? inbox-size) (not (neg? inbox-size)))
          (or (nil? flags) (map? flags))]
    :post [(pid? %)]}
-
   (let [proc-func (resolve-proc-func proc-func)
         id        (swap! *pids inc)
         inbox     (async/chan (or inbox-size 1024))
@@ -285,27 +275,22 @@
         linked    (atom #{})
         monitors  (atom #{})
         flags     (atom (or flags {}))]
-
     (locking *processes
       (let [outbox  (outbox pid inbox)
-            process (new-process pid inbox control monitors exit outbox linked flags)]
-
+            process (new-process
+                      pid inbox control monitors exit outbox linked flags)]
         (dosync
           (when (some? register)
             (when (@*registered register)
               (throw (Exception. (str "already registered: " register))))
             (swap! *registered assoc register pid))
-
           (swap! *processes assoc pid process))
-
         (trace/trace pid [:start (str proc-func) params options])
-
         (binding [*self* pid] ; workaround for ASYNC-170. once fixed, binding should move to (start-process...)
           (go
             (when link-to
               (doseq [link-to (apply hash-set (flatten [link-to]))] ; ??? probably optimize by sending link requests concurently
                 (<!! (two-phase process link-to pid link-fn)))) ; wait for protocol to complete))
-
             (let [return (start-process proc-func outbox params)
                   process (assoc process :return return)]
               (loop []
@@ -313,25 +298,20 @@
                   (if-let [reason (dispatch process vp)]
                     (do
                       (trace/trace pid [:terminate reason])
-
                       (close! outbox)
-
                       (dosync
                         (swap! *processes dissoc pid)
-
                         (when register
                           (swap! *registered dissoc register))
-
                         (doseq [p @linked]
                           (when-let [p (@*processes p)]
                             (swap! (:linked p) disj process))))
-
                       (doseq [p @linked]
                         (!control p [:linked-exit pid reason]))
-
                       (doseq [p @monitors]
                         (! p [:down pid reason])))
-                    (recur))))))))) pid))
+                    (recur)))))))))
+    pid))
 
 (defn spawn-link [proc-func params opts]
   {:pre [(or (nil? opts) (map? opts))]
