@@ -66,14 +66,14 @@
 
 (defn self []
   {:post [(pid? %)]}
-  (if (some? *self*)
-    *self*
-    (throw (Exception. "not in process context"))))
+  (or *self* (throw (Exception. "not in process"))))
 
 (defn whereis [id]
+  {:post [(or (nil? %) (pid? %))]}
   (@*registered id))
 
 (defn- find-process [id]
+  {:post [(or (nil? %) (instance? ProcessRecord %))]}
   (if (instance? Pid id)
     (@*processes id)
     (when-let [pid (whereis id)]
@@ -116,9 +116,16 @@
   (partial monitor* disj))
 
 (defn registered []
+  {:post [(coll? %)]}
   (keys @*registered))
 
 (defn- two-phase [process p1pid p2pid cfn]
+  {:pre [(instance? ProcessRecord process)
+         (fn? cfn)
+         (pid? p1pid)
+         (not= p1pid p2pid)
+         (pid? p2pid)]
+   :post [(satisfies? ap/ReadPort %)]}
   (go
     (let [p1result-chan (async/chan) timeout (async/timeout *control-timout)]
       (!control p1pid [:two-phase-p1 p1result-chan p2pid cfn])
@@ -149,11 +156,16 @@
       (exit pid :noproc)))) ; TODO crash :noproc vs. exit :noproc
 
 (defn link [pid]
-  (if *self*
-    (!control *self* [:two-phase pid link-fn])
-    (throw (Exception. "link can only be called in process context"))))
+  {:pre [(pid? pid)]
+   :post [(true? %)]}
+  (or
+    (!control (self) [:two-phase pid link-fn])
+    (throw (Exception. "stopped"))))
 
+; TODO return new process and exit code
 (defn- dispatch-control [{:keys [flags pid linked] :as process} message]
+  {:pre [(instance? ProcessRecord process)]
+   :post []}
   (trace/trace pid [:control message])
 
   (let [trap-exit (:trap-exit @flags)]
@@ -186,7 +198,12 @@
         (async/put! result
           (cfn :phase-one process other-pid)) nil))))
 
-(defn- dispatch [{:keys [pid control return] :as process} [message port]]
+; TODO get rid of this fn moving its code to calling fn
+(defn- dispatch
+  [{:keys [pid control return] :as process} {message 0 port 1 :as mp}]
+  {:pre [(instance? ProcessRecord process)
+         (satisfies? ap/ReadPort port)
+         (vector? mp) (= 2 (count mp))]}
   (condp = port
     return
     (do
@@ -200,6 +217,9 @@
   (close! [_]))
 
 (defn- outbox [pid inbox]
+  {:pre [(pid? pid)
+         (satisfies? ap/ReadPort inbox)]
+   :post [(satisfies? ap/ReadPort %) (satisfies? IClose %)]}
   (let [outbox (async/chan 1) stop (async/chan)]
     (go-loop []
       (let [[value _] (async/alts! [stop inbox] :priority true)]
@@ -221,6 +241,10 @@
 
 ; TODO check exception thrown from proc-func
 (defn- start-process [proc-func inbox params]
+  {:pre [(fn? proc-func)
+         (satisfies? ap/ReadPort inbox)
+         (sequential? params)]
+   :post [(satisfies? ap/ReadPort %)]}
   (let [return (apply proc-func inbox params)]
     (if (satisfies? ap/ReadPort return)
       return
@@ -231,6 +255,8 @@
           wrap))))
 
 (defn- resolve-proc-func [form]
+  {:pre [(or (fn? form) (symbol? form))]
+   :post [(fn? %)]}
   (cond
     (fn? form)
     form
@@ -307,11 +333,12 @@
                     (recur))))))))) pid))
 
 (defn spawn-link [proc-func params opts]
-  (if *self*
-    (let [opts (update-in opts [:link-to] conj *self*)]
-      (spawn proc-func params opts))
-    (throw (Exception. "spawn-link can only be called in process context"))))
+  {:pre [(or (nil? opts) (map? opts))]
+   :post [(pid? %)]}
+  (let [opts (update-in opts [:link-to] conj (self))]
+    (spawn proc-func params opts)))
 
+; TODO move to util namespace
 (defn pipe [from to]
   (go-loop []
     (let [message (<! from)]
