@@ -151,7 +151,7 @@
 
       [:two-phase other cfn]
         (let [p1result (two-phase process other pid cfn)]
-          (<!! p1result))
+          (<!! p1result) nil)
 
       [:two-phase-p1 result other-pid cfn]
       (do
