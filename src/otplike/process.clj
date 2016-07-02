@@ -76,8 +76,10 @@
     false))
 
 (defn exit [pid reason]
-  (when-let [{:keys [control]} (find-process pid)]
-    (async/put! control [:exit reason])) :ok)
+  {:pre [(pid? pid)
+         (some? reason)]
+   :post [(or (true? %) (false? %))]}
+  (!control pid [:exit reason]))
 
 (defn flag [pid flag value]
   (when-let [{:keys [flags]} (find-process pid)]
