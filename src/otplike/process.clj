@@ -42,8 +42,14 @@
   (instance? Pid pid))
 
 (defn- !control [pid message]
-  (when-let [{:keys [control]} (@*processes pid)]
-    (async/put! control message)))
+  {:pre [(pid? pid)
+         (vector? message) (keyword? (first message))]
+   :post [(or (true? %) (false? %))]}
+  (if-let [{:keys [control]} (@*processes pid)]
+    (do
+      (async/put! control message)
+      true)
+    false))
 
 (defn self []
   {:post [(pid? %)]}
