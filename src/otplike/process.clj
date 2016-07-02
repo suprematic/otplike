@@ -41,6 +41,19 @@
 (defn pid? [pid]
   (instance? Pid pid))
 
+(defrecord ProcessRecord [pid inbox control monitors exit outbox linked flags])
+
+(defn- new-process [pid inbox control monitors exit outbox linked flags]
+  {:pre [(pid? pid)
+         (satisfies? ap/ReadPort inbox) (satisfies? ap/WritePort inbox)
+         (satisfies? ap/ReadPort control) (satisfies? ap/WritePort control)
+         (set? @monitors) (every? pid? @monitors)
+         (satisfies? ap/ReadPort outbox)
+         (set? @linked) (every? pid? @linked)
+         (map? @flags)]
+   :post [(instance? ProcessRecord %)]}
+  (->ProcessRecord pid inbox control monitors exit outbox linked flags))
+
 (defn- !control [pid message]
   {:pre [(pid? pid)
          (vector? message) (keyword? (first message))]
@@ -104,8 +117,6 @@
 
 (defn registered []
   (keys @*registered))
-
-(defrecord ProcessRecord [pid inbox control monitors exit outbox linked flags])
 
 (defn- two-phase [process p1pid p2pid cfn]
   (go
@@ -250,7 +261,7 @@
 
     (locking *processes
       (let [outbox  (outbox pid inbox)
-            process (->ProcessRecord pid inbox control monitors exit outbox linked flags)]
+            process (new-process pid inbox control monitors exit outbox linked flags)]
 
         (dosync
           (when (some? register)
