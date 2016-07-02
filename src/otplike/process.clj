@@ -61,8 +61,13 @@
       (@*processes pid))))
 
 (defn ! [pid message]
-  (when-let [{:keys [inbox]} (find-process pid)]
-    (async/put! inbox message)))
+  {:pre [(some? message)]
+   :post [(or (true? %) (false? %))]}
+  (if-let [{:keys [inbox]} (find-process pid)]
+    (do
+      (async/put! inbox message)
+      true)
+    false))
 
 (defn exit [pid reason]
   (when-let [{:keys [control]} (find-process pid)]
