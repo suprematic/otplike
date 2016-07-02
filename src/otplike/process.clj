@@ -21,8 +21,7 @@
 (defn self []
   *self*)
 
-(defn pid->str [{:keys [id name]}]
-  (str "<" (if name (str (str name) "@" id) id) ">"))
+(declare pid->str)
 
 (defrecord Pid [id name]
   Object
@@ -34,6 +33,9 @@
     (when-let [{:keys [inbox]} (@*processes this)]
       (trace/trace this [:inbound val])
       (ap/put! inbox val handler))))
+
+(defn pid->str [^Pid {:keys [id name]}]
+  (str "<" (if name (str (str name) "@" id) id) ">"))
 
 (defmethod print-method Pid [o w]
   (print-simple
