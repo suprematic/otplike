@@ -28,7 +28,7 @@
 
   (terminate [_ self reason state]))
 
-(defn bad-return [impl self state return from]
+(defn- bad-return [impl self state return from]
   ;(process/trace (:name impl) (str "invalid return: " return " from " from ", state: " state))
 
   (let [reason [:bad-return return from]]
@@ -54,7 +54,7 @@
   (match (handle-call impl self request from state)
     [:reply reply new-state]
     (do
-      (if reply
+      (if (some? reply)
         (async/put! from reply)
         (async/close! from))
 
@@ -66,7 +66,7 @@
 
     [:stop reason reply new-state]
     (do
-      (if reply
+      (if (some? reply)
         (async/put! from reply)
         (async/close! from))
 
@@ -114,7 +114,7 @@
 
 
 (defn gen-server-proc [inbox impl init-args response]
-  (let [self process/*self*]
+  (let [self (process/self)]
     (go
       (match (call-init impl self init-args) ;TODO handle wrong return from init
         [:ok initial-state]

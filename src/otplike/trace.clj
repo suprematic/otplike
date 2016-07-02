@@ -25,6 +25,9 @@
 (defn set-trace [tracefn]
   (reset! *trace-fn tracefn))
 
+(defn- timestamp-ms []
+  (System/currentTimeMillis))
+
 (defn trace-collector [stop-list]
   (let [result (async/chan)
         traces (atom [])
@@ -32,7 +35,7 @@
         saved @*trace-fn]
     (set-trace
       (fn [pid event]
-        (swap! traces conj [pid event])
+        (swap! traces conj [(timestamp-ms) pid event])
 
         (when-let [name (:name pid)]
           (when (= (first event) :terminate)
@@ -50,7 +53,7 @@
   (some
     (fn [t]
       (match t
-        [pid [:terminate reason]]
+        [_ pid [:terminate reason]]
         true
         _
         false

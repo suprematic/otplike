@@ -1,23 +1,25 @@
 (ns otplike.process
   (:require
-    [clojure.test :refer [deftest run-tests is]]
     [clojure.core.async :as async :refer [<!! <! >! put! go go-loop]]
     [clojure.core.async.impl.protocols :as ap]
     [clojure.core.match :refer [match]]
     [otplike.trace :as trace]))
 
-(def *pids
+(def ^:private *pids
   (atom 0))
 
-(def *processes
+(def ^:private *processes
   (atom {}))
 
-(def *registered
+(def ^:private *registered
   (atom {}))
 
-(def *control-timout 100)
+(def ^:private *control-timout 100)
 
-(def ^:dynamic *self* nil)
+(def ^:private ^:dynamic *self* nil)
+
+(defn self []
+  *self*)
 
 (defn pid->str [{:keys [id name]}]
   (str "<" (if name (str (str name) "@" id) id) ">"))
@@ -137,11 +139,10 @@
           (! pid [:down xpid reason]) nil) reason)
 
       [:exit reason]
-      (let [trap-exit (:trap-exit @flags)]
-        (if (or (not trap-exit) (= reason :normal) (= reason :kill))
-          reason
-          (do
-            (async/put! pid [:exit reason]) nil)))
+      (if (or (not trap-exit) (= reason :normal) (= reason :kill))
+        reason
+        (do
+          (async/put! pid [:exit reason]) nil))
 
       [:two-phase other cfn]
         (let [p1result (two-phase process other pid cfn)]
@@ -208,9 +209,13 @@
 (defn spawn
   "Returns the pid of newly created process."
   [proc-func params {:keys [link-to inbox-size flags name register] :as options}]
-  (assert (or (fn? proc-func) (symbol? proc-func)))
-  (assert (sequential? params))
-  (assert (map? options))
+  {:pre [(or (fn? proc-func) (symbol? proc-func))
+         (sequential? params)
+         (map? options)
+         (or (nil? link-to) (pid? link-to) (every? pid? link-to))
+         (or (nil? inbox-size) (not (neg? inbox-size)))
+         (or (nil? flags) (map? flags))]
+   :post [(pid? %)]}
 
   (let [proc-func (resolve-proc-func proc-func)
         id        (swap! *pids inc)
@@ -226,7 +231,7 @@
             process (->ProcessRecord pid inbox control monitors exit outbox linked flags)]
 
         (dosync
-          (when register
+          (when (some? register)
             (when (@*registered register)
               (throw (Exception. (str "already registered: " register))))
             (swap! *registered assoc register pid))
@@ -280,68 +285,3 @@
       (! to [from message])
       (when message
         (recur)))))
-
-;******* tests
-(deftest spawn-terminate-normal []
-  (let [result (trace/trace-collector [:p1])]
-    (spawn
-      (fn [inbox p1 p2 & other]
-        (is (instance? Pid *self*) "self must be instance of Pid")
-        (is (satisfies? ap/ReadPort inbox) "inbox must be a ReadPort")
-        (is (and (= p1 :p1) (= p2 :p2) "formal parameters must match actuals"))
-        (is (= (count other) 0) "no extra parameters")
-        :normal) [:p1 :p2] {:name :p1})
-
-    (let [trace (result 1000)]
-      (is
-        (match trace
-          [[_ [:start _ _ _]]
-           [_ [:return :normal]]
-           [_ [:terminate :normal]]] true)))))
-
-(deftest spawn-terminate-nil []
-  (let [result (trace/trace-collector [:p1])]
-    (spawn
-      (fn [_inbox]) [] {:name :p1})
-
-    (let [trace (result 1000)]
-      (is
-        (match trace
-          [[_ [:start _ _ _]]
-           [_ [:return :nil]]
-           [_ [:terminate :nil]]] true)))))
-
-(defn link-to-normal* []
-  (let [p1 (spawn (fn [_inbox] (go (async/<! (async/timeout 500)) :blah)) [] {:name :p1})
-        p2 (spawn (fn [inbox] (go (<! inbox))) [] {:name :p2 :link-to p1})] [p1 p2]))
-
-(deftest link-to-normal []
-  (let [result (trace/trace-collector [:p1 :p2])]
-    (let [[p1 p2] (link-to-normal*)]
-      (let [trace (result 1000)]
-        (is (trace/terminated? trace p1 :blah))
-        (is (trace/terminated? trace p2 :blah))))))
-
-(defn link-to-terminated* []
-  (let [p1 (spawn (fn [_inbox]) [] {:name :p1})
-        _  (async/<!! (async/timeout 500))
-        p2 (spawn (fn [inbox]  (go (<! inbox))) [] {:name :p2 :link-to p1})] [p1 p2]))
-
-(deftest link-to-terminated []
-  (let [result (trace/trace-collector [:p1 :p2])]
-    (let [[p1 p2] (link-to-terminated*)]
-     (let [trace (result 1000)]
-       (is (trace/terminated? trace p1 :nil))
-       (is (trace/terminated? trace p2 :noproc))))))
-
-(def ^:dynamic *x* 1)
-(defn bind-test []
-  (println "initial:" *x*)
-
-  (binding [*x* 2]
-    (println "before go:" *x*)
-
-    (go
-      (println "outer go:" *x*)
-      (go
-        (println "inner go:" *x*)))))
