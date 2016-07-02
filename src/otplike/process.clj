@@ -18,9 +18,6 @@
 
 (def ^:private ^:dynamic *self* nil)
 
-(defn self []
-  *self*)
-
 (declare pid->str)
 
 (defrecord Pid [id name]
@@ -47,6 +44,12 @@
 (defn- !control [pid message]
   (when-let [{:keys [control]} (@*processes pid)]
     (async/put! control message)))
+
+(defn self []
+  {:post [(pid? %)]}
+  (if (some? *self*)
+    *self*
+    (throw (Exception. "not in process context"))))
 
 (defn whereis [id]
   (@*registered id))
