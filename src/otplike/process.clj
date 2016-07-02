@@ -69,7 +69,8 @@
   (or *self* (throw (Exception. "not in process"))))
 
 (defn whereis [id]
-  {:post [(or (nil? %) (pid? %))]}
+  {:pre [(some? id)]
+   :post [(or (nil? %) (pid? %))]}
   (@*registered id))
 
 (defn- find-process [id]
