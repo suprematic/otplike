@@ -71,7 +71,8 @@
       (@*processes pid))))
 
 (defn ! [pid message]
-  {:pre [(some? message)]
+  {:pre [(some? pid)
+         (some? message)]
    :post [(or (true? %) (false? %))]}
   (if-let [{:keys [inbox]} (find-process pid)]
     (do
