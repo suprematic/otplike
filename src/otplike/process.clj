@@ -170,6 +170,22 @@
     (two-phase-start (self) pid link-fn)
     (throw (Exception. "stopped"))))
 
+(defn- unlink-fn [phase {:keys [linked pid]} other-pid]
+  (let [p2unlink #(do (trace/trace pid [% other-pid])
+                      (swap! linked disj other-pid))]
+    (case phase
+      :phase-one (p2unlink :unlink-phase-one)
+      :phase-two (p2unlink :unlink-phase-two)
+      :timeout (p2unlink :unlink-phase-two))))
+
+(defn unlink [pid]
+  {:pre [(pid? pid)]
+   :post [(true? %)]}
+  (or
+    (if-let [complete (two-phase-start (self) pid unlink-fn)]
+      (do (<!! complete) true)
+      (throw (Exception. "stopped")))))
+
 ; TODO return new process and exit code
 (defn- dispatch-control [{:keys [flags pid linked] :as process} message]
   {:pre [(instance? ProcessRecord process)]
