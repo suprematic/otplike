@@ -148,7 +148,7 @@
           nil)
         [nil timeout]
         (do
-          (cfn :timeout process p1pid)
+          (cfn :noproc process p1pid)
           nil)))))
 
 (defn- link-fn [phase {:keys [linked pid]} other-pid]
@@ -159,7 +159,7 @@
     :phase-two (do
                  (trace/trace pid [:link-phase-two other-pid])
                  (swap! linked conj other-pid))
-    :timeout (do
+    :noproc (do
                (trace/trace pid [:link-timeout other-pid])
                (exit pid :noproc)))) ; TODO crash :noproc vs. exit :noproc
 
@@ -176,7 +176,7 @@
     (case phase
       :phase-one (p2unlink :unlink-phase-one)
       :phase-two (p2unlink :unlink-phase-two)
-      :timeout (p2unlink :unlink-phase-two))))
+      :noproc (p2unlink :unlink-phase-two))))
 
 (defn unlink [pid]
   {:pre [(pid? pid)]
