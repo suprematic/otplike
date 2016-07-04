@@ -191,36 +191,37 @@
   {:pre [(instance? ProcessRecord process)]
    :post []}
   (trace/trace pid [:control message])
-  (let [trap-exit (:trap-exit @flags)]
-    (match message
-      ; check if xpid is really linked to pid
-      [:linked-exit xpid :kill] ; if neighbour is killed, we terminate unconditionally
-        :kill
-      [:linked-exit xpid :normal] ; if neighbour terminates normally we do nothing unless we have :trap-exit
-      (when trap-exit
-        (! pid [:down xpid :normal])
-        nil)
-      [:linked-exit xpid reason] ; if neighbour terminates with non-normal reason, we terminate as well, unless we have :trap-exit
-      (if trap-exit
-        (do
-          (! pid [:down xpid reason])
+  (go
+    (let [trap-exit (:trap-exit @flags)]
+      (match message
+        ; check if xpid is really linked to pid
+        [:linked-exit xpid :kill] ; if neighbour is killed, we terminate unconditionally
+          :kill
+        [:linked-exit xpid :normal] ; if neighbour terminates normally we do nothing unless we have :trap-exit
+        (when trap-exit
+          (! pid [:down xpid :normal])
           nil)
-        reason)
-      [:exit reason]
-      (if (or (not trap-exit) (= reason :normal) (= reason :kill))
-        reason
+        [:linked-exit xpid reason] ; if neighbour terminates with non-normal reason, we terminate as well, unless we have :trap-exit
+        (if trap-exit
+          (do
+            (! pid [:down xpid reason])
+            nil)
+          reason)
+        [:exit reason]
+        (if (or (not trap-exit) (= reason :normal) (= reason :kill))
+          reason
+          (do
+            (async/put! pid [:exit reason])
+            nil))
+        [:two-phase complete other cfn]
+          (let [p1result (two-phase process other pid cfn)]
+            (<! p1result)
+            (async/close! complete)
+            nil)
+        [:two-phase-p1 result other-pid cfn]
         (do
-          (async/put! pid [:exit reason])
-          nil))
-      [:two-phase complete other cfn]
-        (let [p1result (two-phase process other pid cfn)]
-          (<!! p1result)
-          (async/close! complete)
-          nil)
-      [:two-phase-p1 result other-pid cfn]
-      (do
-        (async/put! result (cfn :phase-one process other-pid))
-        nil))))
+          (async/put! result (cfn :phase-one process other-pid))
+          nil)))))
 
 ; TODO get rid of this fn moving its code to calling fn
 (defn- dispatch
@@ -228,11 +229,12 @@
   {:pre [(instance? ProcessRecord process)
          (satisfies? ap/ReadPort port)
          (vector? mp) (= 2 (count mp))]}
-  (condp = port
-    return (do
-             (trace/trace pid [:return (or message :nil)])
-             (or message :nil))
-    control (dispatch-control process message)))
+  (go
+    (condp = port
+      return (do
+               (trace/trace pid [:return (or message :nil)])
+               (or message :nil))
+      control (<! (dispatch-control process message)))))
 
 (defprotocol IClose
   (close! [_]))
@@ -321,7 +323,7 @@
                   process (assoc process :return return)]
               (loop []
                 (let [vp (async/alts! [control return])]
-                  (if-let [reason (dispatch process vp)]
+                  (if-let [reason (<! (dispatch process vp))]
                     (do
                       (trace/trace pid [:terminate reason])
                       (close! outbox)
