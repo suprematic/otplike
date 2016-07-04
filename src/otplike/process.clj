@@ -1,9 +1,8 @@
 (ns otplike.process
-  (:require
-    [clojure.core.async :as async :refer [<!! <! >! put! go go-loop]]
-    [clojure.core.async.impl.protocols :as ap]
-    [clojure.core.match :refer [match]]
-    [otplike.trace :as trace]))
+  (:require [clojure.core.async :as async :refer [<!! <! >! put! go go-loop]]
+            [clojure.core.async.impl.protocols :as ap]
+            [clojure.core.match :refer [match]]
+            [otplike.trace :as trace]))
 
 (def ^:private *pids
   (atom 0))
@@ -31,14 +30,16 @@
       (trace/trace this [:inbound val])
       (ap/put! inbox val handler))))
 
-(defn pid->str [^Pid {:keys [id name]}]
+(defn pid? [pid]
+  (instance? Pid pid))
+
+(defn pid->str [^Pid {:keys [id name] :as pid}]
+  {:pre [(pid? pid)]
+   :post [(string? %)]}
   (str "<" (if name (str (str name) "@" id) id) ">"))
 
 (defmethod print-method Pid [o w]
   (print-simple (pid->str o) w))
-
-(defn pid? [pid]
-  (instance? Pid pid))
 
 (defrecord ProcessRecord [pid inbox control monitors exit outbox linked flags])
 
@@ -165,7 +166,6 @@
   {:pre [(instance? ProcessRecord process)]
    :post []}
   (trace/trace pid [:control message])
-
   (let [trap-exit (:trap-exit @flags)]
     (match message
       ; check if xpid is really linked to pid
