@@ -139,17 +139,17 @@
    :post [(satisfies? ap/ReadPort %)]}
   (go
     (let [p1result-chan (async/chan)
-          timeout (async/timeout *control-timout)]
-      (!control p1pid [:two-phase-p1 p1result-chan p2pid cfn])
-      (match (async/alts! [p1result-chan timeout])
-        [_ p1result-chan]
-        (do
-          (cfn :phase-two process p1pid)
-          nil)
-        [nil timeout]
-        (do
-          (cfn :noproc process p1pid)
-          nil)))))
+          noproc #(do (cfn :noproc process p1pid) nil)]
+      (if (!control p1pid [:two-phase-p1 p1result-chan p2pid cfn])
+        (let [timeout (async/timeout *control-timout)]
+          (match (async/alts! [p1result-chan timeout])
+            [_ p1result-chan]
+            (do
+              (cfn :phase-two process p1pid)
+              nil)
+            [nil timeout]
+            (noproc)))
+        (noproc)))))
 
 (defn- link-fn [phase {:keys [linked pid]} other-pid]
   (case phase
