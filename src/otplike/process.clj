@@ -124,6 +124,11 @@
   {:post [(coll? %)]}
   (keys @*registered))
 
+(defn- two-phase-start [pid1 pid2 cfn]
+  {:pre [(pid? pid1) (pid? pid2) (fn? cfn)]
+   :post [(or (true? %) (false? %))]}
+  (!control pid1 [:two-phase pid2 cfn]))
+
 (defn- two-phase [process p1pid p2pid cfn]
   {:pre [(instance? ProcessRecord process)
          (fn? cfn)
@@ -161,7 +166,7 @@
   {:pre [(pid? pid)]
    :post [(true? %)]}
   (or
-    (!control (self) [:two-phase pid link-fn])
+    (two-phase-start (self) pid link-fn)
     (throw (Exception. "stopped"))))
 
 ; TODO return new process and exit code
