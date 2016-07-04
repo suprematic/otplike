@@ -316,7 +316,7 @@
           (go
             (when link-to
               (doseq [link-to (apply hash-set (flatten [link-to]))] ; ??? probably optimize by sending link requests concurently
-                (<!! (two-phase process link-to pid link-fn)))) ; wait for protocol to complete))
+                (<! (two-phase process link-to pid link-fn)))) ; wait for protocol to complete))
             (let [return (start-process proc-func outbox params)
                   process (assoc process :return return)]
               (loop []
