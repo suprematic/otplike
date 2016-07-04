@@ -126,8 +126,10 @@
 
 (defn- two-phase-start [pid1 pid2 cfn]
   {:pre [(pid? pid1) (pid? pid2) (fn? cfn)]
-   :post [(or (true? %) (false? %))]}
-  (!control pid1 [:two-phase pid2 cfn]))
+   :post [(satisfies? ap/ReadPort %)]}
+  (let [complete (async/chan)]
+    (!control pid1 [:two-phase complete pid2 cfn])
+    complete))
 
 (defn- two-phase [process p1pid p2pid cfn]
   {:pre [(instance? ProcessRecord process)
@@ -195,9 +197,10 @@
         (do
           (async/put! pid [:exit reason])
           nil))
-      [:two-phase other cfn]
+      [:two-phase complete other cfn]
         (let [p1result (two-phase process other pid cfn)]
           (<!! p1result)
+          (async/close! complete)
           nil)
       [:two-phase-p1 result other-pid cfn]
       (do
