@@ -233,7 +233,7 @@
     (condp = port
       return (do
                (trace/trace pid [:return (or message :nil)])
-               (or message :nil))
+               (if (some? message) message :nil))
       control (<! (dispatch-control process message)))))
 
 (defprotocol IClose
