@@ -290,10 +290,10 @@
   [proc-func params {:keys [link-to inbox-size flags name register] :as options}]
   {:pre [(or (fn? proc-func) (symbol? proc-func))
          (sequential? params)
-         (map? options)
+         (map? options) ;FIXME check for unknown options
          (or (nil? link-to) (pid? link-to) (every? pid? link-to))
          (or (nil? inbox-size) (not (neg? inbox-size)))
-         (or (nil? flags) (map? flags))]
+         (or (nil? flags) (map? flags))] ;FIXME check for unknown flags
    :post [(pid? %)]}
   (let [proc-func (resolve-proc-func proc-func)
         id        (swap! *pids inc)
