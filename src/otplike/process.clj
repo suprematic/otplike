@@ -208,8 +208,10 @@
             nil)
           reason)
         [:exit reason]
-        (if (or (not trap-exit) (= reason :normal) (= reason :kill))
-          reason
+        (if (or (not trap-exit) (= reason :kill))
+          (if (= reason :normal)
+            nil
+            reason)
           (do
             (async/put! pid [:exit reason])
             nil))
