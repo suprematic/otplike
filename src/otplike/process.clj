@@ -274,14 +274,8 @@
          (satisfies? ap/ReadPort inbox)
          (sequential? params)]
    :post [(satisfies? ap/ReadPort %)]}
-  (let [return (apply proc-func inbox params)]
-    (if (satisfies? ap/ReadPort return)
-      return
-      (let [wrap (async/chan)]
-          (if-not (nil? return)
-            (async/put! wrap return)
-            (async/close! wrap))
-          wrap))))
+  (match (apply proc-func inbox params)
+    (chan :guard #(satisfies? ap/ReadPort %)) chan))
 
 (defn- resolve-proc-func [form]
   {:pre [(or (fn? form) (symbol? form))]
