@@ -121,8 +121,8 @@
   (partial monitor* disj))
 
 (defn registered []
-  {:post [(coll? %)]}
-  (keys @*registered))
+  {:post [(set? %)]}
+  (into #{} (keys @*registered)))
 
 (defn- two-phase-start [pid1 pid2 cfn]
   {:pre [(pid? pid1) (pid? pid2) (fn? cfn)]
