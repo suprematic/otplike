@@ -213,7 +213,7 @@
             nil
             reason)
           (do
-            (async/put! pid [:exit reason])
+            (async/put! pid [:EXIT nil reason])
             nil))
         [:two-phase complete other cfn]
           (let [p1result (two-phase process other pid cfn)]
