@@ -673,7 +673,7 @@
 
 ;; ====================================================================
 ;; (registered [])
-;;   Returns a list of names of the processes that have been registered.
+;;   Returns a set of names of the processes that have been registered.
 
 (deftest ^:serial registered-returns-empty-seq-when-nothing-registered
   (is (empty? (process/registered))
@@ -716,7 +716,7 @@
 (deftest ^:parallel link-return-true)
 (deftest ^:parallel link-creates-link-with-alive-process-not-trapping-exits)
 (deftest ^:parallel link-creates-link-with-alive-process-trapping-exits)
-(deftest ^:parallel link-creates-one-link-only-when-called-multiple-times)
+(deftest ^:parallel link-creates-exactly-one-link-when-called-multiple-times)
 (deftest ^:parallel link-creates-link-with-terminated-process)
 (deftest ^:parallel link-throws-when-called-not-in-process-context)
 (deftest ^:parallel link-return-true)
