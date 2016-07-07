@@ -196,7 +196,7 @@
       (match message
         ; check if xpid is really linked to pid
         [:linked-exit xpid :kill] ; if neighbour is killed, we terminate unconditionally
-          :kill
+          :killed
         [:linked-exit xpid :normal] ; if neighbour terminates normally we do nothing unless we have :trap-exit
         (when trap-exit
           (! pid [:down xpid :normal])
@@ -211,7 +211,7 @@
         (when trap-exit
           (async/put! pid [:EXIT nil :normal])
           nil)
-        [:exit :kill] :kill
+        [:exit :kill] :killed
         [:exit reason]
         (if trap-exit
           (do
