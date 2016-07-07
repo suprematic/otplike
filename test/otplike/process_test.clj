@@ -419,17 +419,17 @@
     (let [pid (process/spawn proc-fn [] {})]
       (<!! (async/timeout 100))
       (is (= false (process/exit pid :normal))
-          "exit must return true on alive process")
+          "exit must return false on terminated process")
       (is (= false (process/exit pid :abnormal))
-          "exit must return true on alive process")
+          "exit must return false on terminated process")
       (is (= false (process/exit pid :kill))
-          "exit must return true on alive process")
+          "exit must return false on terminated process")
       (is (= false (process/exit pid :normal))
-          "exit must return true on alive process")
+          "exit must return false on terminated process")
       (is (= false (process/exit pid :abnormal))
-          "exit must return true on alive process")
+          "exit must return false on terminated process")
       (is (= false (process/exit pid :kill))
-          "exit must return true on alive process"))))
+          "exit must return false on terminated process"))))
 
 (deftest ^:parallel exit-self
   (let [timeout (async/timeout 500)]
@@ -439,7 +439,8 @@
           (process/exit (process/self) :normal)
           (is (= [:exit-message [:reason :normal]]
                  (await-message inbox 100))
-              "exit with reason :kill must close process' inbox")
+              (str "exit with reason :normal must send [:EXIT pid :normal]"
+                   " message to process trapping exits"))
           (async/close! timeout)))
       []
       {:flags {:trap-exit true}})
@@ -451,11 +452,13 @@
           (process/exit (process/self) :abnormal-1)
           (is (= [:exit-message [:reason :abnormal-1]]
                  (await-message inbox 300))
-              "exit with reason :kill must close process' inbox")
+              (str "exit must send [:EXIT pid reason]"
+                   " message to process trapping exits"))
           (process/exit (process/self) :abnormal-2)
           (is (= [:exit-message [:reason :abnormal-2]]
                  (await-message inbox 300))
-              "exit with reason :kill must close process' inbox")
+              (str "exit must send [:EXIT pid reason]"
+                   " message to process trapping exits"))
           (async/close! timeout)))
       []
       {:flags {:trap-exit true}})
@@ -466,7 +469,7 @@
         (go
           (process/exit (process/self) :kill)
           (is (= :inbox-closed (await-message inbox 300))
-              "exit with reason :kill must close process' inbox")
+              "exit with reason :kill must close inbox of process trapping exits")
           (async/close! timeout)))
       []
       {:flags {:trap-exit true}})
@@ -477,7 +480,8 @@
         (go
           (process/exit (process/self) :normal)
           (is (= :timeout (await-message inbox 300))
-              "exit with reason :kill must close process' inbox")
+              (str "exit with reason :normal must do nothing"
+                   " to process not trapping exits"))
           (async/close! timeout)))
       []
       {})
@@ -488,7 +492,8 @@
         (go
           (process/exit (process/self) :abnormal)
           (is (= :inbox-closed (await-message inbox 300))
-              "exit with reason :kill must close process' inbox")
+              (str "exit with any reason except :normal must close"
+                   " inbox of proces not trapping exits"))
           (async/close! timeout)))
       []
       {})
@@ -499,7 +504,8 @@
         (go
           (process/exit (process/self) :kill)
           (is (= :inbox-closed (await-message inbox 300))
-              "exit with reason :kill must close process' inbox")
+              (str "exit with reason :kill must close inbox of process"
+                   " not trapping exits"))
           (async/close! timeout)))
       []
       {})
@@ -529,7 +535,8 @@
                       (process/flag :trap-exit true)
                       (is (= [:exit-message [:reason :normal]]
                              (await-message inbox 300))
-                          "exit must return true on alive process")
+                          (str "flag :trap-exit set to true in process must"
+                               " make process to trap exits"))
                       (async/close! timeout)))
           pid (process/spawn proc-fn [] {})]
       (match (process/exit pid :normal) true :ok)
@@ -539,7 +546,8 @@
                     (process/flag :trap-exit true)
                     (is (= [:exit-message [:reason :normal]]
                            (await-message inbox 300))
-                        "exit must return true on alive process")
+                        (str "flag :trap-exit set to true in process must"
+                             " make process to trap exits"))
                     (async/close! timeout))
           pid (process/spawn proc-fn [] {})]
       (match (process/exit pid :normal) true :ok)
@@ -550,7 +558,8 @@
         proc-fn (fn [inbox]
                   (process/flag :trap-exit false)
                   (is (= :timeout (await-message inbox 300))
-                      "exit must return true on alive process")
+                      (str "flag :trap-exit set to false in process must"
+                           " make process not to trap exits"))
                   (async/close! timeout))
         pid (process/spawn proc-fn [] {:flags {:trap-exit true}})]
     (match (process/exit pid :normal) true :ok)
@@ -560,7 +569,8 @@
                   (go
                     (process/flag :trap-exit false)
                     (is (= :timeout (await-message inbox 300))
-                        "exit must return true on alive process")
+                        (str "flag :trap-exit set to false in process must"
+                             " make process not to trap exits"))
                     (async/close! timeout)))
         pid (process/spawn proc-fn [] {:flags {:trap-exit true}})]
     (match (process/exit pid :normal) true :ok)
@@ -573,11 +583,13 @@
                   (process/flag :trap-exit true)
                   (is (= [:EXIT [:reason :abnormal]]
                          (await-message inbox 300))
-                      "exit must return true on alive process")
+                      (str "flag :trap-exit set to true in process must"
+                           " make process to trap exits"))
                   (process/flag :trap-exit false)
                   (async/close! timeout1)
                   (is (= :inbox-closed (await-message inbox 300))
-                      "exit must return true on alive process")
+                      (str "flag :trap-exit switched second time  in process"
+                           " must make process to switch trapping exits"))
                   (async/close! timeout2))
         pid (process/spawn proc-fn [] {})]
     (match (process/exit pid :abnormal) true :ok)
@@ -591,11 +603,13 @@
                     (process/flag :trap-exit true)
                     (is (= [:EXIT [:reason :abnormal]]
                            (await-message inbox 300))
-                        "exit must return true on alive process")
+                        (str "flag :trap-exit set to true in process must"
+                             " make process to trap exits"))
                     (process/flag :trap-exit false)
                     (async/close! timeout1)
                     (is (= :inbox-closed (await-message inbox 300))
-                        "exit must return true on alive process")
+                        (str "flag :trap-exit switched second time  in process"
+                             " must make process to switch trapping exits"))
                     (async/close! timeout2)))
         pid (process/spawn proc-fn [] {})]
     (match (process/exit pid :abnormal) true :ok)
@@ -608,26 +622,26 @@
         proc-fn (fn [inbox]
                   (go
                     (is (= true (process/flag :trap-exit false))
-                        "exit must return true on alive process")
+                        "setting flag :trap-exit must return its previous value")
                     (is (= false (process/flag :trap-exit false))
-                        "exit must return true on alive process")
+                        "setting flag :trap-exit must return its previous value")
                     (is (= false (process/flag :trap-exit true))
-                        "exit must return true on alive process")
+                        "setting flag :trap-exit must return its previous value")
                     (is (= true (process/flag :trap-exit true))
-                        "exit must return true on alive process")
+                        "setting flag :trap-exit must return its previous value")
                     (async/close! timeout)))]
     (process/spawn proc-fn [] {:flags {:trap-exit true}})
     (<!! timeout))
   (let [timeout (async/timeout 300)
         proc-fn (fn [inbox]
                   (is (= true (process/flag :trap-exit false))
-                      "exit must return true on alive process")
+                      "setting flag :trap-exit must return its previous value")
                   (is (= false (process/flag :trap-exit false))
-                      "exit must return true on alive process")
+                      "setting flag :trap-exit must return its previous value")
                   (is (= false (process/flag :trap-exit true))
-                      "exit must return true on alive process")
+                      "setting flag :trap-exit must return its previous value")
                   (is (= true (process/flag :trap-exit true))
-                      "exit must return true on alive process")
+                      "setting flag :trap-exit must return its previous value")
                   (async/close! timeout))]
     (process/spawn proc-fn [] {:flags {:trap-exit true}})
     (<!! timeout)))
@@ -636,17 +650,17 @@
   (let [timeout (async/timeout 300)
         proc-fn (fn [inbox]
                   (is (thrown? Throwable (process/flag [] false))
-                      "exit must return true on alive process")
+                      "flag must throw on unknown flag")
                   (is (thrown? Throwable (process/flag 1 false))
-                      "exit must return true on alive process")
+                      "flag must throw on unknown flag")
                   (is (thrown? Throwable (process/flag :unknown false))
-                      "exit must return true on alive process")
+                      "flag must throw on unknown flag")
                   (is (thrown? Throwable (process/flag nil false))
-                      "exit must return true on alive process")
+                      "flag must throw on unknown flag")
                   (is (thrown? Throwable (process/flag nil true))
-                      "exit must return true on alive process")
+                      "flag must throw on unknown flag")
                   (is (thrown? Throwable (process/flag :trap-exit1 false))
-                      "exit must return true on alive process")
+                      "flag must throw on unknown flag")
                   (async/close! timeout))]
     (process/spawn proc-fn [] {})
     (<!! timeout)))
