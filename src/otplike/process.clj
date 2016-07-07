@@ -207,14 +207,17 @@
             (! pid [:down xpid reason])
             nil)
           reason)
+        [:exit :normal]
+        (when trap-exit
+          (async/put! pid [:EXIT nil :normal])
+          nil)
+        [:exit :kill] :kill
         [:exit reason]
-        (if (or (not trap-exit) (= reason :kill))
-          (if (= reason :normal)
-            nil
-            reason)
+        (if trap-exit
           (do
             (async/put! pid [:EXIT nil reason])
-            nil))
+            nil)
+          reason)
         [:two-phase complete other cfn]
           (let [p1result (two-phase process other pid cfn)]
             (<! p1result)
