@@ -314,30 +314,30 @@
           (swap! *processes assoc pid process))
         (trace/trace pid [:start (str proc-func) params options])
         (binding [*self* pid] ; workaround for ASYNC-170. once fixed, binding should move to (start-process...)
-          (go
-            (when link-to
-              (doseq [link-to (apply hash-set (flatten [link-to]))] ; ??? probably optimize by sending link requests concurently
-                (<! (two-phase process link-to pid link-fn)))) ; wait for protocol to complete))
-            (let [return (start-process proc-func outbox params)
-                  process (assoc process :return return)]
-              (loop []
-                (let [vp (async/alts! [control return])]
-                  (if-let [reason (<! (dispatch process vp))]
-                    (do
-                      (trace/trace pid [:terminate reason])
-                      (close! outbox)
-                      (dosync
-                        (swap! *processes dissoc pid)
-                        (when register
-                          (swap! *registered dissoc register))
+          (let [return (start-process proc-func outbox params)]
+            (go
+              (when link-to
+                (doseq [link-to (apply hash-set (flatten [link-to]))] ; ??? probably optimize by sending link requests concurently
+                  (<! (two-phase process link-to pid link-fn)))) ; wait for protocol to complete
+              (let [process (assoc process :return return)]
+                (loop []
+                  (let [vp (async/alts! [control return])]
+                    (if-let [reason (<! (dispatch process vp))]
+                      (do
+                        (trace/trace pid [:terminate reason])
+                        (close! outbox)
+                        (dosync
+                          (swap! *processes dissoc pid)
+                          (when register
+                            (swap! *registered dissoc register))
+                          (doseq [p @linked]
+                            (when-let [p (@*processes p)]
+                              (swap! (:linked p) disj process))))
                         (doseq [p @linked]
-                          (when-let [p (@*processes p)]
-                            (swap! (:linked p) disj process))))
-                      (doseq [p @linked]
-                        (!control p [:linked-exit pid reason]))
-                      (doseq [p @monitors]
-                        (! p [:down pid reason])))
-                    (recur)))))))))
+                          (!control p [:linked-exit pid reason]))
+                        (doseq [p @monitors]
+                          (! p [:down pid reason])))
+                      (recur))))))))))
     pid))
 
 (defn spawn-link [proc-func params opts]
