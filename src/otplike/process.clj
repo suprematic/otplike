@@ -122,7 +122,7 @@
 
 (defn registered []
   {:post [(set? %)]}
-  (into #{} (keys @*registered)))
+  (set (keys @*registered)))
 
 (defn- two-phase-start [pid1 pid2 cfn]
   {:pre [(pid? pid1) (pid? pid2) (fn? cfn)]
@@ -181,10 +181,9 @@
 (defn unlink [pid]
   {:pre [(pid? pid)]
    :post [(true? %)]}
-  (or
-    (if-let [complete (two-phase-start (self) pid unlink-fn)]
-      (do (<!! complete) true)
-      (throw (Exception. "stopped")))))
+  (if-let [complete (two-phase-start (self) pid unlink-fn)]
+    (do (<!! complete) true)
+    (throw (Exception. "stopped"))))
 
 ; TODO return new process and exit code
 (defn- dispatch-control [{:keys [flags pid linked] :as process} message]

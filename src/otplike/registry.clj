@@ -38,7 +38,7 @@
   {})
 
 (defn multi-set [m k items]
-  (assoc m k (into #{} items)))
+  (assoc m k (set items)))
 
 (defn mult-get [m k]
   (or (m k) #{}))
