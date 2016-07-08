@@ -31,27 +31,26 @@
 ;;   Returns the process identifier of the calling process. Throws when
 ;;   called not in process context.
 
-(deftest ^:parallel test-self
-  (deftest ^:parallel self-returns-process-pid-in-process-context
-    (let [done (async/chan)]
-      (process/spawn
-        (fn [inbox]
-          (go
-            (is (process/pid? (process/self))
-                "self must return pid when called in process context")
-            (is (= (process/self) (process/self))
-                "self must return the same pid when called by the same process")
-            (! (process/self) :msg)
-            (is (= [:message :msg] (<! (await-message inbox 100)))
-                "message sent to self must appear in inbox")
-            (async/close! done)))
-        []
-        {})
-      (await-completion done 500)))
+(deftest ^:parallel self-returns-process-pid-in-process-context
+  (let [done (async/chan)]
+    (process/spawn
+      (fn [inbox]
+        (go
+          (is (process/pid? (process/self))
+              "self must return pid when called in process context")
+          (is (= (process/self) (process/self))
+              "self must return the same pid when called by the same process")
+          (! (process/self) :msg)
+          (is (= [:message :msg] (<! (await-message inbox 100)))
+              "message sent to self must appear in inbox")
+          (async/close! done)))
+      []
+      {})
+    (await-completion done 500)))
 
-  (deftest ^:parallel self-fails-in-non-process-context
-    (is (thrown? Exception (process/self))
-        "self must throw when called not in process context")))
+(deftest ^:parallel self-fails-in-non-process-context
+  (is (thrown? Exception (process/self))
+      "self must throw when called not in process context"))
 
 ;; ====================================================================
 ;; (pid? [term])
