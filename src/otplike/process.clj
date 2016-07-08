@@ -94,7 +94,7 @@
   {:pre [(pid? pid)
          (some? reason)]
    :post [(or (true? %) (false? %))]}
-  (!control pid [:exit reason]))
+  (!control pid [:exit nil reason]))
 
 (defn flag [flag value]
   {:pre [(keyword? flag)]
@@ -194,39 +194,25 @@
   (go
     (let [trap-exit (:trap-exit @flags)]
       (match message
-        ; check if xpid is really linked to pid
-        [:linked-exit xpid :kill] ; if neighbour is killed, we terminate unconditionally
-          :killed
-        [:linked-exit xpid :normal] ; if neighbour terminates normally we do nothing unless we have :trap-exit
-        (when trap-exit
-          (! pid [:down xpid :normal])
-          nil)
-        [:linked-exit xpid reason] ; if neighbour terminates with non-normal reason, we terminate as well, unless we have :trap-exit
-        (if trap-exit
-          (do
-            (! pid [:down xpid reason])
-            nil)
-          reason)
-        [:exit :normal]
-        (when trap-exit
-          (async/put! pid [:EXIT nil :normal])
-          nil)
-        [:exit :kill] :killed
-        [:exit reason]
-        (if trap-exit
-          (do
-            (async/put! pid [:EXIT nil reason])
-            nil)
-          reason)
-        [:two-phase complete other cfn]
-          (let [p1result (two-phase process other pid cfn)]
-            (<! p1result)
-            (async/close! complete)
-            nil)
-        [:two-phase-p1 result other-pid cfn]
-        (do
-          (async/put! result (cfn :phase-one process other-pid))
-          nil)))))
+        [:exit xpid :kill] :killed
+        [:exit xpid :normal] (when trap-exit
+                               (! pid [:EXIT xpid :normal])
+                               nil)
+        [:exit xpid reason] (if trap-exit
+                              (do
+                                (! pid [:EXIT xpid reason])
+                                nil)
+                              reason)
+        [:two-phase
+         complete other cfn] (let [p1result (two-phase process other pid cfn)]
+                               (<! p1result)
+                               (async/close! complete)
+                               nil)
+        [:two-phase-p1
+         result other-pid cfn] (do
+                                 (async/put! result
+                                             (cfn :phase-one process other-pid))
+                                 nil)))))
 
 ; TODO get rid of this fn moving its code to calling fn
 (defn- dispatch
@@ -334,7 +320,7 @@
                             (when-let [p (@*processes p)]
                               (swap! (:linked p) disj process))))
                         (doseq [p @linked]
-                          (!control p [:linked-exit pid reason]))
+                          (!control p [:exit pid reason]))
                         (doseq [p @monitors]
                           (! p [:down pid reason])))
                       (recur))))))))))
