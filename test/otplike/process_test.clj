@@ -12,12 +12,19 @@
   (keyword (str (java.util.UUID/randomUUID))))
 
 (defn- await-message [inbox timeout-ms]
+  (go
+    (let [timeout (async/timeout timeout-ms)]
+      (match (async/alts! [inbox timeout])
+        [[:EXIT _ reason] inbox] [:exit-message [:reason reason]]
+        [nil inbox] :inbox-closed
+        [msg inbox] [:message msg]
+        [nil timeout] :timeout))))
+
+(defn- await-completion [chan timeout-ms]
   (let [timeout (async/timeout timeout-ms)]
-    (match (async/alts!! [inbox timeout])
-      [[:EXIT _ reason] inbox] [:exit-message [:reason reason]]
-      [nil inbox] :inbox-closed
-      [msg inbox] [:message msg]
-      [nil timeout] :timeout)))
+    (match (async/alts!! [chan timeout])
+      [nil chan] :ok
+      [nil timeout] (throw (Exception. "timeout")))))
 
 ;; ====================================================================
 ;; (self [])
@@ -26,7 +33,7 @@
 
 (deftest ^:parallel test-self
   (deftest ^:parallel self-returns-process-pid-in-process-context
-    (let [timeout (async/timeout 500)]
+    (let [done (async/chan)]
       (process/spawn
         (fn [inbox]
           (go
@@ -35,12 +42,12 @@
             (is (= (process/self) (process/self))
                 "self must return the same pid when called by the same process")
             (! (process/self) :msg)
-            (is (= [:message :msg] (await-message inbox 100))
+            (is (= [:message :msg] (<! (await-message inbox 100)))
                 "message sent to self must appear in inbox")
-            (async/close! timeout)))
+            (async/close! done)))
         []
         {})
-      (<!! timeout)))
+      (await-completion done 500)))
 
   (deftest ^:parallel self-fails-in-non-process-context
     (is (thrown? Exception (process/self))
@@ -97,19 +104,19 @@
 ;;   or nil if the name is not registered. Throws on nil argument.
 
 (deftest ^:parallel whereis-returns-process-pid-on-registered-name
-  (let [timeout (async/timeout 300)
+  (let [done (async/chan)
         reg-name (uuid-keyword)
         pid (process/spawn
               (fn [_]
                 (go
                   (is (= (process/self) (process/whereis reg-name))
                       "whereis must return process pid on registered name")
-                  (<!! timeout)))
+                  (await-completion done 100)))
               []
               {:register reg-name})]
     (is (= pid (process/whereis reg-name))
         "whereis must return process pid on registered name")
-    (async/close! timeout)))
+    (async/close! done)))
 
 (deftest ^:parallel whereis-returns-nil-on-not-registered-name
   (is (nil? (process/whereis "name"))
@@ -138,22 +145,24 @@
 ;;   alive), false otherwise. Throws if any of the arguments is nil.
 
 (deftest ^:parallel !-returns-true-sending-to-alive-process-by-pid
-  (let [timeout (async/timeout 100)
-        pid (process/spawn (fn [_] (go (<! timeout))) [] {})]
+  (let [done (async/chan)
+        pid (process/spawn (fn [_] (go (await-completion done 100))) [] {})]
     (is (= true (! pid :msg)) "! must return true sending to alive process")
-    (async/close! timeout)))
+    (async/close! done)))
 
 (deftest ^:parallel !-returns-true-sending-to-alive-process-by-reg-name
-  (let [timeout (async/timeout 100)
+  (let [done (async/chan)
         reg-name (uuid-keyword)]
-    (process/spawn (fn [_] (go (<! timeout))) [] {:register reg-name})
+    (process/spawn (fn [_] (go (await-completion done 100)))
+                   []
+                   {:register reg-name})
     (is (= true (! reg-name :msg)) "! must return true sending to alive process")
-    (async/close! timeout)))
+    (async/close! done)))
 
 (deftest ^:parallel !-returns-false-sending-to-terminated-process-by-reg-name
   (let [reg-name (uuid-keyword)]
     (process/spawn (fn [_] (go)) [] {:register reg-name})
-    (<!! (async/timeout 300))
+    (<!! (async/timeout 50))
     (is (= false (! reg-name :msg))
         "! must return false sending to terminated process")))
 
@@ -162,10 +171,10 @@
       "! must return false sending to unregistered name"))
 
 (deftest ^:parallel !-returns-false-sending-to-terminated-process-by-pid
-  (let [timeout (async/timeout 100)
-        pid (process/spawn (fn [_] (go (async/close! timeout))) [] {})]
-    (<!! timeout)
-    (<!! (async/timeout 10))
+  (let [done (async/chan)
+        pid (process/spawn (fn [_] (go (async/close! done))) [] {})]
+    (await-completion done 100)
+    (<!! (async/timeout 50))
     (is (= false (! pid :msg))
         "! must return false sending to terminated process")))
 
@@ -178,28 +187,28 @@
       "! must throw on when both arguments are nil"))
 
 (deftest ^:parallel !-delivers-message-sent-by-pid-to-alive-process
-  (let [timeout (async/timeout 300)
+  (let [done (async/chan)
         proc-fn (fn [inbox]
                   (go
-                    (is (= [:message :msg] (await-message inbox 100))
+                    (is (= [:message :msg] (<! (await-message inbox 100)))
                         "message sent with ! to pid must appear in inbox")
-                    (async/close! timeout)))
+                    (async/close! done)))
         pid (process/spawn proc-fn [] {})]
     (! pid :msg)
-    (<!! timeout)))
+    (await-completion done 300)))
 
 (deftest ^:parallel !-delivers-message-sent-by-registered-name-to-alive-process
-  (let [timeout (async/timeout 200)
+  (let [done (async/chan)
         proc-fn (fn [inbox]
                   (go
-                    (is (= [:message :msg] (await-message inbox 100))
+                    (is (= [:message :msg] (<! (await-message inbox 100)))
                         (str "message sent with ! to registered name"
                              " must appear in inbox"))
-                    (async/close! timeout)))
+                    (async/close! done)))
         reg-name (uuid-keyword)]
     (process/spawn proc-fn [] {:register reg-name})
     (! reg-name :msg)
-    (<!! timeout)))
+    (await-completion done 200)))
 
 ;; ====================================================================
 ;; (exit [pid reason])
@@ -226,11 +235,11 @@
     ; process no longer registered
 
 (deftest ^:parallel exit-throws-on-nil-reason
-  (let [timeout (async/timeout 100)
-        pid (process/spawn (fn [_] (go (<! timeout))) [] {})]
+  (let [done (async/chan)
+        pid (process/spawn (fn [_] (go (await-completion done 100))) [] {})]
     (is (thrown? Throwable (process/exit pid nil))
         "exit must throw when reason argument is nil")
-    (async/close! timeout)))
+    (async/close! done)))
 
 (deftest ^:parallel exit-throws-on-not-a-pid
   (is (thrown? Throwable (process/exit nil :normal))
@@ -249,101 +258,101 @@
       "exit must throw on not a pid argument"))
 
 (deftest ^:parallel exit-normal-no-trap-exit
-  (let [timeout (async/timeout 500)
+  (let [done (async/chan)
         proc-fn (fn [inbox]
                   (go
-                    (is (= :timeout (await-message inbox 100))
+                    (is (= :timeout (<! (await-message inbox 100)))
                         "exit with reason :normal must not close process' inbox")
-                    (async/close! timeout)))
+                    (async/close! done)))
         pid (process/spawn proc-fn [] {})]
     (process/exit pid :normal)
-    (<!! timeout)))
+    (await-completion done 500)))
 
 (deftest ^:parallel exit-normal-trap-exit
-  (let [timeout (async/timeout 500)
+  (let [done (async/chan)
         proc-fn (fn [inbox]
                   (go
                     (is (= [:exit-message [:reason :normal]]
-                           (await-message inbox 100))
+                           (<! (await-message inbox 100)))
                         (str "exit must send [:EXIT pid :normal] message"
                              " to process trapping exits"))
-                    (async/close! timeout)))
+                    (async/close! done)))
         pid (process/spawn proc-fn [] {:flags {:trap-exit true}})]
     (process/exit pid :normal)
-    (<!! timeout)))
+    (await-completion done 500)))
 
 (deftest ^:parallel exit-normal-registered-process
-  (let [timeout (async/timeout 300)
+  (let [done (async/chan)
         reg-name (uuid-keyword)
-        pid (process/spawn (fn [_] (go (<! timeout)))
+        pid (process/spawn (fn [_] (go (await-completion done 300)))
                            []
                            {:register reg-name})]
     (is ((into #{} (process/registered)) reg-name)
         "registered process must be in list of registered before exit")
-    (async/close! timeout)
-    (<!! (async/timeout 100))
+    (async/close! done)
+    (<!! (async/timeout 50))
     (is (nil? ((into #{} (process/registered)) reg-name))
         "process must not be registered after exit")))
 
 (deftest ^:parallel exit-normal-registered-process
-  (let [timeout (async/timeout 500)
+  (let [done (async/chan)
         reg-name (uuid-keyword)
-        pid (process/spawn (fn [_] (go (<! timeout)))
+        pid (process/spawn (fn [_] (go (await-completion done 500)))
                            []
                            {:register reg-name})]
     (is ((into #{} (process/registered)) reg-name)
         "registered process must be in list of registered before exit")
-    (async/close! timeout)
-    (<!! (async/timeout 100))
+    (async/close! done)
+    (<!! (async/timeout 50))
     (is (nil? ((process/registered) reg-name))
         "process must not be registered after exit")))
 
 (deftest ^:parallel exit-abnormal-no-trap-exit
-  (let [timeout (async/timeout 500)
+  (let [done (async/chan)
         proc-fn (fn [inbox]
                   (go
-                    (is (= :inbox-closed (await-message inbox 100))
+                    (is (= :inbox-closed (<! (await-message inbox 100)))
                         (str "exit with reason other than :normal must close"
                              "process' inbox"))
-                    (async/close! timeout)))
+                    (async/close! done)))
         pid (process/spawn proc-fn [] {})]
     (process/exit pid :abnormal)
-    (<!! timeout)))
+    (await-completion done 500)))
 
 (deftest ^:parallel exit-abnormal-trap-exit
-  (let [timeout (async/timeout 500)
+  (let [done (async/chan)
         proc-fn (fn [inbox]
                   (go
                     (is (= [:exit-message [:reason :abnormal]]
-                           (await-message inbox 100))
+                           (<! (await-message inbox 100)))
                         (str "exit must send [:EXIT _ reason] message"
                              " to process trapping exits"))
-                    (async/close! timeout)))
+                    (async/close! done)))
         pid (process/spawn proc-fn [] {:flags {:trap-exit true}})]
     (process/exit pid :abnormal)
-    (<!! timeout)))
+    (await-completion done 500)))
 
 (deftest ^:parallel exit-kill-no-trap-exit
-  (let [timeout (async/timeout 500)
+  (let [done (async/chan)
         proc-fn (fn [inbox]
                   (go
-                    (is (= :inbox-closed (await-message inbox 300))
+                    (is (= :inbox-closed (<! (await-message inbox 300)))
                         "exit with reason :kill must close process' inbox")
-                    (async/close! timeout)))
+                    (async/close! done)))
         pid (process/spawn proc-fn [] {})]
     (process/exit pid :kill)
-    (<!! timeout)))
+    (await-completion done 500)))
 
 (deftest ^:parallel exit-kill-trap-exit
-  (let [timeout (async/timeout 500)
+  (let [done (async/chan)
         proc-fn (fn [inbox]
                   (go
-                    (is (= :inbox-closed (await-message inbox 300))
+                    (is (= :inbox-closed (<! (await-message inbox 300)))
                         "exit with reason :kill must close process' inbox")
-                    (async/close! timeout)))
+                    (async/close! done)))
         pid (process/spawn proc-fn [] {:flags {:trap-exit true}})]
     (process/exit pid :kill)
-    (<!! timeout)))
+    (await-completion done 500)))
 
 (deftest ^:parallel exit-returns-true-on-alive-process
   (let [proc-fn (fn [_inbox] (go (<! (async/timeout 100))))]
@@ -367,101 +376,100 @@
           "exit must return true on alive process"))))
 
 (deftest ^:parallel exit-returns-false-on-terminated-process
-  (let [proc-fn (fn [_inbox] (go))]
-    (let [pid (process/spawn proc-fn [] {})]
-      (<!! (async/timeout 100))
-      (is (= false (process/exit pid :normal))
-          "exit must return false on terminated process")
-      (is (= false (process/exit pid :abnormal))
-          "exit must return false on terminated process")
-      (is (= false (process/exit pid :kill))
-          "exit must return false on terminated process")
-      (is (= false (process/exit pid :normal))
-          "exit must return false on terminated process")
-      (is (= false (process/exit pid :abnormal))
-          "exit must return false on terminated process")
-      (is (= false (process/exit pid :kill))
-          "exit must return false on terminated process"))))
+  (let [pid (process/spawn (fn [_inbox] (go)) [] {})]
+    (<!! (async/timeout 50))
+    (is (= false (process/exit pid :normal))
+        "exit must return false on terminated process")
+    (is (= false (process/exit pid :abnormal))
+        "exit must return false on terminated process")
+    (is (= false (process/exit pid :kill))
+        "exit must return false on terminated process")
+    (is (= false (process/exit pid :normal))
+        "exit must return false on terminated process")
+    (is (= false (process/exit pid :abnormal))
+        "exit must return false on terminated process")
+    (is (= false (process/exit pid :kill))
+        "exit must return false on terminated process")))
 
 (deftest ^:parallel exit-self
-  (let [timeout (async/timeout 500)]
+  (let [done (async/chan)]
     (process/spawn
       (fn [inbox]
         (go
           (process/exit (process/self) :normal)
           (is (= [:exit-message [:reason :normal]]
-                 (await-message inbox 100))
+                 (<! (await-message inbox 100)))
               (str "exit with reason :normal must send [:EXIT pid :normal]"
                    " message to process trapping exits"))
-          (async/close! timeout)))
+          (async/close! done)))
       []
       {:flags {:trap-exit true}})
-    (<!! timeout))
-  (let [timeout (async/timeout 1000)]
+    (await-completion done 500))
+  (let [done (async/chan)]
     (process/spawn
       (fn [inbox]
         (go
           (process/exit (process/self) :abnormal-1)
           (is (= [:exit-message [:reason :abnormal-1]]
-                 (await-message inbox 300))
+                 (<! (await-message inbox 300)))
               (str "exit must send [:EXIT pid reason]"
                    " message to process trapping exits"))
           (process/exit (process/self) :abnormal-2)
           (is (= [:exit-message [:reason :abnormal-2]]
-                 (await-message inbox 300))
+                 (<! (await-message inbox 300)))
               (str "exit must send [:EXIT pid reason]"
                    " message to process trapping exits"))
-          (async/close! timeout)))
+          (async/close! done)))
       []
       {:flags {:trap-exit true}})
-    (<!! timeout))
-  (let [timeout (async/timeout 500)]
+    (await-completion done 1000))
+  (let [done (async/chan)]
     (process/spawn
       (fn [inbox]
         (go
           (process/exit (process/self) :kill)
-          (is (= :inbox-closed (await-message inbox 300))
+          (is (= :inbox-closed (<! (await-message inbox 300)))
               "exit with reason :kill must close inbox of process trapping exits")
-          (async/close! timeout)))
+          (async/close! done)))
       []
       {:flags {:trap-exit true}})
-    (<!! timeout))
-  (let [timeout (async/timeout 500)]
+    (await-completion done 500))
+  (let [done (async/chan)]
     (process/spawn
       (fn [inbox]
         (go
           (process/exit (process/self) :normal)
-          (is (= :timeout (await-message inbox 300))
+          (is (= :timeout (<! (await-message inbox 300)))
               (str "exit with reason :normal must do nothing"
                    " to process not trapping exits"))
-          (async/close! timeout)))
+          (async/close! done)))
       []
       {})
-    (<!! timeout))
-  (let [timeout (async/timeout 500)]
+    (await-completion done 500))
+  (let [done (async/chan)]
     (process/spawn
       (fn [inbox]
         (go
           (process/exit (process/self) :abnormal)
-          (is (= :inbox-closed (await-message inbox 300))
+          (is (= :inbox-closed (<! (await-message inbox 300)))
               (str "exit with any reason except :normal must close"
                    " inbox of proces not trapping exits"))
-          (async/close! timeout)))
+          (async/close! done)))
       []
       {})
-    (<!! timeout))
-  (let [timeout (async/timeout 500)]
+    (await-completion done 500))
+  (let [done (async/chan)]
     (process/spawn
       (fn [inbox]
         (go
           (process/exit (process/self) :kill)
-          (is (= :inbox-closed (await-message inbox 300))
+          (is (= :inbox-closed (<! (await-message inbox 300)))
               (str "exit with reason :kill must close inbox of process"
                    " not trapping exits"))
-          (async/close! timeout)))
+          (async/close! done)))
       []
       {})
-    (<!! timeout)))
+    (await-completion done 500)))
 
 ; TODO
 (deftest ^:parallel exit-kill-reason-killed) ; use link or monitor to test the reason
@@ -481,56 +489,56 @@
 ;;   Throws when called not in process context.
 
 #_(deftest ^:parallel flag-trap-exit-true-makes-process-to-trap-exits
-  (let [timeout (async/timeout 500)
+  (let [done (async/chan)
         proc-fn (fn [inbox]
                   (go
                     (process/flag :trap-exit true)
                     (is (= [:exit-message [:reason :normal]]
-                           (await-message inbox 300))
+                           (<! (await-message inbox 300)))
                         (str "flag :trap-exit set to true in process must"
                              " make process to trap exits"))
-                    (async/close! timeout)))
+                    (async/close! done)))
         pid (process/spawn proc-fn [] {})]
     (match (process/exit pid :normal) true :ok)
-    (<!! timeout)))
+    (await-completion done 500)))
 
 #_(deftest ^:parallel flag-trap-exit-false-makes-process-not-to-trap-exits
-  (let [timeout (async/timeout 500)
+  (let [done (async/chan)
         proc-fn (fn [inbox]
                   (go
                     (process/flag :trap-exit false)
-                    (is (= :timeout (await-message inbox 300))
+                    (is (= :timeout (<! (await-message inbox 300)))
                         (str "flag :trap-exit set to false in process must"
                              " make process not to trap exits"))
-                    (async/close! timeout)))
+                    (async/close! done)))
         pid (process/spawn proc-fn [] {:flags {:trap-exit true}})]
     (match (process/exit pid :normal) true :ok)
-    (<!! timeout)))
+    (await-completion done 500)))
 
 #_(deftest ^:parallel flag-trap-exit-switches-trapping-exit
-  (let [timeout1 (async/timeout 500)
-        timeout2 (async/timeout 500)
+  (let [done1 (async/chan)
+        done2 (async/chan)
         proc-fn (fn [inbox]
                   (go
                     (process/flag :trap-exit true)
                     (is (= [:EXIT [:reason :abnormal]]
-                           (await-message inbox 300))
+                           (<! (await-message inbox 300)))
                         (str "flag :trap-exit set to true in process must"
                              " make process to trap exits"))
                     (process/flag :trap-exit false)
-                    (async/close! timeout1)
-                    (is (= :inbox-closed (await-message inbox 300))
+                    (async/close! done1)
+                    (is (= :inbox-closed (<! (await-message inbox 300)))
                         (str "flag :trap-exit switched second time  in process"
                              " must make process to switch trapping exits"))
-                    (async/close! timeout2)))
+                    (async/close! done2)))
         pid (process/spawn proc-fn [] {})]
     (match (process/exit pid :abnormal) true :ok)
-    (<!! timeout1)
+    (await-completion done1 500)
     (match (process/exit pid :abnormal) true :ok)
-    (<!! timeout2)))
+    (await-completion done2 500)))
 
 (deftest ^:parallel flag-trap-exit-returns-old-value
-  (let [timeout (async/timeout 300)
+  (let [done (async/chan)
         proc-fn (fn [inbox]
                   (go
                     (is (= true (process/flag :trap-exit false))
@@ -541,12 +549,12 @@
                         "setting flag :trap-exit must return its previous value")
                     (is (= true (process/flag :trap-exit true))
                         "setting flag :trap-exit must return its previous value")
-                    (async/close! timeout)))]
+                    (async/close! done)))]
     (process/spawn proc-fn [] {:flags {:trap-exit true}})
-    (<!! timeout)))
+    (await-completion done 300)))
 
 (deftest ^:parallel flag-throws-on-unknown-flag
-  (let [timeout (async/timeout 300)
+  (let [done (async/chan)
         proc-fn (fn [inbox]
                   (go
                     (is (thrown? Throwable (process/flag [] false))
@@ -561,9 +569,9 @@
                         "flag must throw on unknown flag")
                     (is (thrown? Throwable (process/flag :trap-exit1 false))
                         "flag must throw on unknown flag")
-                    (async/close! timeout)))]
+                    (async/close! done)))]
     (process/spawn proc-fn [] {})
-    (<!! timeout)))
+    (await-completion done 300)))
 
 (deftest ^:parallel flag-throws-when-called-not-in-process-context
   (is (thrown? Exception (process/flag :trap-exit true))
@@ -584,21 +592,21 @@
         n2 (uuid-keyword)
         n3 (uuid-keyword)
         registered #{n1 n2 n3}
-        timeout (async/timeout 300)
-        proc-fn (fn [_inbox] (go (<! timeout)))]
+        done (async/chan)
+        proc-fn (fn [_inbox] (go (await-completion done 300)))]
     (process/spawn proc-fn [] {:register n1})
     (process/spawn proc-fn [] {:register n2})
     (process/spawn proc-fn [] {:register n3})
     (is (= registered (process/registered))
       "registered must return registered names")
-    (async/close! timeout)))
+    (async/close! done)))
 
 (deftest ^:serial registered-returns-empty-seq-after-registered-terminated
   (let [proc-fn (fn [_inbox] (go))]
     (process/spawn proc-fn [] {:register (uuid-keyword)})
     (process/spawn proc-fn [] {:register (uuid-keyword)})
     (process/spawn proc-fn [] {:register (uuid-keyword)})
-    (<!! (async/timeout 100))
+    (<!! (async/timeout 50))
     (is (empty? (process/registered))
       (str "registered must return empty seq after all registered processes"
            " had terminated"))))
@@ -613,39 +621,39 @@
 ;;   Returns true.
 ;;   Throws when called not in process context or pid is not a pid.
 
-#_(deftest ^:parallel link-returns-true
+(deftest ^:parallel link-returns-true
   (let [pid (process/spawn (fn [_] (go)) [] {})
-        _ (<!! (async/timeout 100))
-        timeout (async/timeout 300)
+        _ (<!! (async/timeout 50))
+        done (async/chan)
         proc-fn (fn [_inbox]
                   (go
                     (is (= true (process/link pid))
                         "link must return true when called on terminated process")
-                    (async/close! timeout)))]
+                    (async/close! done)))]
     (process/spawn proc-fn [] {})
-    (<!! timeout))
-  (let [timeout1 (async/timeout 1000)
-        pid (process/spawn (fn [_] (go (<! timeout1))) [] {})
-        timeout2 (async/timeout 500)
+    (await-completion done 300))
+  (let [done1 (async/chan)
+        pid (process/spawn (fn [_] (go (await-completion done1 1000))) [] {})
+        done2 (async/chan)
         proc-fn (fn [_inbox]
                   (go
                     (is (= true (process/link pid))
                         "link must return true when called on alive process")
-                    (async/close! timeout1)
-                    (async/close! timeout2)))]
+                    (async/close! done1)
+                    (async/close! done2)))]
     (process/spawn proc-fn [] {})
-    (<!! timeout2))
-  (let [timeout1 (async/timeout 1000)
-        pid (process/spawn (fn [_] (go (<! timeout1))) [] {})
-        timeout2 (async/timeout 500)
+    (await-completion done2 500))
+  (let [done1 (async/chan)
+        pid (process/spawn (fn [_] (go (await-completion done1 1000))) [] {})
+        done2 (async/chan)
         proc-fn (fn [_inbox]
                   (go
                     (is (= true (process/link pid))
                         "link must return true when called on alive process")
-                    (async/close! timeout1)
-                    (async/close! timeout2)))]
+                    (async/close! done1)
+                    (async/close! done2)))]
     (process/spawn proc-fn [] {})
-    (<!! timeout2)))
+    (await-completion done2 500)))
 
 (deftest ^:parallel link-throws-when-called-not-in-process-context
   (is (thrown? Throwable (process/link (process/spawn (fn [_] (go)) [] {})))
@@ -671,11 +679,174 @@
       "link must throw when called with not a pid argument"))
 
 (deftest ^:parallel link-creates-link-with-alive-process-not-trapping-exits
-  )
+  (let [done1 (async/chan)
+        done2 (async/chan)
+        proc-fn2 (fn [inbox]
+                   (go
+                     (is (= :inbox-closed (<! (await-message inbox 100)))
+                         (str "process must exit when linked process exits"
+                              " with reason other than :normal"))
+                     (async/close! done2)))
+        pid2 (process/spawn proc-fn2 [] {})
+        proc-fn1 (fn [inbox]
+                   (go
+                     (process/link pid2)
+                     (async/close! done1)
+                     (is (= :inbox-closed (<! (await-message inbox 100)))
+                         "exit must close inbox of process not trapping exits")))
+        pid1 (process/spawn proc-fn1 [] {})]
+    (await-completion done1 100)
+    (process/exit pid1 :abnormal)
+    (await-completion done2 300)))
 
-(deftest ^:parallel link-creates-link-with-alive-process-trapping-exits)
-(deftest ^:parallel link-creates-exactly-one-link-when-called-multiple-times)
-(deftest ^:parallel link-creates-link-with-terminated-process)
+(deftest ^:parallel link-creates-link-with-alive-process-trapping-exits
+  (let [done1 (async/chan)
+        done2 (async/chan)
+        proc-fn2 (fn [inbox]
+                   (go
+                     (is (= [:exit-message [:reason :abnormal]]
+                            (<! (await-message inbox 100)))
+                         (str "process trapping exits must get exit message"
+                              " when linked process exits with reason"
+                              " other than :normal"))
+                     (async/close! done2)))
+        pid2 (process/spawn proc-fn2 [] {:flags {:trap-exit true}})
+        proc-fn1 (fn [inbox]
+                   (go
+                     (process/link pid2)
+                     (async/close! done1)
+                     (is (= :inbox-closed (<! (await-message inbox 100)))
+                         "exit must close inbox of process not trapping exits")))
+        pid1 (process/spawn proc-fn1 [] {})]
+    (await-completion done1 100)
+    (process/exit pid1 :abnormal)
+    (await-completion done2 300)))
+
+(deftest ^:parallel link-multiple-times-work-as-single-link
+  (let [done1 (async/chan)
+        done2 (async/chan)
+        proc-fn2 (fn [inbox]
+                   (go
+                     (is (= :inbox-closed (<! (await-message inbox 100)))
+                         (str "process must exit when linked process exits"
+                              " with reason other than :normal"))
+                     (async/close! done2)))
+        pid2 (process/spawn proc-fn2 [] {})
+        proc-fn1 (fn [inbox]
+                   (go
+                     (process/link pid2)
+                     (process/link pid2)
+                     (process/link pid2)
+                     (async/close! done1)
+                     (is (= :inbox-closed (<! (await-message inbox 100)))
+                         "exit must close inbox of process not trapping exits")))
+        pid1 (process/spawn proc-fn1 [] {})]
+    (await-completion done1 100)
+    (process/exit pid1 :abnormal)
+    (await-completion done2 300))
+  (let [done1 (async/chan)
+        done2 (async/chan)
+        proc-fn2 (fn [inbox]
+                   (go
+                     (is (= [:exit-message [:reason :abnormal]]
+                            (<! (await-message inbox 100)))
+                         (str "process trapping exits must get exit message"
+                              " when linked process exits with reason"
+                              " other than :normal"))
+                     (async/close! done2)))
+        pid2 (process/spawn proc-fn2 [] {:flags {:trap-exit true}})
+        proc-fn1 (fn [inbox]
+                   (go
+                     (process/link pid2)
+                     (process/link pid2)
+                     (process/link pid2)
+                     (async/close! done1)
+                     (is (= :inbox-closed (<! (await-message inbox 100)))
+                         "exit must close inbox of process not trapping exits")))
+        pid1 (process/spawn proc-fn1 [] {})]
+    (await-completion done1 100)
+    (process/exit pid1 :abnormal)
+    (await-completion done2 300)))
+
+(deftest ^:parallel link-creates-exactly-one-link-when-called-multiple-times
+  (let [done1 (async/chan)
+        done2 (async/chan)
+        proc-fn2 (fn [inbox]
+                   (go
+                     (is (= :timeout
+                            (<! (await-message inbox 100)))
+                         (str "process must not exit when linked process was"
+                              " unlinked before exit with reason"
+                              " other than :normal"))
+                     (async/close! done2)))
+        pid2 (process/spawn proc-fn2 [] {:flags {:trap-exit true}})
+        proc-fn1 (fn [inbox]
+                   (go
+                     (process/link pid2)
+                     (process/link pid2)
+                     (process/link pid2)
+                     (process/unlink pid2)
+                     (async/close! done1)
+                     (is (= :inbox-closed (<! (await-message inbox 100)))
+                         "exit must close inbox of process not trapping exits")))
+        pid1 (process/spawn proc-fn1 [] {})]
+    (await-completion done1 100)
+    (process/exit pid1 :abnormal)
+    (await-completion done2 300)))
+
+(deftest ^:parallel link-does-not-affect-processes-linked-to-normally-exited-one
+  (let [done (async/chan)
+        proc-fn2 (fn [inbox]
+                   (go
+                     (is (= :timeout
+                            (<! (await-message inbox 100)))
+                         (str "process must not exit when linked process exits"
+                              " with reason :normal"))
+                     (async/close! done)))
+        pid2 (process/spawn proc-fn2 [] {})
+        proc-fn1 (fn [inbox]
+                   (go
+                     (process/link pid2)
+                     :normal))
+        pid1 (process/spawn proc-fn1 [] {})]
+    (await-completion done 200)))
+
+(deftest ^:parallel linking-to-terminated-process-sends-exit-message
+  (let [done (async/chan)
+        proc-fn2 (fn [inbox] (go :normal))
+        pid2 (process/spawn proc-fn2 [] {})
+        _ (<!! (async/timeout 50))
+        proc-fn1 (fn [inbox]
+                   (go
+                     (try
+                       (process/link pid2)
+                       (is (= [:exit-message [:reason :noproc]]
+                              (<! (await-message inbox 50)))
+                           (str "linking to terminated process must either"
+                                " throw or send exit message to process"
+                                " trapping exits"))
+                       (catch Throwable t :ok))
+                     (async/close! done)))
+        pid1 (process/spawn proc-fn1 [] {:flags {:trap-exit true}})]
+    (await-completion done 200)))
+
+(deftest ^:parallel linking-to-terminated-process-causes-exit
+  (let [done (async/chan)
+        proc-fn2 (fn [inbox] (go :normal))
+        pid2 (process/spawn proc-fn2 [] {})
+        _ (<!! (async/timeout 50))
+        proc-fn1 (fn [inbox]
+                   (go
+                     (try
+                       (process/link pid2)
+                       (is (= :inbox-closed (<! (await-message inbox 50)))
+                           (str "linking to terminated process must either"
+                                " throw or close inbox of process"
+                                " not trapping exits"))
+                       (catch Throwable t :ok))
+                     (async/close! done)))
+        pid1 (process/spawn proc-fn1 [] {})]
+    (await-completion done 200)))
 
 ;; ====================================================================
 ;; (unlink [pid])
