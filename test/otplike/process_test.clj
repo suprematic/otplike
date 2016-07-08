@@ -294,19 +294,6 @@
     (is (nil? ((into #{} (process/registered)) reg-name))
         "process must not be registered after exit")))
 
-(deftest ^:parallel exit-normal-registered-process
-  (let [done (async/chan)
-        reg-name (uuid-keyword)
-        pid (process/spawn (fn [_] (go (await-completion done 500)))
-                           []
-                           {:register reg-name})]
-    (is ((into #{} (process/registered)) reg-name)
-        "registered process must be in list of registered before exit")
-    (async/close! done)
-    (<!! (async/timeout 50))
-    (is (nil? ((process/registered) reg-name))
-        "process must not be registered after exit")))
-
 (deftest ^:parallel exit-abnormal-no-trap-exit
   (let [done (async/chan)
         proc-fn (fn [inbox]
