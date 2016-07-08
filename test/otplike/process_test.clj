@@ -848,6 +848,20 @@
         pid1 (process/spawn proc-fn1 [] {})]
     (await-completion done 200)))
 
+(deftest ^:parallel link-to-self-does-not-throw
+  (let [done (async/chan)
+        proc-fn (fn [_]
+                   (go
+                     (is (try
+                           (process/link (process/self))
+                           true
+                           (catch Throwable t
+                             false))
+                         "link to self must not throw when process is alive")
+                     (async/close! done)))]
+    (process/spawn proc-fn [] {})
+    (await-completion done 200)))
+
 ;; ====================================================================
 ;; (unlink [pid])
 ;;   Removes the link, if there is one, between the calling process and
