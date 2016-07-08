@@ -913,7 +913,23 @@
 ;;   like spawn/3.
 ;;   Throws when called not in process context.
 
+(deftest ^:parallel spawn-link-links-to-spawned-process)
 
+; check if spawn-link works like spawn
+(deftest ^:parallel spawn-link-calls-proc-fn)
+(deftest ^:parallel spawn-link-calls-proc-fn-with-arguments)
+(deftest ^:parallel spawn-link-returns-process-pid)
+(deftest ^:parallel spawn-link-throws-on-illegal-arguments)
+(deftest ^:parallel spawn-link-throws-if-proc-fn-returns-not-a-read-port)
+(deftest ^:parallel spawn-link-throws-if-proc-fn-throws)
+(deftest ^:parallel spawn-link-passes-opened-read-port-to-proc-fn-as-inbox)
+(deftest ^:parallel spawn-linked-process-is-reachable)
+
+; options
+(deftest ^:parallel spawn-linked-process-traps-exits-according-options)
+(deftest ^:parallel spawn-linked-process-linked-according-options)
+(deftest ^:parallel spawn-linked-process-registered-according-options)
+(deftest ^:parallel spawn-linked-process-does-not-trap-exits-by-default)
 
 ;; ====================================================================
 ;; (monitor [pid])
