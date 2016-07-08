@@ -166,8 +166,8 @@
 (defn link [pid]
   {:pre [(pid? pid)]
    :post [(true? %)]}
-  (or
-    (two-phase-start (self) pid link-fn)
+  (if-let [complete (two-phase-start (self) pid link-fn)]
+    true
     (throw (Exception. "stopped"))))
 
 (defn- unlink-fn [phase {:keys [linked pid]} other-pid]
