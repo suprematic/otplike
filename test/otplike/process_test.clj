@@ -868,24 +868,42 @@
 ;;   exits after the call to unlink.
 ;;   Throws when called not in process context, or pid is not a pid.
 
-(deftest unlink-removes-link-to-alive-process)
-(deftest unlink-returns-true)
-(deftest unlink-throws-on-not-a-pid)
-(deftest unlink-returns-true-there-is-no-link)
-(deftest unlink-returns-true-if-pid-does-not-exist)
-(deftest unlink-prevents-exit-after-linked-process-failed)
-(deftest unlink-prevents-exit-message-after-linked-process-failed)
-(deftest unlink-does-not-prevent-exit-message-after-it-has-been-placed-to-inbox)
-(deftest unlink-does-not-affect-process-when-called-multiple-times)
+(deftest ^:parallel unlink-removes-link-to-alive-process)
+(deftest ^:parallel unlink-returns-true)
+(deftest ^:parallel unlink-throws-on-not-a-pid)
+(deftest ^:parallel unlink-returns-true-there-is-no-link)
+(deftest ^:parallel unlink-returns-true-if-pid-does-not-exist)
+(deftest ^:parallel unlink-prevents-exit-after-linked-process-failed)
+(deftest ^:parallel unlink-prevents-exit-message-after-linked-process-failed)
+(deftest ^:parallel unlink-does-not-prevent-exit-message-after-it-has-been-placed-to-inbox)
+(deftest ^:parallel unlink-does-not-affect-process-when-called-multiple-times)
 
 ;; ====================================================================
 ;; (spawn [proc-fun args options])
 ;;   Returns the process identifier of a new process started by the
 ;;   application of proc-fun to args.
+;;   options argument is a map of option names (keyword) to its values.
 ;;   The following options are allowed:
-;;   ...
+;;     :flags - a map of process' flags (e.g. {:trap-exit true})
+;;     :register - any valid name to register process
+;;     :link-to - pid or sequence of pids to link process to
+;;     :inbox-size -
+;;     :name -
 
-(deftest ^:parallel process-does-not-trap-exits-by-default)
+(deftest ^:parallel spawn-calls-proc-fn)
+(deftest ^:parallel spawn-calls-proc-fn-with-arguments)
+(deftest ^:parallel spawn-returns-process-pid)
+(deftest ^:parallel spawn-throws-on-illegal-arguments)
+(deftest ^:parallel spawn-throws-if-proc-fn-returns-not-a-read-port)
+(deftest ^:parallel spawn-throws-if-proc-fn-throws)
+(deftest ^:parallel spawn-passes-opened-read-port-to-proc-fn-as-inbox)
+(deftest ^:parallel spawned-process-is-reachable)
+
+; options
+(deftest ^:parallel spawned-process-traps-exits-according-options)
+(deftest ^:parallel spawned-process-linked-according-options)
+(deftest ^:parallel spawned-process-registered-according-options)
+(deftest ^:parallel spawned-process-does-not-trap-exits-by-default)
 
 ;; ====================================================================
 ;; (spawn-link [proc-fun args options])
@@ -894,6 +912,7 @@
 ;;   calling process and the new process, atomically. Otherwise works
 ;;   like spawn/3.
 ;;   Throws when called not in process context.
+
 
 
 ;; ====================================================================
