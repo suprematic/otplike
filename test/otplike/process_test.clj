@@ -867,21 +867,30 @@
 ;; ====================================================================
 ;; (unlink [pid])
 ;;   Removes the link, if there is one, between the calling process and
-;;   the process or port referred to by pid.
+;;   the process referred to by pid.
 ;;   Returns true and does not fail if there is no link to pid, or if
 ;;   pid does not exist.
 ;;   Once unlink has returned, it is guaranteed that the link between
 ;;   the caller and the entity referred to by pid has no effect on the
 ;;   caller in the future (unless the link is setup again).
-;;   If the caller is trapping exits, an [:EXIT, pid, _] message from
+;;   If the caller is trapping exits, an [:EXIT pid _] message from
 ;;   the link can have been placed in the caller's message queue before
 ;;   the call.
-;;   Notice that the [:EXIT, pid, _] message can be the result of the
-;;   link, but can also be the result of Id calling exit. Therefore,
+;;   Notice that the [:EXIT pid _] message can be the result of the
+;;   link, but can also be the result of pid calling exit. Therefore,
 ;;   it can be appropriate to clean up the message queue when trapping
 ;;   exits after the call to unlink.
+;;   Throws when called not in process context, or pid is not a pid.
 
-
+(deftest unlink-removes-link-to-alive-process)
+(deftest unlink-returns-true)
+(deftest unlink-throws-on-not-a-pid)
+(deftest unlink-returns-true-there-is-no-link)
+(deftest unlink-returns-true-if-pid-does-not-exist)
+(deftest unlink-prevents-exit-after-linked-process-failed)
+(deftest unlink-prevents-exit-message-after-linked-process-failed)
+(deftest unlink-does-not-prevent-exit-message-after-it-has-been-placed-to-inbox)
+(deftest unlink-does-not-affect-process-when-called-multiple-times)
 
 ;; ====================================================================
 ;; (spawn [proc-fun args options])
