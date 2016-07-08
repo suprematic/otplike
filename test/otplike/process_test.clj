@@ -651,7 +651,7 @@
     (is (thrown? Throwable (process/link (process/spawn proc-fn [] {})))
         "link must throw when called not in process context")))
 
-(deftest ^:parallel link-throws-when-called-not-in-process-context
+(deftest ^:parallel link-throws-when-called-with-not-a-pid
   (is (thrown? Throwable (process/link nil))
       "link must throw when called with not a pid argument")
   (is (thrown? Throwable (process/link 1))
