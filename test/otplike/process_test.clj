@@ -616,10 +616,12 @@
 ;;   Creates a link between the calling process and another process
 ;;   identified by pid, if there is not such a link already. If a
 ;;   process attempts to create a link to itself, nothing is done.
-;;   If pid does not exist and the calling process is trapping exits,
-;;   an exit signal with reason :noproc is sent to the calling process.
+;;   If pid does not exist and the calling process
+;;   1. is trapping exits - an exit signal with reason :noproc is sent
+;;   to the calling process.
+;;   2. is not trapping exits - link closes process' inbox and may throw.
 ;;   Returns true.
-;;   Throws when called not in process context or pid is not a pid.
+;;   Throws when called not in process context, or pid is not a pid.
 
 (deftest ^:parallel link-returns-true
   (let [pid (process/spawn (fn [_] (go)) [] {})
