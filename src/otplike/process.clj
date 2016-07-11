@@ -2,7 +2,8 @@
   (:require [clojure.core.async :as async :refer [<!! <! >! put! go go-loop]]
             [clojure.core.async.impl.protocols :as ap]
             [clojure.core.match :refer [match]]
-            [otplike.trace :as trace]))
+            [otplike.trace :as trace]
+            [clojure.core.async.impl.protocols :as impl]))
 
 (def ^:private *pids
   (atom 0))
@@ -190,28 +191,31 @@
   {:pre [(instance? ProcessRecord process)]
    :post []}
   (trace/trace pid [:control message])
-  (go
     (let [trap-exit (:trap-exit @flags)]
       (match message
-        [:exit xpid :kill] :killed
-        [:exit xpid :normal] (when trap-exit
-                               (! pid [:EXIT xpid :normal])
-                               nil)
-        [:exit xpid reason] (if trap-exit
-                              (do
-                                (! pid [:EXIT xpid reason])
-                                nil)
-                              reason)
-        [:two-phase
-         complete other cfn] (let [p1result (two-phase process other pid cfn)]
-                               (<! p1result)
-                               (async/close! complete)
-                               nil)
-        [:two-phase-p1
-         result other-pid cfn] (do
-                                 (async/put! result
-                                             (cfn :phase-one process other-pid))
-                                 nil)))))
+        [:exit xpid :kill]
+        :killed
+        [:exit xpid :normal]
+        (when trap-exit
+          (! pid [:EXIT xpid :normal])
+          nil)
+        [:exit xpid reason]
+        (if trap-exit
+          (do
+            (! pid [:EXIT xpid reason])
+            nil)
+          reason)
+        [:two-phase complete other cfn]
+        (go
+          (let [p1result (two-phase process other pid cfn)]
+            (<! p1result)
+            (async/close! complete)
+            nil))
+        [:two-phase-p1 result other-pid cfn]
+        (go
+          (>! result
+            (cfn :phase-one process other-pid))
+          nil))))
 
 (defprotocol IClose
   (close! [_]))
@@ -295,7 +299,9 @@
                 (loop []
                   (if-let [reason (match (async/alts! [control return])
                                     [val control]
-                                    (<! (dispatch-control process val))
+                                    (let [reason (dispatch-control process val)]
+                                      (if (satisfies? ap/ReadPort reason)
+                                        (<! reason) reason))
 
                                     [val return]
                                     (do
