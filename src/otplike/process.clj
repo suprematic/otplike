@@ -213,19 +213,6 @@
                                              (cfn :phase-one process other-pid))
                                  nil)))))
 
-; TODO get rid of this fn moving its code to calling fn
-(defn- dispatch
-  [{:keys [pid control return] :as process} {message 0 port 1 :as mp}]
-  {:pre [(instance? ProcessRecord process)
-         (satisfies? ap/ReadPort port)
-         (vector? mp) (= 2 (count mp))]}
-  (go
-    (condp = port
-      return (do
-               (trace/trace pid [:return (or message :nil)])
-               (if (some? message) message :nil))
-      control (<! (dispatch-control process message)))))
-
 (defprotocol IClose
   (close! [_]))
 
@@ -306,23 +293,32 @@
                   (<! (two-phase process link-to pid link-fn)))) ; wait for protocol to complete
               (let [process (assoc process :return return)]
                 (loop []
-                  (let [vp (async/alts! [control return])]
-                    (if-let [reason (<! (dispatch process vp))]
-                      (do
-                        (trace/trace pid [:terminate reason])
-                        (close! outbox)
-                        (dosync
-                          (swap! *processes dissoc pid)
-                          (when register
-                            (swap! *registered dissoc register))
-                          (doseq [p @linked]
-                            (when-let [p (@*processes p)]
-                              (swap! (:linked p) disj process))))
+                  (if-let [reason (match (async/alts! [control return])
+                                    [val control]
+                                    (<! (dispatch-control process val))
+
+                                    [val return]
+                                    (do
+                                      (trace/trace pid [:return (or val :nil)])
+                                      (if (some? val) val :nil))
+
+                                    (:or [nil control] [nil return]); what else should we do?
+                                    :INTERNAL-PROCESS-ERROR)]
+                    (do
+                      (trace/trace pid [:terminate reason])
+                      (close! outbox)
+                      (dosync
+                        (swap! *processes dissoc pid)
+                        (when register
+                          (swap! *registered dissoc register))
                         (doseq [p @linked]
-                          (!control p [:exit pid reason]))
-                        (doseq [p @monitors]
-                          (! p [:down pid reason])))
-                      (recur))))))))))
+                          (when-let [p (@*processes p)]
+                            (swap! (:linked p) disj process))))
+                      (doseq [p @linked]
+                        (!control p [:exit pid reason]))
+                      (doseq [p @monitors]
+                        (! p [:down pid reason])))
+                    (recur)))))))))
     pid))
 
 (defn spawn-link [proc-func params opts]
