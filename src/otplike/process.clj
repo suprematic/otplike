@@ -194,28 +194,30 @@
     (let [trap-exit (:trap-exit @flags)]
       (match message
         [:exit xpid :kill]
-        :killed
+        [::break :killed]
         [:exit xpid :normal]
-        (when trap-exit
-          (! pid [:EXIT xpid :normal])
-          nil)
+        (do
+          (when trap-exit
+            (! pid [:EXIT xpid :normal]))
+            ::continue)
+
         [:exit xpid reason]
         (if trap-exit
           (do
             (! pid [:EXIT xpid reason])
-            nil)
-          reason)
+            ::continue)
+          [::break reason])
         [:two-phase complete other cfn]
         (go
           (let [p1result (two-phase process other pid cfn)]
             (<! p1result)
             (async/close! complete)
-            nil))
+            ::continue))
         [:two-phase-p1 result other-pid cfn]
         (go
           (>! result
             (cfn :phase-one process other-pid))
-          nil))))
+          ::continue))))
 
 (defprotocol IClose
   (close! [_]))
@@ -297,34 +299,38 @@
                   (<! (two-phase process link-to pid link-fn)))) ; wait for protocol to complete
               (let [process (assoc process :return return)]
                 (loop []
-                  (if-let [reason (match (async/alts! [control return])
+                  (let [proceed (match (async/alts! [control return])
                                     [val control]
-                                    (let [reason (dispatch-control process val)]
-                                      (if (satisfies? ap/ReadPort reason)
-                                        (<! reason) reason))
+                                    (let [proceed (dispatch-control process val)]
+                                      (if (satisfies? ap/ReadPort proceed)
+                                        (<! proceed) proceed))
 
                                     [val return]
                                     (do
                                       (trace/trace pid [:return (or val :nil)])
-                                      (if (some? val) val :nil))
+                                      [::break (if (some? val) val :nil)])
 
-                                    (:or [nil control] [nil return]); what else should we do?
-                                    :INTERNAL-PROCESS-ERROR)]
-                    (do
-                      (trace/trace pid [:terminate reason])
-                      (close! outbox)
-                      (dosync
-                        (swap! *processes dissoc pid)
-                        (when register
-                          (swap! *registered dissoc register))
+                                    (:or [nil control] [nil return])
+                                    nil)]
+                    (match proceed
+                      ::continue
+                      (recur)
+
+                      [::break reason]
+                      (do
+                        (trace/trace pid [:terminate reason])
+                        (close! outbox)
+                        (dosync
+                          (swap! *processes dissoc pid)
+                          (when register
+                            (swap! *registered dissoc register))
+                          (doseq [p @linked]
+                            (when-let [p (@*processes p)]
+                              (swap! (:linked p) disj process))))
                         (doseq [p @linked]
-                          (when-let [p (@*processes p)]
-                            (swap! (:linked p) disj process))))
-                      (doseq [p @linked]
-                        (!control p [:exit pid reason]))
-                      (doseq [p @monitors]
-                        (! p [:down pid reason])))
-                    (recur)))))))))
+                          (!control p [:exit pid reason]))
+                        (doseq [p @monitors]
+                          (! p [:down pid reason]))))))))))))
     pid))
 
 (defn spawn-link [proc-func params opts]
