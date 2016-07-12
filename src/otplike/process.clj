@@ -125,17 +125,20 @@
   (set (keys @*registered)))
 
 (defn- two-phase-start [pid1 pid2 cfn]
-  {:pre [(pid? pid1) (pid? pid2) (fn? cfn)]
+  {:pre [(pid? pid1)
+         (pid? pid2)
+         (not= pid1 pid2)
+         (fn? cfn)]
    :post [(or (nil? %) (satisfies? ap/ReadPort %))]}
   (let [complete (async/chan)]
     (if (!control pid1 [:two-phase complete pid2 cfn]) complete)))
 
 (defn- two-phase [process p1pid p2pid cfn]
   {:pre [(instance? ProcessRecord process)
-         (fn? cfn)
          (pid? p1pid)
+         (pid? p2pid)
          (not= p1pid p2pid)
-         (pid? p2pid)]
+         (fn? cfn)]
    :post [(satisfies? ap/ReadPort %)]}
   (go
     (let [p1result-chan (async/chan)
@@ -276,7 +279,8 @@
          (sequential? params)
          (map? options) ;FIXME check for unknown options
          (or (nil? link-to) (pid? link-to) (every? pid? link-to))
-         (or (nil? inbox-size) (not (neg? inbox-size)))
+         (or (nil? inbox-size)
+             (and (integer? inbox-size) (not (neg? inbox-size))))
          (or (nil? flags) (map? flags))] ;FIXME check for unknown flags
    :post [(pid? %)]}
   (let [proc-func (resolve-proc-func proc-func)
