@@ -36,7 +36,7 @@
 (defn pid->str [^Pid {:keys [id name] :as pid}]
   {:pre [(pid? pid)]
    :post [(string? %)]}
-  (str "<" (if name (str (str name) "@" id) id) ">"))
+  (str "<" (if name (str name "@" id) id) ">"))
 
 (defmethod print-method Pid [o w]
   (print-simple (pid->str o) w))
@@ -131,7 +131,8 @@
          (fn? cfn)]
    :post [(or (nil? %) (satisfies? ap/ReadPort %))]}
   (let [complete (async/chan)]
-    (if (!control pid1 [:two-phase complete pid2 cfn]) complete)))
+    (when (!control pid1 [:two-phase complete pid2 cfn])
+      complete)))
 
 (defn- two-phase [process p1pid p2pid cfn]
   {:pre [(instance? ProcessRecord process)
