@@ -341,11 +341,3 @@
    :post [(pid? %)]}
   (let [opts (update-in opts [:link-to] conj (self))]
     (spawn proc-func params opts)))
-
-; TODO move to util namespace
-(defn pipe [from to]
-  (go-loop []
-    (let [message (<! from)]
-      (! to [from message])
-      (when message
-        (recur)))))
