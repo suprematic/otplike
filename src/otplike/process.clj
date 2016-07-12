@@ -200,28 +200,33 @@
   {:pre [(instance? ProcessRecord process)]
    :post []}
   (trace/trace pid [:control message])
-  (go
-    (let [trap-exit (:trap-exit @flags)]
-      (match message
-        [:exit xpid :kill] :killed
-        [:exit xpid :normal] (when trap-exit
+  (let [trap-exit (:trap-exit @flags)]
+    ; each case of match wrapped into its own (go ...) block to workaround
+    ; core.async bug http://dev.clojure.org/jira/browse/ASYNC-100
+    (match message
+      [:exit xpid :kill] (go :killed)
+      [:exit xpid :normal] (go
+                             (when trap-exit
                                (! pid [:EXIT xpid :normal])
-                               nil)
-        [:exit xpid reason] (if trap-exit
+                               nil))
+      [:exit xpid reason] (go
+                            (if trap-exit
                               (do
                                 (! pid [:EXIT xpid reason])
                                 nil)
-                              reason)
-        [:two-phase
-         complete other cfn] (let [p1result (two-phase process other pid cfn)]
+                              reason))
+      [:two-phase
+       complete other cfn] (go
+                             (let [p1result (two-phase process other pid cfn)]
                                (<! p1result)
                                (async/close! complete)
-                               nil)
-        [:two-phase-p1
-         result other-pid cfn] (do
+                               nil))
+      [:two-phase-p1
+       result other-pid cfn] (go
+                               (do
                                  (cfn :phase-one process other-pid)
                                  (async/close! result)
-                                 nil))))
+                                 nil)))))
 
 ; TODO get rid of this fn moving its code to calling fn
 (defn- dispatch
