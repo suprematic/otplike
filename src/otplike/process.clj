@@ -147,7 +147,7 @@
       (if (!control p1pid [:two-phase-p1 p1result-chan p2pid cfn])
         (let [timeout (async/timeout *control-timout)]
           (match (async/alts! [p1result-chan timeout])
-            [_ p1result-chan]
+            [nil p1result-chan]
             (do
               (cfn :phase-two process p1pid)
               nil)
@@ -213,9 +213,9 @@
                                nil)
         [:two-phase-p1
          result other-pid cfn] (do
-                                 (async/put! result
-                                             (cfn :phase-one process other-pid))
-                                 nil)))))
+                                 (cfn :phase-one process other-pid)
+                                 (async/close! result)
+                                 nil))))
 
 ; TODO get rid of this fn moving its code to calling fn
 (defn- dispatch
