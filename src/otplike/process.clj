@@ -2,7 +2,8 @@
   (:require [clojure.core.async :as async :refer [<!! <! >! put! go go-loop]]
             [clojure.core.async.impl.protocols :as ap]
             [clojure.core.match :refer [match]]
-            [otplike.trace :as trace]))
+            [otplike.trace :as trace]
+            [clojure.core.async.impl.protocols :as impl]))
 
 (def ^:private *pids
   (atom 0))
@@ -198,41 +199,30 @@
   {:pre [(instance? ProcessRecord process)]
    :post []}
   (trace/trace pid [:control message])
-  (let [trap-exit (:trap-exit @flags)]
-    ; each case of match wrapped into its own (go ...) block to workaround
-    ; core.async bug http://dev.clojure.org/jira/browse/ASYNC-100
-    (match message
-      [:exit xpid :kill] (go :killed)
-      [:exit xpid :normal] (go
-                             (when trap-exit
-                               (->nil (! pid [:EXIT xpid :normal]))))
-      [:exit xpid reason] (go
-                            (if trap-exit
-                              (->nil (! pid [:EXIT xpid reason]))
-                              reason))
-      [:two-phase
-       complete other cfn] (go
-                             (let [p1result (two-phase process other pid cfn)]
-                               (<! p1result)
-                               (->nil (async/close! complete))))
-      [:two-phase-p1
-       result other-pid cfn] (go
-                               (do
-                                 (cfn :phase-one process other-pid)
-                                 (->nil (async/close! result)))))))
+    (let [trap-exit (:trap-exit @flags)]
+      (match message
+        [:exit xpid :kill] [::break :killed]
+        [:exit xpid :normal] (do
+                               (when trap-exit
+                                 (! pid [:EXIT xpid :normal]))
+                               ::continue)
 
-; TODO get rid of this fn moving its code to calling fn
-(defn- dispatch
-  [{:keys [pid control return] :as process} {message 0 port 1 :as mp}]
-  {:pre [(instance? ProcessRecord process)
-         (satisfies? ap/ReadPort port)
-         (vector? mp) (= 2 (count mp))]}
-  (go
-    (condp = port
-      return (do
-               (trace/trace pid [:return (or message :nil)])
-               (if (some? message) message :nil))
-      control (<! (dispatch-control process message)))))
+        [:exit xpid reason] (if trap-exit
+                              (do
+                                (! pid [:EXIT xpid reason])
+                                ::continue)
+                              [::break reason])
+        [:two-phase
+         complete other cfn] (go
+                               (let [p1result (two-phase process other pid cfn)]
+                                 (<! p1result)
+                                 (async/close! complete)
+                                 ::continue))
+        [:two-phase-p1
+         result other-pid cfn] (go
+                                 (cfn :phase-one process other-pid)
+                                 (async/close! result)
+                                 ::continue))))
 
 (defprotocol IClose
   (close! [_]))
@@ -315,8 +305,24 @@
                   (<! (two-phase process link-to pid link-fn)))) ; wait for protocol to complete
               (let [process (assoc process :return return)]
                 (loop []
-                  (let [vp (async/alts! [control return])]
-                    (if-let [reason (<! (dispatch process vp))]
+                  (let [proceed (match (async/alts! [control return])
+                                    [val control]
+                                    (let [proceed (dispatch-control process val)]
+                                      (if (satisfies? ap/ReadPort proceed)
+                                        (<! proceed) proceed))
+
+                                    [val return]
+                                    (do
+                                      (trace/trace pid [:return (or val :nil)])
+                                      [::break (if (some? val) val :nil)])
+
+                                    (:or [nil control] [nil return])
+                                    nil)]
+                    (match proceed
+                      ::continue
+                      (recur)
+
+                      [::break reason]
                       (do
                         (trace/trace pid [:terminate reason])
                         (close! outbox)
@@ -330,8 +336,7 @@
                         (doseq [p @linked]
                           (!control p [:exit pid reason]))
                         (doseq [p @monitors]
-                          (! p [:down pid reason])))
-                      (recur))))))))))
+                          (! p [:down pid reason]))))))))))))
     pid))
 
 (defn spawn-link [proc-func params opts]
