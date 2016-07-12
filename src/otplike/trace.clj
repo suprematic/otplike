@@ -11,7 +11,8 @@
     [:terminate reason]
     (when-not (or (= reason :normal) (= reason :shutdown))
       (locking println
-        (println "ERROR: " pid "terminated with reason: " reason)))
+        (println "ERROR:" pid "terminated with reason"
+                 (clojure.pprint/write reason :stream nil))))
     _
     nil))
 
@@ -56,5 +57,5 @@
         [_ pid [:terminate reason]]
         true
         _
-        false
-        )) trace))
+        false))
+    trace))
