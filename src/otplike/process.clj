@@ -17,6 +17,8 @@
 
 (def ^:private ^:dynamic *self* nil)
 
+(defn- ->nil [x])
+
 (declare pid->str)
 
 (defrecord Pid [id name]
@@ -143,16 +145,12 @@
    :post [(satisfies? ap/ReadPort %)]}
   (go
     (let [p1result-chan (async/chan)
-          noproc #(do (cfn :noproc process p1pid) nil)]
+          noproc #(->nil (cfn :noproc process p1pid))]
       (if (!control p1pid [:two-phase-p1 p1result-chan p2pid cfn])
         (let [timeout (async/timeout *control-timout)]
           (match (async/alts! [p1result-chan timeout])
-            [nil p1result-chan]
-            (do
-              (cfn :phase-two process p1pid)
-              nil)
-            [nil timeout]
-            (noproc)))
+            [nil p1result-chan] (->nil (cfn :phase-two process p1pid))
+            [nil timeout] (noproc)))
         (noproc)))))
 
 (defn- link-fn [phase {:keys [linked pid]} other-pid]
@@ -207,26 +205,21 @@
       [:exit xpid :kill] (go :killed)
       [:exit xpid :normal] (go
                              (when trap-exit
-                               (! pid [:EXIT xpid :normal])
-                               nil))
+                               (->nil (! pid [:EXIT xpid :normal]))))
       [:exit xpid reason] (go
                             (if trap-exit
-                              (do
-                                (! pid [:EXIT xpid reason])
-                                nil)
+                              (->nil (! pid [:EXIT xpid reason]))
                               reason))
       [:two-phase
        complete other cfn] (go
                              (let [p1result (two-phase process other pid cfn)]
                                (<! p1result)
-                               (async/close! complete)
-                               nil))
+                               (->nil (async/close! complete))))
       [:two-phase-p1
        result other-pid cfn] (go
                                (do
                                  (cfn :phase-one process other-pid)
-                                 (async/close! result)
-                                 nil)))))
+                                 (->nil (async/close! result)))))))
 
 ; TODO get rid of this fn moving its code to calling fn
 (defn- dispatch
