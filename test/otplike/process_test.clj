@@ -6,6 +6,8 @@
             [clojure.core.async.impl.protocols :as ap]
             [clojure.core.match :refer [match]]))
 
+(trace/set-trace  (fn  [_pid _event]))
+
 (defn- uuid-keyword []
   (keyword (str (java.util.UUID/randomUUID))))
 
@@ -32,7 +34,7 @@
    (if e
      (recur (.getCause e)
             (conj acc {:message (.getMessage e)
-                       :class (str (class e))
+                       :class (.getName (class e))
                        :stack-trace (mapv str (.getStackTrace e))}))
      acc)))
 
@@ -469,6 +471,11 @@
 
 ;; ====================================================================
 ;; (flag [flag value])
+;;   Sets the value of a process flag. See description of each flag
+;;   below.
+;;   Returns the old value of a flag.
+;;   Throws when called not in process context.
+;;
 ;;   :trap-exit
 ;;   When :trap-exit is set to true, exit signals arriving to a process
 ;;   are converted to [:EXIT, from, reason] messages, which can be
@@ -476,56 +483,61 @@
 ;;   process exits if it receives an exit signal other than :normal and
 ;;   the exit signal is propagated to its linked processes. Application
 ;;   processes are normally not to trap exits.
-;;   :other-flag
-;;   ...
-;;   Returns the old value of the flag.
-;;   Throws when called not in process context.
 
-#_(deftest ^:parallel flag-trap-exit-true-makes-process-to-trap-exits
-  (let [done (async/chan)
-        proc-fn (defproc [inbox]
-                  (process/flag :trap-exit true)
-                  (is (= [:exit-message [:reason :normal]]
-                         (<! (await-message inbox 300)))
-                      (str "flag :trap-exit set to true in process must"
-                           " make process to trap exits"))
-                  (async/close! done))
-        pid (process/spawn proc-fn [] {})]
-    (match (process/exit pid :normal) true :ok)
-    (await-completion done 500)))
-
-#_(deftest ^:parallel flag-trap-exit-false-makes-process-not-to-trap-exits
-  (let [done (async/chan)
-        proc-fn (defproc [inbox]
-                  (process/flag :trap-exit false)
-                  (is (= :timeout (<! (await-message inbox 300)))
-                      (str "flag :trap-exit set to false in process must"
-                           " make process not to trap exits"))
-                  (async/close! done))
-        pid (process/spawn proc-fn [] {:flags {:trap-exit true}})]
-    (match (process/exit pid :normal) true :ok)
-    (await-completion done 500)))
-
-#_(deftest ^:parallel flag-trap-exit-switches-trapping-exit
+(deftest ^:parallel flag-trap-exit-true-makes-process-to-trap-exits
   (let [done1 (async/chan)
         done2 (async/chan)
         proc-fn (defproc [inbox]
                   (process/flag :trap-exit true)
-                  (is (= [:EXIT [:reason :abnormal]]
-                         (<! (await-message inbox 300)))
+                  (async/close! done1)
+                  (is (= [:exit-message [:reason :normal]]
+                         (<! (await-message inbox 100)))
+                      (str "flag :trap-exit set to true in process must"
+                           " make process to trap exits"))
+                  (async/close! done2))
+        pid (process/spawn proc-fn [] {})]
+    (await-completion done1 100)
+    (match (process/exit pid :normal) true :ok)
+    (await-completion done2 200)))
+
+(deftest ^:parallel flag-trap-exit-false-makes-process-not-to-trap-exits
+  (let [done1 (async/chan)
+        done2 (async/chan)
+        proc-fn (defproc [inbox]
+                  (process/flag :trap-exit false)
+                  (async/close! done1)
+                  (is (= :timeout (<! (await-message inbox 100)))
+                      (str "flag :trap-exit set to false in process must"
+                           " make process not to trap exits"))
+                  (async/close! done2))
+        pid (process/spawn proc-fn [] {:flags {:trap-exit true}})]
+    (await-completion done1 100)
+    (match (process/exit pid :normal) true :ok)
+    (await-completion done2 200)))
+
+(deftest ^:parallel flag-trap-exit-switches-trapping-exit
+  (let [done1 (async/chan)
+        done2 (async/chan)
+        done3 (async/chan)
+        proc-fn (defproc [inbox]
+                  (process/flag :trap-exit true)
+                  (async/close! done1)
+                  (is (= [:exit-message [:reason :abnormal]]
+                         (<! (await-message inbox 50)))
                       (str "flag :trap-exit set to true in process must"
                            " make process to trap exits"))
                   (process/flag :trap-exit false)
-                  (async/close! done1)
-                  (is (= :inbox-closed (<! (await-message inbox 300)))
+                  (async/close! done2)
+                  (is (= :inbox-closed (<! (await-message inbox 100)))
                       (str "flag :trap-exit switched second time  in process"
                            " must make process to switch trapping exits"))
-                  (async/close! done2))
+                  (async/close! done3))
         pid (process/spawn proc-fn [] {})]
+    (await-completion done1 100)
     (match (process/exit pid :abnormal) true :ok)
-    (await-completion done1 500)
+    (await-completion done2 200)
     (match (process/exit pid :abnormal) true :ok)
-    (await-completion done2 500)))
+    (await-completion done3 300)))
 
 (deftest ^:parallel flag-trap-exit-returns-old-value
   (let [done (async/chan)
@@ -964,38 +976,6 @@
                (process/unlink (process/spawn (defproc [_inbox]) [] {})))
       "unlink must throw when called not in process context"))
 
-#_(deftest ^:parallel unlink-prevents-exit-after-linked-process-failed
-  (let [done (async/chan)
-        done1 (async/chan)
-        proc-fn1 (defproc [_inbox]
-                   (is (await-completion done1 200) "test failed")
-                   (throw (Exception.
-                            (str "TEST: terminating abnormally to test unlink"
-                                 " prevents exit when previously linked process"
-                                 " have exited abnormally"))))
-        pid (process/spawn proc-fn1 [] {})
-        proc-fn2 (fn [inbox]
-                   (go
-                     (println "<1>")
-                     (process/link pid)
-                     (println "<2>")
-                     (<! (async/timeout 50))
-                     (println "<3>")
-                     (async/close! done1)
-                     (println "<4>")
-                     (<! (async/timeout 100))
-                     (println "<5>")
-                     (process/unlink pid)
-                     (println "<6>")
-                     (is (= :timeout (<! (await-message inbox 100)))
-                         (str "abnormally terminated linked process, terminated"
-                              " before unlink have been called, must not"
-                              " affect process after unlink have been called"))
-                     (println "<7>")
-                     (async/close! done)))]
-    (process/spawn proc-fn2 [] {})
-    (await-completion done 300)))
-
 (deftest ^:parallel unlink-prevents-exit-message-after-linked-process-failed
   (let [done (async/chan)
         done1 (async/chan)
@@ -1160,7 +1140,7 @@
       "spawn must throw if options is not a map")
   (is (thrown? Throwable (process/spawn (defproc [_]) [] [1 2 3]))
       "spawn must throw if options is not a map")
-  #_(is (thrown? Throwable (process/spawn (defproc [_]) [] '()))
+  (is (thrown? Throwable (process/spawn (defproc [_]) [] '(1)))
       "spawn must throw if options is not a map")
   (is (thrown? Throwable (process/spawn (defproc [_]) [] #{}))
       "spawn must throw if options is not a map")
@@ -1182,21 +1162,6 @@
   (is (thrown? Throwable
                (process/spawn (defproc [_]) [] {:link-to [1]}))
       "spawn must throw if :link-to option is not a pid or collection of pids")
-  #_(is (thrown? Throwable
-                 (process/spawn (defproc [_]) [] {:link-to nil}))
-        "")
-  #_(is (thrown? Throwable
-                 (process/spawn (defproc [_]) [] {:flags nil}))
-        "")
-  #_(is (thrown? Throwable
-                 (process/spawn (defproc [_]) [] {:register nil}))
-        "")
-  #_(is (thrown? Throwable
-                 (process/spawn (defproc [_]) [] {:name nil}))
-        "")
-  #_(is (thrown? Throwable
-                 (process/spawn (defproc [_]) [] {:inbox-size nil}))
-        "")
   (is (thrown? Throwable (process/spawn (defproc [_]) [] {:inbox-size -1}))
       "spawn must throw if :inbox-size option is not a non-negative integer")
   (is (thrown? Throwable (process/spawn (defproc [_]) [] {:inbox-size 1.1}))
@@ -1271,7 +1236,7 @@
                    (async/close! done))]
     (process/spawn proc-fn1 [] {:link-to pid})
     (await-completion done 300))
-  #_(let [done (async/chan)
+  (let [done (async/chan)
         proc-fn (defproc [inbox]
                   (is (= :inbox-closed (<! (await-message inbox 100)))
                       "test failed"))
@@ -1284,6 +1249,7 @@
                             " process exited"))
                    (async/close! done))]
     (process/spawn proc-fn1 [] {:link-to pid :flags {:trap-exit true}})
+    (<!! (async/timeout 50))
     (process/exit pid :abnormal)
     (await-completion done 300)))
 
