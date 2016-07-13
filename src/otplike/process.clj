@@ -33,10 +33,18 @@
       (trace/trace this [:inbound val])
       (ap/put! inbox val handler))))
 
-(defn pid? [pid]
+(defn pid?
+  "Returns true if term is a process identifier, false otherwise."
+  [pid]
   (instance? Pid pid))
 
-(defn pid->str [^Pid {:keys [id name] :as pid}]
+(defn pid->str
+  "Returns a string corresponding to the text representation of pid.
+  Throws if pid is not a process identifier.
+
+  Warning: this function is intended for debugging and is not to be
+  used in application programs."
+  [^Pid {:keys [id name] :as pid}]
   {:pre [(pid? pid)]
    :post [(string? %)]}
   (str "<" (if name (str name "@" id) id) ">"))
@@ -57,14 +65,21 @@
    :post [(instance? ProcessRecord %)]}
   (->ProcessRecord pid inbox control monitors exit outbox linked flags))
 
-(defn self []
+(defn self
+  "Returns the process identifier of the calling process.
+  Throws when called not in process context."
+  []
   {:post [(pid? %)]}
   (or *self* (throw (Exception. "not in process"))))
 
-(defn whereis [id]
-  {:pre [(some? id)]
+(defn whereis
+  "Returns the process identifier with the registered name reg-name,
+  or nil if the name is not registered.
+  Throws on nil argument."
+  [reg-name]
+  {:pre [(some? reg-name)]
    :post [(or (nil? %) (pid? %))]}
-  (@*registered id))
+  (@*registered reg-name))
 
 (defn- find-process [id]
   {:post [(or (nil? %) (instance? ProcessRecord %))]}
@@ -73,11 +88,16 @@
     (when-let [pid (whereis id)]
       (@*processes pid))))
 
-(defn ! [pid message]
-  {:pre [(some? pid)
+(defn !
+  "Sends a message to dest. dest can be a process identifier, or a
+  registered name.
+  Returns true if message was sent (process was alive), false otherwise.
+  Throws if any of arguments is nil."
+  [dest message]
+  {:pre [(some? dest)
          (some? message)]
    :post [(or (true? %) (false? %))]}
-  (if-let [{:keys [inbox]} (find-process pid)]
+  (if-let [{:keys [inbox]} (find-process dest)]
     (do
       (async/put! inbox message)
       true)
@@ -93,13 +113,49 @@
       true)
     false))
 
-(defn exit [pid reason]
+(defn exit
+  "Sends an exit signal with exit reason to the process identified
+  by pid.
+  If reason is any term, except :normal or :kill:
+  - if pid is not trapping exits, pid itself exits with exit reason.
+  - if pid is trapping exits, the exit signal is transformed into a
+    message [:EXIT, from, reason] and delivered to the message queue
+    of pid. from is the process identifier of the process that sent
+    the exit signal.
+  If reason is :normal, pid does not exit. If pid is trapping exits,
+  the exit signal is transformed into a message
+  [:EXIT, from, :normal] and delivered to its message queue.
+  If reason is :kill, an untrappable exit signal is sent to pid,
+  which unconditionally exits with reason :killed.
+  Returns true if exit signal was sent (process was alive), false
+  otherwise.
+  Throws if pid is not a pid, or message is nil.
+
+  Process exit means:
+  - process' inbox becomes closed
+  - future messages do not arrive to the process' inbox
+  - all linked/monitoring processes receive exit signal/message
+  - process no longer registered"
+
+  [pid reason]
   {:pre [(pid? pid)
          (some? reason)]
    :post [(or (true? %) (false? %))]}
   (!control pid [:exit nil reason]))
 
-(defn flag [flag value]
+(defn flag
+  "Sets the value of a process flag. See description of each flag below.
+  Returns the old value of a flag.
+  Throws when called not in process context.
+
+  :trap-exit
+  When :trap-exit is set to true, exit signals arriving to a process
+  are converted to [:EXIT, from, reason] messages, which can be
+  received as ordinary messages. If :trap-exit is set to false, the
+  process exits if it receives an exit signal other than :normal and
+  the exit signal is propagated to its linked processes. Application
+  processes are normally not to trap exits."
+  [flag value]
   {:pre [(keyword? flag)]
    :post []}
   (if-let [^ProcessRecord {:keys [flags]} (find-process (self))]
@@ -123,7 +179,9 @@
 (def demonitor
   (partial monitor* disj))
 
-(defn registered []
+(defn registered
+ "Returns a set of names of the processes that have been registered."
+ []
   {:post [(set? %)]}
   (set (keys @*registered)))
 
@@ -166,7 +224,17 @@
                (trace/trace pid [:link-timeout other-pid])
                (exit pid :noproc)))) ; TODO crash :noproc vs. exit :noproc
 
-(defn link [pid]
+(defn link
+  "Creates a link between the calling process and another process
+  identified by pid, if there is not such a link already. If a
+  process attempts to create a link to itself, nothing is done.
+  If pid does not exist and the calling process
+  1. is trapping exits - an exit signal with reason :noproc is sent
+  to the calling process.
+  2. is not trapping exits - link closes process' inbox and may throw.
+  Returns true.
+  Throws when called not in process context, or pid is not a pid."
+  [pid]
   {:pre [(pid? pid)]
    :post [(true? %)]}
   (let [s (self)]
@@ -184,7 +252,24 @@
       :phase-two (p2unlink :unlink-phase-two)
       :noproc (p2unlink :unlink-phase-two))))
 
-(defn unlink [pid]
+(defn unlink
+  "Removes the link, if there is one, between the calling process and
+  the process referred to by pid.
+  Returns true.
+  Does not fail if there is no link to pid, if pid is self pid, or
+  if pid does not exist.
+  Once unlink has returned, it is guaranteed that the link between
+  the caller and the entity referred to by pid has no effect on the
+  caller in the future (unless the link is setup again).
+  If the caller is trapping exits, an [:EXIT pid _] message from
+  the link can have been placed in the caller's message queue before
+  the call.
+  Notice that the [:EXIT pid _] message can be the result of the
+  link, but can also be the result of pid calling exit. Therefore,
+  it can be appropriate to clean up the message queue when trapping
+  exits after the call to unlink.
+  Throws when called not in process context, or pid is not a pid."
+  [pid]
   {:pre [(pid? pid)]
    :post [(true? %)]}
   (let [s (self)]
@@ -252,12 +337,12 @@
         (async/close! stop)))))
 
 ; TODO check exception thrown from proc-func
-(defn- start-process [proc-func inbox params]
+(defn- start-process [proc-func inbox args]
   {:pre [(fn? proc-func)
          (satisfies? ap/ReadPort inbox)
-         (sequential? params)]
+         (sequential? args)]
    :post [(satisfies? ap/ReadPort %)]}
-  (match (apply proc-func inbox params)
+  (match (apply proc-func inbox args)
     (chan :guard #(satisfies? ap/ReadPort %)) chan))
 
 (defn- resolve-proc-func [form]
@@ -268,10 +353,19 @@
     (symbol? form) (some-> form resolve var-get)))
 
 (defn spawn
-  "Returns the pid of newly created process."
-  [proc-func params {:keys [link-to inbox-size flags name register] :as options}]
+  "Returns the process identifier of a new process started by the
+  application of proc-fun to args.
+  options argument is a map of option names (keyword) to its values.
+
+  The following options are allowed:
+  :flags - a map of process' flags (e.g. {:trap-exit true})
+  :register - any valid name to register process
+  :link-to - pid or sequence of pids to link process to
+  :inbox-size -
+  :name - "
+  [proc-func args {:keys [link-to inbox-size flags name register] :as options}]
   {:pre [(or (fn? proc-func) (symbol? proc-func))
-         (sequential? params)
+         (sequential? args)
          (map? options) ;FIXME check for unknown options
          (or (nil? link-to) (pid? link-to) (every? pid? link-to))
          (or (nil? inbox-size)
@@ -296,9 +390,9 @@
               (throw (Exception. (str "already registered: " register))))
             (swap! *registered assoc register pid))
           (swap! *processes assoc pid process))
-        (trace/trace pid [:start (str proc-func) params options])
+        (trace/trace pid [:start (str proc-func) args options])
         (binding [*self* pid] ; workaround for ASYNC-170. once fixed, binding should move to (start-process...)
-          (let [return (start-process proc-func outbox params)]
+          (let [return (start-process proc-func outbox args)]
             (go
               (when link-to
                 (doseq [link-to (apply hash-set (flatten [link-to]))] ; ??? probably optimize by sending link requests concurently
@@ -306,18 +400,18 @@
               (let [process (assoc process :return return)]
                 (loop []
                   (let [proceed (match (async/alts! [control return])
-                                    [val control]
-                                    (let [proceed (dispatch-control process val)]
-                                      (if (satisfies? ap/ReadPort proceed)
-                                        (<! proceed) proceed))
+                                  [val control]
+                                  (let [proceed (dispatch-control process val)]
+                                    (if (satisfies? ap/ReadPort proceed)
+                                      (<! proceed) proceed))
 
-                                    [val return]
-                                    (do
-                                      (trace/trace pid [:return (or val :nil)])
-                                      [::break (if (some? val) val :nil)])
+                                  [val return]
+                                  (do
+                                    (trace/trace pid [:return (or val :nil)])
+                                    [::break (if (some? val) val :nil)])
 
-                                    (:or [nil control] [nil return])
-                                    nil)]
+                                  (:or [nil control] [nil return])
+                                  nil)]
                     (match proceed
                       ::continue
                       (recur)
@@ -339,8 +433,14 @@
                           (! p [:down pid reason]))))))))))))
     pid))
 
-(defn spawn-link [proc-func params opts]
+(defn spawn-link
+  "Returns the process identifier of a new process started by the
+  application of proc-fun to args. A link is created between the
+  calling process and the new process, atomically. Otherwise works
+  like spawn.
+  Throws when called not in process context."
+  [proc-func args opts]
   {:pre [(or (nil? opts) (map? opts))]
    :post [(pid? %)]}
   (let [opts (update-in opts [:link-to] conj (self))]
-    (spawn proc-func params opts)))
+    (spawn proc-func args opts)))

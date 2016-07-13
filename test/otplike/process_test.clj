@@ -52,8 +52,6 @@
 
 ;; ====================================================================
 ;; (self [])
-;;   Returns the process identifier of the calling process. Throws when
-;;   called not in process context.
 
 (deftest ^:parallel self-returns-process-pid-in-process-context
   (let [done (async/chan)]
@@ -77,7 +75,6 @@
 
 ;; ====================================================================
 ;; (pid? [term])
-;;   Returns true if term is a process identifier, false otherwise.
 
 (deftest ^:parallel pid?-returns-false-on-non-pid
   (is (not (process/pid? nil)) "pid? must return false on nonpid arguement")
@@ -95,10 +92,6 @@
 
 ;; ====================================================================
 ;; (pid->str [pid])
-;;   Returns a string corresponding to the text representation of pid.
-;;   Throws if pid is not a process identifier.
-;;   Warning: this function is intended for debugging and is not to be
-;;   used in application programs.
 
 (deftest ^:parallel pid->str-returns-string
   (is (string? (process/pid->str (process/spawn (defproc [_inbox]) [] {})))
@@ -122,8 +115,6 @@
 
 ;; ====================================================================
 ;; (whereis [reg-name])
-;;   Returns the process identifier with the registered name reg-name,
-;;   or nil if the name is not registered. Throws on nil argument.
 
 (deftest ^:parallel whereis-returns-process-pid-on-registered-name
   (let [done (async/chan)
@@ -161,9 +152,6 @@
 
 ;; ====================================================================
 ;; (! [dest message])
-;;   Sends a message to dest. dest can be a process identifier, or a
-;;   registered name. Returns true if message was sent (process was
-;;   alive), false otherwise. Throws if any of the arguments is nil.
 
 (deftest ^:parallel !-returns-true-sending-to-alive-process-by-pid
   (let [done (async/chan)
@@ -231,27 +219,6 @@
 
 ;; ====================================================================
 ;; (exit [pid reason])
-;;   Sends an exit signal with exit reason to the process identified
-;;   by pid.
-;;   If reason is any term, except :normal or :kill:
-;;   - if pid is not trapping exits, pid itself exits with exit reason.
-;;   - if pid is trapping exits, the exit signal is transformed into a
-;;     message [:EXIT, from, reason] and delivered to the message queue
-;;     of pid. from is the process identifier of the process that sent
-;;     the exit signal.
-;;   If reason is :normal, pid does not exit. If pid is trapping exits,
-;;   the exit signal is transformed into a message
-;;   [:EXIT, from, :normal] and delivered to its message queue.
-;;   If reason is :kill, an untrappable exit signal is sent to pid,
-;;   which unconditionally exits with reason :killed.
-;;   Returns true if exit signal was sent (process was alive), false
-;;   otherwise.
-;;   Throws if pid is not a pid, or message is nil.
-
-    ; inbox becomes closed
-    ; future messages do not arrive to the process' inbox
-    ; all linked/monitoring processes receive exit signal/message
-    ; process no longer registered
 
 (deftest ^:parallel exit-throws-on-nil-reason
   (let [done (async/chan)
@@ -471,18 +438,6 @@
 
 ;; ====================================================================
 ;; (flag [flag value])
-;;   Sets the value of a process flag. See description of each flag
-;;   below.
-;;   Returns the old value of a flag.
-;;   Throws when called not in process context.
-;;
-;;   :trap-exit
-;;   When :trap-exit is set to true, exit signals arriving to a process
-;;   are converted to [:EXIT, from, reason] messages, which can be
-;;   received as ordinary messages. If :trap-exit is set to false, the
-;;   process exits if it receives an exit signal other than :normal and
-;;   the exit signal is propagated to its linked processes. Application
-;;   processes are normally not to trap exits.
 
 (deftest ^:parallel flag-trap-exit-true-makes-process-to-trap-exits
   (let [done1 (async/chan)
@@ -581,7 +536,6 @@
 
 ;; ====================================================================
 ;; (registered [])
-;;   Returns a set of names of the processes that have been registered.
 
 (deftest ^:serial registered-returns-empty-seq-when-nothing-registered
   (is (empty? (process/registered))
@@ -613,15 +567,6 @@
 
 ;; ====================================================================
 ;; (link [pid])
-;;   Creates a link between the calling process and another process
-;;   identified by pid, if there is not such a link already. If a
-;;   process attempts to create a link to itself, nothing is done.
-;;   If pid does not exist and the calling process
-;;   1. is trapping exits - an exit signal with reason :noproc is sent
-;;   to the calling process.
-;;   2. is not trapping exits - link closes process' inbox and may throw.
-;;   Returns true.
-;;   Throws when called not in process context, or pid is not a pid.
 
 (deftest ^:parallel link-returns-true
   (let [pid (process/spawn (defproc [_]) [] {})
@@ -851,22 +796,6 @@
 
 ;; ====================================================================
 ;; (unlink [pid])
-;;   Removes the link, if there is one, between the calling process and
-;;   the process referred to by pid.
-;;   Returns true.
-;;   Does not fail if there is no link to pid, if pid is self pid, or
-;;   if pid does not exist.
-;;   Once unlink has returned, it is guaranteed that the link between
-;;   the caller and the entity referred to by pid has no effect on the
-;;   caller in the future (unless the link is setup again).
-;;   If the caller is trapping exits, an [:EXIT pid _] message from
-;;   the link can have been placed in the caller's message queue before
-;;   the call.
-;;   Notice that the [:EXIT pid _] message can be the result of the
-;;   link, but can also be the result of pid calling exit. Therefore,
-;;   it can be appropriate to clean up the message queue when trapping
-;;   exits after the call to unlink.
-;;   Throws when called not in process context, or pid is not a pid.
 
 (deftest ^:parallel unlink-removes-link-to-alive-process
   (let [done (async/chan)
@@ -1061,15 +990,6 @@
 
 ;; ====================================================================
 ;; (spawn [proc-fun args options])
-;;   Returns the process identifier of a new process started by the
-;;   application of proc-fun to args.
-;;   options argument is a map of option names (keyword) to its values.
-;;   The following options are allowed:
-;;     :flags - a map of process' flags (e.g. {:trap-exit true})
-;;     :register - any valid name to register process
-;;     :link-to - pid or sequence of pids to link process to
-;;     :inbox-size -
-;;     :name -
 
 (deftest ^:parallel spawn-calls-proc-fn
   (let [done (async/chan)]
@@ -1287,11 +1207,6 @@
 
 ;; ====================================================================
 ;; (spawn-link [proc-fun args options])
-;;   Returns the process identifier of a new process started by the
-;;   application of proc-fun to args. A link is created between the
-;;   calling process and the new process, atomically. Otherwise works
-;;   like spawn/3.
-;;   Throws when called not in process context.
 
 (deftest ^:parallel spawn-link-links-to-spawned-process
   (let [done (async/chan)
