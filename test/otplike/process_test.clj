@@ -98,19 +98,19 @@
       "pid->str must return string on pid argument"))
 
 (deftest ^:parallel pid->str-fails-on-non-pid
-  (is (thrown? Throwable (process/pid->str nil))
+  (is (thrown? Exception (process/pid->str nil))
       "pid->str must throw on nonpid arguement")
-  (is (thrown? Throwable (process/pid->str 1))
+  (is (thrown? Exception (process/pid->str 1))
       "pid->str must throw on nonpid arguement")
-  (is (thrown? Throwable (process/pid->str "not-a-pid"))
+  (is (thrown? Exception (process/pid->str "not-a-pid"))
       "pid->str must throw on nonpid arguement")
-  (is (thrown? Throwable (process/pid->str []))
+  (is (thrown? Exception (process/pid->str []))
       "pid->str must throw on nonpid arguement")
-  (is (thrown? Throwable (process/pid->str '()))
+  (is (thrown? Exception (process/pid->str '()))
       "pid->str must throw on nonpid arguement")
-  (is (thrown? Throwable (process/pid->str #{}))
+  (is (thrown? Exception (process/pid->str #{}))
       "pid->str must throw on nonpid arguement")
-  (is (thrown? Throwable (process/pid->str {}))
+  (is (thrown? Exception (process/pid->str {}))
       "pid->str must throw on nonpid arguement"))
 
 ;; ====================================================================
@@ -147,7 +147,7 @@
       "whereis must return nil on not registered name"))
 
 (deftest ^:parallel whereis-throws-on-nil-argument
-  (is (thrown? Throwable (process/whereis nil))
+  (is (thrown? Exception (process/whereis nil))
       "whereis must throw on nil argument"))
 
 ;; ====================================================================
@@ -188,11 +188,11 @@
         "! must return false sending to terminated process")))
 
 (deftest ^:parallel !-throws-on-nil-arguments
-  (is (thrown? Throwable (! nil :msg))
+  (is (thrown? Exception (! nil :msg))
       "! must throw on when dest argument is nil")
-  (is (thrown? Throwable (! (process/spawn (defproc [_]) [] {}) nil))
+  (is (thrown? Exception (! (process/spawn (defproc [_]) [] {}) nil))
       "! must throw on when message argument is nil")
-  (is (thrown? Throwable (! nil nil))
+  (is (thrown? Exception (! nil nil))
       "! must throw on when both arguments are nil"))
 
 (deftest ^:parallel !-delivers-message-sent-by-pid-to-alive-process
@@ -224,24 +224,24 @@
   (let [done (async/chan)
         pid (process/spawn
               (defproc [_] (await-completion done 100)) [] {})]
-    (is (thrown? Throwable (process/exit pid nil))
+    (is (thrown? Exception (process/exit pid nil))
         "exit must throw when reason argument is nil")
     (async/close! done)))
 
 (deftest ^:parallel exit-throws-on-not-a-pid
-  (is (thrown? Throwable (process/exit nil :normal))
+  (is (thrown? Exception (process/exit nil :normal))
       "exit must throw on not a pid argument")
-  (is (thrown? Throwable (process/exit 1 :normal))
+  (is (thrown? Exception (process/exit 1 :normal))
       "exit must throw on not a pid argument")
-  (is (thrown? Throwable (process/exit "pid1" :normal))
+  (is (thrown? Exception (process/exit "pid1" :normal))
       "exit must throw on not a pid argument")
-  (is (thrown? Throwable (process/exit [] :normal))
+  (is (thrown? Exception (process/exit [] :normal))
       "exit must throw on not a pid argument")
-  (is (thrown? Throwable (process/exit '() :normal))
+  (is (thrown? Exception (process/exit '() :normal))
       "exit must throw on not a pid argument")
-  (is (thrown? Throwable (process/exit {} :normal))
+  (is (thrown? Exception (process/exit {} :normal))
       "exit must throw on not a pid argument")
-  (is (thrown? Throwable (process/exit #{} :normal))
+  (is (thrown? Exception (process/exit #{} :normal))
       "exit must throw on not a pid argument"))
 
 (deftest ^:parallel exit-normal-no-trap-exit
@@ -512,17 +512,17 @@
 (deftest ^:parallel flag-throws-on-unknown-flag
   (let [done (async/chan)
         proc-fn (defproc [inbox]
-                  (is (thrown? Throwable (process/flag [] false))
+                  (is (thrown? Exception (process/flag [] false))
                       "flag must throw on unknown flag")
-                  (is (thrown? Throwable (process/flag 1 false))
+                  (is (thrown? Exception (process/flag 1 false))
                       "flag must throw on unknown flag")
-                  (is (thrown? Throwable (process/flag :unknown false))
+                  (is (thrown? Exception (process/flag :unknown false))
                       "flag must throw on unknown flag")
-                  (is (thrown? Throwable (process/flag nil false))
+                  (is (thrown? Exception (process/flag nil false))
                       "flag must throw on unknown flag")
-                  (is (thrown? Throwable (process/flag nil true))
+                  (is (thrown? Exception (process/flag nil true))
                       "flag must throw on unknown flag")
-                  (is (thrown? Throwable (process/flag :trap-exit1 false))
+                  (is (thrown? Exception (process/flag :trap-exit1 false))
                       "flag must throw on unknown flag")
                   (async/close! done))]
     (process/spawn proc-fn [] {})
@@ -602,26 +602,26 @@
     (await-completion done2 500)))
 
 (deftest ^:parallel link-throws-when-called-not-in-process-context
-  (is (thrown? Throwable (process/link (process/spawn (defproc [_]) [] {})))
+  (is (thrown? Exception (process/link (process/spawn (defproc [_]) [] {})))
       "link must throw when called not in process context")
   (let [proc-fn (defproc [_] (<! (async/timeout 100)))]
-    (is (thrown? Throwable (process/link (process/spawn proc-fn [] {})))
+    (is (thrown? Exception (process/link (process/spawn proc-fn [] {})))
         "link must throw when called not in process context")))
 
 (deftest ^:parallel link-throws-when-called-with-not-a-pid
-  (is (thrown? Throwable (process/link nil))
+  (is (thrown? Exception (process/link nil))
       "link must throw when called with not a pid argument")
-  (is (thrown? Throwable (process/link 1))
+  (is (thrown? Exception (process/link 1))
       "link must throw when called with not a pid argument")
-  (is (thrown? Throwable (process/link "pid1"))
+  (is (thrown? Exception (process/link "pid1"))
       "link must throw when called with not a pid argument")
-  (is (thrown? Throwable (process/link '()))
+  (is (thrown? Exception (process/link '()))
       "link must throw when called with not a pid argument")
-  (is (thrown? Throwable (process/link []))
+  (is (thrown? Exception (process/link []))
       "link must throw when called with not a pid argument")
-  (is (thrown? Throwable (process/link {}))
+  (is (thrown? Exception (process/link {}))
       "link must throw when called with not a pid argument")
-  (is (thrown? Throwable (process/link #{}))
+  (is (thrown? Exception (process/link #{}))
       "link must throw when called with not a pid argument"))
 
 (deftest ^:parallel link-creates-link-with-alive-process-not-trapping-exits
@@ -758,7 +758,7 @@
                          (str "linking to terminated process must either"
                               " throw or send exit message to process"
                               " trapping exits"))
-                     (catch Throwable t :ok))
+                     (catch Exception _e :ok))
                    (async/close! done))
         pid1 (process/spawn proc-fn1 [] {:flags {:trap-exit true}})]
     (await-completion done 200)))
@@ -775,7 +775,7 @@
                          (str "linking to terminated process must either"
                               " throw or close inbox of process"
                               " not trapping exits"))
-                     (catch Throwable t :ok))
+                     (catch Exception _e :ok))
                    (async/close! done))
         pid1 (process/spawn proc-fn1 [] {})]
     (await-completion done 200)))
@@ -786,8 +786,8 @@
                   (is (try
                         (process/link (process/self))
                         true
-                        (catch Throwable t
-                          (.printStackTrace t)
+                        (catch Exception e
+                          (.printStackTrace e)
                           false))
                       "link to self must not throw when process is alive")
                   (async/close! done))]
@@ -882,26 +882,26 @@
 (deftest ^:parallel unlink-throws-on-not-a-pid
   (let [done (async/chan)
         proc-fn2 (defproc [inbox]
-                   (is (thrown? Throwable (process/unlink nil))
+                   (is (thrown? Exception (process/unlink nil))
                        "unlink must throw on not a pid argument")
-                   (is (thrown? Throwable (process/unlink 1))
+                   (is (thrown? Exception (process/unlink 1))
                        "unlink must throw on not a pid argument")
-                   (is (thrown? Throwable (process/unlink "pid1"))
+                   (is (thrown? Exception (process/unlink "pid1"))
                        "unlink must throw on not a pid argument")
-                   (is (thrown? Throwable (process/unlink {}))
+                   (is (thrown? Exception (process/unlink {}))
                        "unlink must throw on not a pid argument")
-                   (is (thrown? Throwable (process/unlink #{}))
+                   (is (thrown? Exception (process/unlink #{}))
                        "unlink must throw on not a pid argument")
-                   (is (thrown? Throwable (process/unlink '()))
+                   (is (thrown? Exception (process/unlink '()))
                        "unlink must throw on not a pid argument")
-                   (is (thrown? Throwable (process/unlink []))
+                   (is (thrown? Exception (process/unlink []))
                        "unlink must throw on not a pid argument")
                    (async/close! done))]
     (process/spawn proc-fn2 [] {})
     (await-completion done 200)))
 
 (deftest ^:parallel unlink-throws-when-calld-not-in-process-context
-  (is (thrown? Throwable
+  (is (thrown? Exception
                (process/unlink (process/spawn (defproc [_inbox]) [] {})))
       "unlink must throw when called not in process context"))
 
@@ -1018,75 +1018,75 @@
     (async/close! done)))
 
 (deftest ^:parallel spawn-throws-on-illegal-arguments
-  (is (thrown? Throwable (process/spawn nil [] {}))
+  (is (thrown? Exception (process/spawn nil [] {}))
       "spawn must throw if proc-fn is not a function")
-  (is (thrown? Throwable (process/spawn 1 [] {}))
+  (is (thrown? Exception (process/spawn 1 [] {}))
       "spawn must throw if proc-fn is not a function")
-  (is (thrown? Throwable (process/spawn "fn" [] {}))
+  (is (thrown? Exception (process/spawn "fn" [] {}))
       "spawn must throw if proc-fn is not a function")
-  (is (thrown? Throwable (process/spawn {} [] {}))
+  (is (thrown? Exception (process/spawn {} [] {}))
       "spawn must throw if proc-fn is not a function")
-  (is (thrown? Throwable (process/spawn [] [] {}))
+  (is (thrown? Exception (process/spawn [] [] {}))
       "spawn must throw if proc-fn is not a function")
-  (is (thrown? Throwable (process/spawn #{} [] {}))
+  (is (thrown? Exception (process/spawn #{} [] {}))
       "spawn must throw if proc-fn is not a function")
-  (is (thrown? Throwable (process/spawn '() [] {}))
+  (is (thrown? Exception (process/spawn '() [] {}))
       "spawn must throw if proc-fn is not a function")
-  (is (thrown? Throwable (process/spawn (defproc []) [] {}))
+  (is (thrown? Exception (process/spawn (defproc []) [] {}))
       "spawn must throw if proc-fn's arity is less than 1")
-  (is (thrown? Throwable (process/spawn (fn [_inbox a b]) [1] {}))
+  (is (thrown? Exception (process/spawn (fn [_inbox a b]) [1] {}))
       "spawn must throw if proc-fn's arity doesn't match args")
-  (is (thrown? Throwable (process/spawn (fn [_inbox]) [1 :a] {}))
+  (is (thrown? Exception (process/spawn (fn [_inbox]) [1 :a] {}))
       "spawn must throw if proc-fn's arity doesn't match args")
-  (is (thrown? Throwable (process/spawn (fn [_inbox]) [] {}))
+  (is (thrown? Exception (process/spawn (fn [_inbox]) [] {}))
       "spawn must throw if proc-fn doesn't return ReadPort")
-  (is (thrown? Throwable (process/spawn (defproc [_]) 1 {}))
+  (is (thrown? Exception (process/spawn (defproc [_]) 1 {}))
       "spawn must throw if args is not sequential")
-  (is (thrown? Throwable (process/spawn (defproc [_]) #{} {}))
+  (is (thrown? Exception (process/spawn (defproc [_]) #{} {}))
       "spawn must throw if args is not sequential")
-  (is (thrown? Throwable (process/spawn (defproc [_]) {} {}))
+  (is (thrown? Exception (process/spawn (defproc [_]) {} {}))
       "spawn must throw if args is not sequential")
-  (is (thrown? Throwable (process/spawn (defproc [_]) 1 {}))
+  (is (thrown? Exception (process/spawn (defproc [_]) 1 {}))
       "spawn must throw if args is not sequential")
-  (is (thrown? Throwable (process/spawn (defproc [_]) "args" {}))
+  (is (thrown? Exception (process/spawn (defproc [_]) "args" {}))
       "spawn must throw if args is not sequential")
-  (is (thrown? Throwable (process/spawn (defproc [_]) (fn []) {}))
+  (is (thrown? Exception (process/spawn (defproc [_]) (fn []) {}))
       "spawn must throw if args is not sequential")
-  (is (thrown? Throwable (process/spawn (defproc [_]) [] nil))
+  (is (thrown? Exception (process/spawn (defproc [_]) [] nil))
       "spawn must throw if options is not a map")
-  (is (thrown? Throwable (process/spawn (defproc [_]) [] 1))
+  (is (thrown? Exception (process/spawn (defproc [_]) [] 1))
       "spawn must throw if options is not a map")
-  (is (thrown? Throwable (process/spawn (defproc [_]) [] "opts"))
+  (is (thrown? Exception (process/spawn (defproc [_]) [] "opts"))
       "spawn must throw if options is not a map")
-  (is (thrown? Throwable (process/spawn (defproc [_]) [] [1 2 3]))
+  (is (thrown? Exception (process/spawn (defproc [_]) [] [1 2 3]))
       "spawn must throw if options is not a map")
-  (is (thrown? Throwable (process/spawn (defproc [_]) [] '(1)))
+  (is (thrown? Exception (process/spawn (defproc [_]) [] '(1)))
       "spawn must throw if options is not a map")
-  (is (thrown? Throwable (process/spawn (defproc [_]) [] #{}))
+  (is (thrown? Exception (process/spawn (defproc [_]) [] #{}))
       "spawn must throw if options is not a map")
-  (is (thrown? Throwable (process/spawn (defproc [_]) [] {:flags 1}))
+  (is (thrown? Exception (process/spawn (defproc [_]) [] {:flags 1}))
       "spawn must throw if :flags option is not a map")
-  (is (thrown? Throwable (process/spawn (defproc [_]) [] {:flags true}))
+  (is (thrown? Exception (process/spawn (defproc [_]) [] {:flags true}))
       "spawn must throw if :flags option is not a map")
-  (is (thrown? Throwable (process/spawn (defproc [_]) [] {:flags "str"}))
+  (is (thrown? Exception (process/spawn (defproc [_]) [] {:flags "str"}))
       "spawn must throw if :flags option is not a map")
-  (is (thrown? Throwable (process/spawn (defproc [_]) [] {:flags []}))
+  (is (thrown? Exception (process/spawn (defproc [_]) [] {:flags []}))
       "spawn must throw if :flags option is not a map")
-  (is (thrown? Throwable (process/spawn (defproc [_]) [] {:flags #{}}))
+  (is (thrown? Exception (process/spawn (defproc [_]) [] {:flags #{}}))
       "spawn must throw if :flags option is not a map")
-  (is (thrown? Throwable (process/spawn (defproc [_]) [] {:flags '()}))
+  (is (thrown? Exception (process/spawn (defproc [_]) [] {:flags '()}))
       "spawn must throw if :flags option is not a map")
-  (is (thrown? Throwable
+  (is (thrown? Exception
                (process/spawn (defproc [_]) [] {:link-to 1}))
       "spawn must throw if :link-to option is not a pid or collection of pids")
-  (is (thrown? Throwable
+  (is (thrown? Exception
                (process/spawn (defproc [_]) [] {:link-to [1]}))
       "spawn must throw if :link-to option is not a pid or collection of pids")
-  (is (thrown? Throwable (process/spawn (defproc [_]) [] {:inbox-size -1}))
+  (is (thrown? Exception (process/spawn (defproc [_]) [] {:inbox-size -1}))
       "spawn must throw if :inbox-size option is not a non-negative integer")
-  (is (thrown? Throwable (process/spawn (defproc [_]) [] {:inbox-size 1.1}))
+  (is (thrown? Exception (process/spawn (defproc [_]) [] {:inbox-size 1.1}))
       "spawn must throw if :inbox-size option is not a non-negative integer")
-  (is (thrown? Throwable (process/spawn (defproc [_]) [] {:inbox-size []}))
+  (is (thrown? Exception (process/spawn (defproc [_]) [] {:inbox-size []}))
       "spawn must throw if :inbox-size option is not a non-negative integer"))
 
 (deftest ^:parallel spawn-throws-if-proc-fn-throws
@@ -1188,7 +1188,7 @@
         done (async/chan)
         proc-fn (defproc [_] (is (await-completion done 100) "test failed"))]
     (process/spawn proc-fn [] {:register reg-name})
-    (is (thrown? Throwable
+    (is (thrown? Exception
                  (process/spawn (defproc [_]) [] {:register reg-name}))
         "spawn must throw when name to register is already registered")
     (async/close! done)))

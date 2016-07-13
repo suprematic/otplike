@@ -5,6 +5,13 @@
             [otplike.trace :as trace]
             [clojure.core.async.impl.protocols :as impl]))
 
+(defmacro check-args [exprs]
+  (when-let [expr (first exprs)]
+    `(if ~expr
+      (check-args ~(rest exprs))
+      (throw (IllegalArgumentException.
+               (str "require " '~expr " to be true"))))))
+
 (def ^:private *pids
   (atom 0))
 
@@ -45,8 +52,8 @@
   Warning: this function is intended for debugging and is not to be
   used in application programs."
   [^Pid {:keys [id name] :as pid}]
-  {:pre [(pid? pid)]
-   :post [(string? %)]}
+  {:post [(string? %)]}
+  (check-args [(pid? pid)])
   (str "<" (if name (str name "@" id) id) ">"))
 
 (defmethod print-method Pid [o w]
@@ -77,12 +84,13 @@
   or nil if the name is not registered.
   Throws on nil argument."
   [reg-name]
-  {:pre [(some? reg-name)]
-   :post [(or (nil? %) (pid? %))]}
+  {:post [(or (nil? %) (pid? %))]}
+  (check-args [(some? reg-name)])
   (@*registered reg-name))
 
 (defn- find-process [id]
-  {:post [(or (nil? %) (instance? ProcessRecord %))]}
+  {:pre [(some? id)]
+   :post [(or (nil? %) (instance? ProcessRecord %))]}
   (if (pid? id)
     (@*processes id)
     (when-let [pid (whereis id)]
@@ -94,9 +102,9 @@
   Returns true if message was sent (process was alive), false otherwise.
   Throws if any of arguments is nil."
   [dest message]
-  {:pre [(some? dest)
-         (some? message)]
-   :post [(or (true? %) (false? %))]}
+  {:post [(or (true? %) (false? %))]}
+  (check-args [(some? dest)
+               (some? message)])
   (if-let [{:keys [inbox]} (find-process dest)]
     (do
       (async/put! inbox message)
@@ -138,9 +146,9 @@
   - process no longer registered"
 
   [pid reason]
-  {:pre [(pid? pid)
-         (some? reason)]
-   :post [(or (true? %) (false? %))]}
+  {:post [(or (true? %) (false? %))]}
+  (check-args [(pid? pid)
+               (some? reason)])
   (!control pid [:exit nil reason]))
 
 (defn flag
@@ -156,8 +164,8 @@
   the exit signal is propagated to its linked processes. Application
   processes are normally not to trap exits."
   [flag value]
-  {:pre [(keyword? flag)]
-   :post []}
+  {:post []}
+  (check-args [(keyword? flag)])
   (if-let [^ProcessRecord {:keys [flags]} (find-process (self))]
     (dosync
       (let [old-value (flag @flags)]
@@ -212,7 +220,10 @@
             [nil timeout] (noproc)))
         (noproc)))))
 
-(defn- link-fn [phase {:keys [linked pid]} other-pid]
+(defn- link-fn [phase {:keys [linked pid] :as process} other-pid]
+  {:pre [(instance? ProcessRecord process)
+         (pid? pid)
+         (pid? other-pid)]}
   (case phase
     :phase-one (do
                  (trace/trace pid [:link-phase-one other-pid])
@@ -235,8 +246,8 @@
   Returns true.
   Throws when called not in process context, or pid is not a pid."
   [pid]
-  {:pre [(pid? pid)]
-   :post [(true? %)]}
+  {:post [(true? %)]}
+  (check-args [(pid? pid)])
   (let [s (self)]
     (if (= s pid)
       true
@@ -244,7 +255,10 @@
         true
         (throw (Exception. "stopped"))))))
 
-(defn- unlink-fn [phase {:keys [linked pid]} other-pid]
+(defn- unlink-fn [phase {:keys [linked pid] :as process} other-pid]
+  {:pre [(instance? ProcessRecord process)
+         (pid? pid)
+         (pid? other-pid)]}
   (let [p2unlink #(do (trace/trace pid [% other-pid])
                       (swap! linked disj other-pid))]
     (case phase
@@ -270,8 +284,8 @@
   exits after the call to unlink.
   Throws when called not in process context, or pid is not a pid."
   [pid]
-  {:pre [(pid? pid)]
-   :post [(true? %)]}
+  {:post [(true? %)]}
+  (check-args [(pid? pid)])
   (let [s (self)]
     (if (= pid s)
       true
@@ -364,14 +378,14 @@
   :inbox-size -
   :name - "
   [proc-func args {:keys [link-to inbox-size flags name register] :as options}]
-  {:pre [(or (fn? proc-func) (symbol? proc-func))
-         (sequential? args)
-         (map? options) ;FIXME check for unknown options
-         (or (nil? link-to) (pid? link-to) (every? pid? link-to))
-         (or (nil? inbox-size)
-             (and (integer? inbox-size) (not (neg? inbox-size))))
-         (or (nil? flags) (map? flags))] ;FIXME check for unknown flags
-   :post [(pid? %)]}
+  {:post [(pid? %)]}
+  (check-args [(or (fn? proc-func) (symbol? proc-func))
+               (sequential? args)
+               (map? options) ;FIXME check for unknown options
+               (or (nil? link-to) (pid? link-to) (every? pid? link-to))
+               (or (nil? inbox-size)
+                   (and (integer? inbox-size) (not (neg? inbox-size))))
+               (or (nil? flags) (map? flags))]) ;FIXME check for unknown flags
   (let [proc-func (resolve-proc-func proc-func)
         id        (swap! *pids inc)
         inbox     (async/chan (or inbox-size 1024))
@@ -440,7 +454,7 @@
   like spawn.
   Throws when called not in process context."
   [proc-func args opts]
-  {:pre [(or (nil? opts) (map? opts))]
-   :post [(pid? %)]}
+  {:post [(pid? %)]}
+  (check-args [(or (nil? opts) (map? opts))])
   (let [opts (update-in opts [:link-to] conj (self))]
     (spawn proc-func args opts)))
