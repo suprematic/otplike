@@ -156,7 +156,7 @@
         (if (= port from)
           value :timeout)))))
 
-(def return async/put!)
+(def reply async/put!)
 
 (defn get [server]
   (call server [:internal :get-state]))
