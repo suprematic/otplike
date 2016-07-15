@@ -6,6 +6,7 @@
             [clojure.core.async.impl.protocols :as impl]))
 
 (defmacro check-args [exprs]
+  (assert (sequential? exprs))
   (when-let [expr (first exprs)]
     `(if ~expr
       (check-args ~(rest exprs))
