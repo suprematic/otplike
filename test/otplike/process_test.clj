@@ -1180,6 +1180,8 @@
     (process/exit pid :abnormal)
     (await-completion done 200)))
 
+; TODO: (deftest spawned-process-available-from-within-process-by-reg-name)
+
 ;; ====================================================================
 ;; (spawn-link [proc-fun args options])
 

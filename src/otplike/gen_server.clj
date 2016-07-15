@@ -133,7 +133,7 @@
 (defn start [impl args options]
   (let [response (async/chan)
         pid (process/spawn gen-server-proc [impl args response] options)]
-    (match (async/alts!! [response (async/timeout 1000)])
+    (match (async/alts!! [response (async/timeout 1000)]) ; TODO allow to override timeout passing it as argument
       [:ok response]
       [:ok pid]
 
