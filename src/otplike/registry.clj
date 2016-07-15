@@ -85,23 +85,20 @@
     {:name server :register server :flags {:trap-exit true}}))
 
 (defn stop []
-  (process/exit server :normal))
+  (process/exit (process/whereis server) :normal))
 
 ;---------
 ; gen-server callbacks
 
-(defn init [self []]
+(defn init [_]
   [:ok {:names (bidi-make) :waiters (mult-make) :props #{}}])
 
-(defn- waiter-proc [_pid inbox name ch]
-  (go
-    (match (<! inbox)
-      [:available [name pid]]
-      (do
-        (async/put! ch [name pid])
-        :normal))))
+(process/defproc waiter-proc [inbox name ch]
+  (match (<! inbox)
+    [:available [name pid]]
+    (async/put! ch [name pid])))
 
-(defn handle-call [self request _sender {:keys [props names waiters] :as state}]
+(defn handle-call [request _sender {:keys [props names waiters] :as state}]
   (match request
     [:reg-prop pid prop]
     [:reply :ok (assoc state :props (conj props [pid prop]))]
@@ -116,21 +113,21 @@
 
     [:reg-name pid name]
     (do
-      (process/monitor self pid)
-      (gs/cast self [:notify-waiters name pid])
+      (process/monitor pid)
+      (gs/cast (process/self) [:notify-waiters name pid])
       [:reply :ok (assoc state :names (bidi-put names pid name))])
 
     [:wait-name name]
-    (let [ch (async/chan)]
+    (let [ch (async/chan)
+          self (process/self)]
       (if-let [pid (bidi-get-r names name)]
         (do
           (async/put! ch [name pid])
           [:reply ch state])
-
         (let [waiter (process/spawn waiter-proc [name ch] {:link-to self})]
           [:reply ch (assoc state :waiters (multi-conj waiters name waiter))])))))
 
-(defn handle-cast [self request {:keys [waiters] :as state}]
+(defn handle-cast [request {:keys [waiters] :as state}]
   (match request
     [:notify-waiters name pid]
     (do
@@ -139,7 +136,7 @@
 
       [:noreply (assoc state :waiters (dissoc waiters name))])))
 
-(defn handle-info [self message {:keys [names] :as state}]
+(defn handle-info [message {:keys [names] :as state}]
   (match message
     [:down pid _]
     [:noreply (assoc state :names (bidi-dissoc-l names pid))]))
