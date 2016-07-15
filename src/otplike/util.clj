@@ -1,12 +1,9 @@
-(ns otplike.util
-  (:require [clojure.core.async :as async :refer [<!! <! >! put! go go-loop]]
-            [clojure.core.async.impl.protocols :as ap]
-            [otplike.process :refer [!]]))
+(ns otplike.util)
 
-; TODO move to util namespace
-(defn pipe [from to]
-  (go-loop []
-    (let [message (<! from)]
-      (! to [from message])
-      (when message
-        (recur)))))
+(defmacro check-args [exprs]
+  (assert (sequential? exprs))
+  (when-let [expr (first exprs)]
+    `(if ~expr
+      (check-args ~(rest exprs))
+      (throw (IllegalArgumentException.
+               (str "require " '~expr " to be true"))))))
