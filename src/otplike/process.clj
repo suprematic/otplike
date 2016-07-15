@@ -9,6 +9,9 @@
 (def ^:private *pids
   (atom 0))
 
+(def ^:private *refids
+  (atom 0))
+
 (def ^:private *processes
   (atom {}))
 
@@ -33,6 +36,13 @@
     (when-let [{:keys [inbox]} (@*processes this)]
       (trace/trace this [:inbound val])
       (ap/put! inbox val handler))))
+
+(defrecord MonitorRef [id pid])
+
+(defn monitor-ref?
+  "Returns true if term is a monitor reference, false otherwise."
+  [ref]
+  (instance? MonitorRef ref))
 
 (defn pid?
   "Returns true if term is a process identifier, false otherwise."
@@ -59,7 +69,8 @@
   {:pre [(pid? pid)
          (satisfies? ap/ReadPort inbox) (satisfies? ap/WritePort inbox)
          (satisfies? ap/ReadPort control) (satisfies? ap/WritePort control)
-         (set? @monitors) (every? pid? @monitors)
+         (map? @monitors) (every? vector? @monitors) (every? (fn [[pid _]]
+                                                              (pid? pid)) @monitors)
          (satisfies? ap/ReadPort outbox)
          (set? @linked) (every? pid? @linked)
          (map? @flags)]
@@ -175,12 +186,6 @@
       (swap! monitors func pid1)
       :ok)))
 
-(def monitor
-  (partial monitor* conj))
-
-(def demonitor
-  (partial monitor* disj))
-
 (defn registered
  "Returns a set of names of the processes that have been registered."
  []
@@ -287,6 +292,62 @@
         (do (<!! complete) true)
         (throw (Exception. "stopped"))))))
 
+(defn- monitor-message [ref object reason]
+  {:pre [(monitor-ref? ref)]}
+  [:DOWN ref :process object reason])
+
+(defn- monitor-fn [ref object phase {:keys [monitors pid] :as process} other-pid]
+  {:pre [(monitor-ref? ref)
+         (keyword? phase)
+         (map? @monitors)
+         (instance? ProcessRecord process)
+         (pid? other-pid)]}
+  (case phase
+    :phase-one
+    (do
+      (trace/trace pid [:monitor ref other-pid object])
+      (swap! monitors assoc ref [other-pid object]))
+    :noproc
+    (! pid (monitor-message ref object :noproc))
+    nil))
+
+(defn- resolve-pid [pid-or-name]
+  (if (pid? pid-or-name)
+    [pid-or-name pid-or-name]
+    [(whereis pid-or-name) pid-or-name]))
+
+(defn monitor [pid-or-name]
+  (let [self (self)
+        [pid object] (resolve-pid pid-or-name)
+        ref (MonitorRef. (swap! *refids inc) (or pid :noproc))]
+    (if pid
+      (two-phase-start self pid (partial monitor-fn ref object))
+      (! self (monitor-message ref object :noproc)))
+    ref))
+
+(defn- demonitor-fn [ref phase {:keys [monitors] :as process} other-pid]
+  {:pre [(monitor-ref? ref)
+         (keyword? phase)
+         (map? @monitors)
+         (instance? ProcessRecord process)
+         (pid? other-pid)]}
+  (case phase
+    :phase-one
+    (let [[pid object] (@monitors ref)]
+      (when (= pid other-pid)
+        (trace/trace pid [:demonitor ref other-pid object])
+        (swap! monitors dissoc ref)))
+    nil))
+
+(defn demonitor [{:keys [pid] :as ref}]
+  {:pre [(monitor-ref? ref)
+         (or (pid? pid) (= pid :noproc))]}
+  (let [self (self)]
+    (when (pid? pid)
+      (let [return (two-phase-start self pid (partial demonitor-fn ref))]
+        (<!! return)))
+    true))
+
 ; TODO return new process and exit code
 (defn- dispatch-control [{:keys [flags pid linked] :as process} message]
   {:pre [(instance? ProcessRecord process)]
@@ -386,7 +447,7 @@
         pid       (Pid. id (or name (str "proc" id)))
         control   (async/chan 128)
         linked    (atom #{})
-        monitors  (atom #{})
+        monitors  (atom {})
         flags     (atom (or flags {}))]
     (locking *processes
       (let [outbox  (outbox pid inbox)
@@ -437,8 +498,9 @@
                               (swap! (:linked p) disj process))))
                         (doseq [p @linked]
                           (!control p [:exit pid reason]))
-                        (doseq [p @monitors]
-                          (! p [:down pid reason]))))))))))))
+
+                        (doseq [[ref [pid object]] @monitors]
+                          (! pid (monitor-message ref object reason)))))))))))))
     pid))
 
 (defn spawn-link

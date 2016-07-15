@@ -24,7 +24,7 @@
     (swap! *timers assoc tref
            (process/spawn
              (fn [inbox]
-               (process/monitor (process/self) pid)
+               (process/monitor (process/self))
                (go
                  (let [[_ port] (async/alts! [inbox (async/timeout msecs)])]
                    (when (not= port inbox)
@@ -66,7 +66,7 @@
     (swap! *timers assoc tref
            (process/spawn
              (fn [inbox]
-               (process/monitor (process/self) pid)
+               (process/monitor (process/self))
                (go
                  (loop []
                    (let [timeout (async/timeout msecs)]

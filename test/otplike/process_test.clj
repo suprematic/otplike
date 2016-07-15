@@ -16,6 +16,7 @@
     (let [timeout (async/timeout timeout-ms)]
       (match (async/alts! [inbox timeout])
         [[:EXIT _ reason] inbox] [:exit-message [:reason reason]]
+        [[:DOWN ref :process object reason] inbox] [:down-message [ref object reason]]
         [nil inbox] :inbox-closed
         [msg inbox] [:message msg]
         [nil timeout] :timeout))))
@@ -1212,6 +1213,39 @@
                (async/close! done))]
     (process/spawn pfn1 [] {:flags {:trap-exit true}})
     (await-completion done 300)))
+
+(deftest ^:parallel monitor-receives-down-when-process-exits-by-pid []
+  (let [done (async/chan)
+        pid1 (process/spawn
+               (proc-fn [inbox]
+                 (is (= :inbox-closed (<! (await-message inbox 150))))) [] {})
+
+        pid2 (process/spawn
+               (proc-fn [inbox]
+                (let [ref (process/monitor pid1)]
+                   (<!! (async/timeout 100))
+                   (process/exit pid1 :abnormal)
+                   (is (= [:down-message [ref pid1 :abnormal]] (<! (await-message inbox 100))))
+                   (async/close! done))) [] {})]
+    (await-completion done 300)))
+
+(deftest ^:parallel monitor-receives-down-when-process-exits-by-name []
+  (let [done (async/chan)
+        pid1 (process/spawn
+               (proc-fn [inbox]
+                 (is (= :inbox-closed (<! (await-message inbox 150))))) [] {:register :my-name})
+
+        pid2 (process/spawn
+               (proc-fn [inbox]
+                 (let [ref (process/monitor :my-name)]
+                   (<!! (async/timeout 100))
+                   (process/exit pid1 :abnormal)
+                   (is (= [:down-message [ref :my-name :abnormal]] (<! (await-message inbox 100))))
+                   (async/close! done))) [] {})]
+    (await-completion done 300)))
+
+
+
 
 ; TODO check if spawn-link works like spawn
 
