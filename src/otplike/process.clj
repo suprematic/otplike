@@ -452,3 +452,16 @@
   (u/check-args [(or (nil? opts) (map? opts))])
   (let [opts (update-in opts [:link-to] conj (self))]
     (spawn proc-func args opts)))
+
+(defmacro proc-fn [args & body]
+  (assert (vector? args))
+  `(fn ~args
+     (go
+       (try
+         ~@body
+         :normal
+         (catch Throwable t#
+           [:exception (u/stack-trace t#)])))))
+
+(defmacro defproc [name & args-body]
+  `(def ~name (proc-fn ~@args-body)))
