@@ -320,9 +320,10 @@
   (let [self (self)
         [pid object] (resolve-pid pid-or-name)
         ref (MonitorRef. (swap! *refids inc) (or pid :noproc))]
-    (if pid
-      (two-phase-start self pid (partial monitor-fn ref object))
-      (! self (monitor-message ref object :noproc)))
+    (when (not= pid self)
+      (if pid
+        (two-phase-start self pid (partial monitor-fn ref object))
+        (! self (monitor-message ref object :noproc))))
     ref))
 
 (defn- demonitor-fn [ref phase {:keys [monitors] :as process} other-pid]
