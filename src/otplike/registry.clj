@@ -138,7 +138,7 @@
 
 (defn handle-info [message {:keys [names] :as state}]
   (match message
-    [:down pid _]
+    [:EXIT pid _reason]
     [:noreply (assoc state :names (bidi-dissoc-l names pid))]))
 
 ;==============
