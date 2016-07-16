@@ -1252,7 +1252,7 @@
 ;;     The monitored entity, which triggered the event. That is the
 ;;     argument of monitor call.
 ;;   info
-;;     Either the exit reason of the process, or noproc (process did not
+;;     Either the exit reason of the process, or :noproc (process did not
 ;;     exist at the time of monitor creation).
 ;;
 ;;   Making several calls to monitor/2 for the same pid-or-name and/or
@@ -1260,38 +1260,300 @@
 ;;   instances.
 ;;   Monitoring self does nothing.
 ;;
-;;   Returns true.
+;;   Returns monitor ref.
+;;   Throws when callen not in process context.
 
-(deftest ^:parallel monitor-receives-down-when-process-exits-by-pid
+(deftest ^:parallel down-message-is-sent-when-monitored-process-exits
   (let [done (async/chan)
         pfn1 (proc-fn [inbox]
-               (is (= :inbox-closed (<! (await-message inbox 150)))))
+               (is (= :inbox-closed (<! (await-message inbox 150)))
+                   "test failed"))
         pid1 (process/spawn pfn1 [] {})
         pfn2 (proc-fn [inbox]
                (let [mref (process/monitor pid1)]
-                 (<!! (async/timeout 100))
+                 (<! (async/timeout 50))
                  (process/exit pid1 :abnormal)
                  (is (= [:down-message [mref pid1 :abnormal]]
-                        (<! (await-message inbox 100))))
+                        (<! (await-message inbox 100)))
+                     (str "process must receive :DOWN message containing proper"
+                          " monitor ref, pid and reason when monitored by pid"
+                          " process exits abnormally"))
+                 (async/close! done)))]
+    (process/spawn pfn2 [] {})
+    (await-completion done 300))
+  (let [done (async/chan)
+        done1 (async/chan)
+        pfn1 (proc-fn [inbox] (await-completion done1 150))
+        pid1 (process/spawn pfn1 [] {})
+        pfn2 (proc-fn [inbox]
+               (let [mref (process/monitor pid1)]
+                 (<! (async/timeout 50))
+                 (async/close! done1)
+                 (is (= [:down-message [mref pid1 :normal]]
+                        (<! (await-message inbox 100)))
+                     (str "process must receive :DOWN message containing proper"
+                          " monitor ref, pid and reason when monitored by pid"
+                          " process exits normally"))
+                 (async/close! done)))]
+    (process/spawn pfn2 [] {})
+    (await-completion done 300))
+  (let [reg-name (uuid-keyword)
+        done (async/chan)
+        pfn1 (proc-fn [inbox]
+               (is (= :inbox-closed (<! (await-message inbox 150)))
+                   "test failed"))
+        pid1 (process/spawn pfn1 [] {:register reg-name})
+        pfn2 (proc-fn [inbox]
+               (let [mref (process/monitor reg-name)]
+                 (<! (async/timeout 50))
+                 (process/exit pid1 :kill)
+                 (is (= [:down-message [mref reg-name :killed]]
+                        (<! (await-message inbox 100)))
+                     (str "process must receive :DOWN message containing proper"
+                          " monitor ref, pid and reason when monitored by pid"
+                          " process is killed"))
+                 (async/close! done)))]
+    (process/spawn pfn2 [] {})
+    (await-completion done 300))
+  (let [reg-name (uuid-keyword)
+        done (async/chan)
+        pfn1 (proc-fn [inbox]
+               (is (= :inbox-closed (<! (await-message inbox 150)))
+                   "test failed"))
+        pid1 (process/spawn pfn1 [] {:register reg-name})
+        pfn2 (proc-fn [inbox]
+               (let [mref (process/monitor reg-name)]
+                 (<! (async/timeout 50))
+                 (process/exit pid1 :abnormal)
+                 (is (= [:down-message [mref reg-name :abnormal]]
+                        (<! (await-message inbox 100)))
+                     (str "process must receive :DOWN message containing proper"
+                          " monitor ref, reg-name and reason when monitored by"
+                          " reg-name process exits abnormally"))
                  (async/close! done)))]
     (process/spawn pfn2 [] {})
     (await-completion done 300)))
 
-(deftest ^:parallel monitor-receives-down-when-process-exits-by-name
+(deftest ^:parallel monitor-returns-ref
+  (let [done (async/chan)
+        pfn (proc-fn [inbox]
+              (is (process/monitor-ref? (process/monitor (process/self)))
+                  (str "monitor must return monitor-ref when called with self"
+                       " as argument"))
+              (async/close! done))]
+    (process/spawn pfn [] {})
+    (await-completion done 100))
+  (let [done (async/chan)
+        pfn1 (proc-fn [_inbox] (await-completion done 100))
+        pid1 (process/spawn pfn1 [] {})
+        pfn (proc-fn [inbox]
+              (is (process/monitor-ref? (process/monitor pid1))
+                  (str "monitor must return monitor-ref when called with pid"
+                       " of alive process as argument"))
+              (async/close! done))]
+    (process/spawn pfn [] {})
+    (await-completion done 100))
   (let [reg-name (uuid-keyword)
         done (async/chan)
-        pfn1 (proc-fn [inbox]
-               (is (= :inbox-closed (<! (await-message inbox 150)))))
+        pfn1 (proc-fn [_inbox] (await-completion done 100))
         pid1 (process/spawn pfn1 [] {:register reg-name})
-        pfn2 (proc-fn [inbox]
-               (let [mref (process/monitor reg-name)]
-                 (<!! (async/timeout 100))
-                 (process/exit pid1 :abnormal)
-                 (is (= [:down-message [mref reg-name :abnormal]]
-                        (<! (await-message inbox 100))))
-                 (async/close! done)))]
-    (process/spawn pfn2 [] {})
+        pfn (proc-fn [inbox]
+              (is (process/monitor-ref? (process/monitor reg-name))
+                  (str "monitor must return monitor-ref when called with"
+                       " reg-name of alive process as argument"))
+              (async/close! done))]
+    (process/spawn pfn [] {})
+    (await-completion done 100))
+  (let [done (async/chan)
+        pid (process/spawn (proc-fn [_inbox]) [] {})
+        pfn (proc-fn [inbox]
+              (<! (async/timeout 50))
+              (is (process/monitor-ref? (process/monitor pid))
+                  (str "monitor must return monitor-ref when called with pid"
+                       " of terminated process as argument"))
+              (async/close! done))]
+    (process/spawn pfn [] {})
+    (await-completion done 200))
+  (let [reg-name (uuid-keyword)
+        done (async/chan)
+        _pid (process/spawn (proc-fn [_inbox]) [] {:register reg-name})
+        pfn (proc-fn [inbox]
+              (<! (async/timeout 50))
+              (is (process/monitor-ref? (process/monitor reg-name))
+                  (str "monitor must return monitor-ref when called with"
+                       " reg-name of terminated process as argument"))
+              (async/close! done))]
+    (process/spawn pfn [] {})
+    (await-completion done 200))
+  (let [reg-name (uuid-keyword)
+        done (async/chan)
+        pfn (proc-fn [inbox]
+              (is (process/monitor-ref? (process/monitor reg-name))
+                  (str "monitor must return monitor-ref when called with"
+                       " never registered name as argument"))
+              (async/close! done))]
+    (process/spawn pfn [] {})
+    (await-completion done 200)))
+
+(deftest ^:parallel monitor-throws-when-called-not-in-process-context
+  (is (thrown? Exception (process/monitor (uuid-keyword)))
+      (str "monitor must throw when called not in process context with"
+           " never registered name"))
+  (let [pid (process/spawn (proc-fn [_inbox]) [] {})]
+    (<!! (async/timeout 50))
+    (is (thrown? Exception (process/monitor pid))
+        (str "monitor must throw when called not in process context with"
+             " terminated process pid")))
+  (let [reg-name (uuid-keyword)
+        pid (process/spawn (proc-fn [_inbox]) [] {:register reg-name})]
+    (<!! (async/timeout 50))
+    (is (thrown? Exception (process/monitor reg-name))
+        (str "monitor must throw when called not in process context with"
+             " terminated process reg-name")))
+  (let [done (async/chan)
+        pfn (proc-fn [inbox] (await-completion done 100))
+        pid (process/spawn pfn [] {})]
+    (is (thrown? Exception (process/monitor pid))
+        (str "monitor must throw when called not in process context with"
+             " alive process pid"))
+    (async/close! done))
+  (let [done (async/chan)
+        reg-name (uuid-keyword)
+        pfn (proc-fn [inbox] (await-completion done 100))
+        pid (process/spawn pfn [] {:register reg-name})]
+    (is (thrown? Exception (process/monitor reg-name))
+        (str "monitor must throw when called not in process context with"
+             " alive process reg-name"))
+    (async/close! done)))
+
+(deftest ^:parallel
+  monitoring-terminated-process-sends-down-message-with-noproc-reason
+  (let [done (async/chan)
+        pfn (proc-fn [inbox]
+              (let [reg-name (uuid-keyword)
+                    mref (process/monitor reg-name)]
+                (is (= [:down-message [mref reg-name :noproc]]
+                       (<! (await-message inbox 50)))
+                    (str "process must receive :DOWN message with :noproc"
+                         " reason when monitor called with never registered"
+                         " name")))
+              (let [pid (process/spawn (proc-fn [_inbox]) [] {})
+                    _ (<! (async/timeout 50))
+                    mref (process/monitor pid)]
+                (is (= [:down-message [mref pid :noproc]]
+                       (<! (await-message inbox 50)))
+                    (str "process must receive :DOWN message with :noproc"
+                         " reason when monitor called with terminated process"
+                         " pid")))
+              (let [reg-name (uuid-keyword)
+                    _pid (process/spawn (proc-fn [_]) [] {:register reg-name})
+                    _ (<! (async/timeout 50))
+                    mref (process/monitor reg-name)]
+                (is (= [:down-message [mref reg-name :noproc]]
+                       (<! (await-message inbox 50)))
+                    (str "process must receive :DOWN message with :noproc"
+                         " reason when monitor called with terminated process"
+                         " reg-name")))
+              (async/close! done))]
+    (process/spawn pfn [] {})
+    (await-completion done 500)))
+
+(deftest ^:parallel
+  monitored-process-does-not-receive-down-message-when-monitoring-proc-dies
+  (let [done (async/chan)
+        pfn (proc-fn [inbox]
+              (let [self (process/self)]
+                (process/spawn (proc-fn [_inbox] (process/monitor self)) [] {})
+                (is (= :timeout (<! (await-message inbox 100)))
+                    (str "monitored process must not receive any message"
+                         " when monitoring process dies")))
+              (async/close! done))]
+    (process/spawn pfn [] {})
+    (await-completion done 200)))
+
+(deftest ^:parallel monitor-called-multiple-times-creates-as-many-monitors
+  (let [done (async/chan)
+        done1 (async/chan)
+        pfn1 (proc-fn [_inbox] (await-completion done1 300))
+        pid (process/spawn pfn1 [] {})
+        pfn (proc-fn [inbox]
+              (let [mrefs (doall (take 3 (repeatedly #(process/monitor pid))))
+                    _ (<! (async/timeout 50))
+                    _ (async/close! done1)
+                    msgs (doall (take 3 (repeatedly #(<!! (await-message inbox 50)))))]
+                (is (= (map (fn [mref] [:down-message [mref pid :normal]])
+                            mrefs)
+                       msgs)
+                    (str "monitoring process must receive one :DOWN message"
+                         " per one monitor call")))
+              (async/close! done))]
+    (process/spawn pfn [] {})
+    (await-completion done 500)))
+
+(deftest ^:parallel
+  down-message-is-not-sent-when-process-trapping-exits-receives-exit-message
+  (let [done (async/chan)
+        pfn1 (proc-fn [inbox]
+               (is (= [:exit-message [:reason :abnormal]]
+                      (<! (await-message inbox 100)))
+                   "test failed")
+               (await-completion done 200))
+        pid1 (process/spawn pfn1 [] {:flags {:trap-exit true}})
+        pfn (proc-fn [inbox]
+              (process/monitor pid1)
+              (<! (async/timeout 50))
+              (process/exit pid1 :abnormal)
+              (is (= :timeout (<! (await-message inbox 100)))
+                  (str "process must not receive :DOWN message when monitored"
+                       " process trapping exits receives :EXIT message and"
+                       " stays alive"))
+              (async/close! done))]
+    (process/spawn pfn [] {})
     (await-completion done 300)))
+
+(deftest ^:parallel monitor-refs-are-not-equal
+  (let [done (async/chan)
+        pfn1 (proc-fn [_inbox] (await-completion done 150))
+        pid (process/spawn pfn1 [] {})
+        pfn (proc-fn [inbox]
+              (is (= 3 (count (set (take 3 (repeatedly #(process/monitor pid))))))
+                  "monitor must return unique monitor refs")
+              (async/close! done))]
+    (process/spawn pfn [] {})
+    (await-completion done 150)))
+
+(deftest ^:parallel monitor-self-does-nothing
+  (let [done (async/chan)
+        done1 (async/chan)
+        pfn (proc-fn [inbox]
+              (process/monitor (process/self))
+              (<! (async/timeout 50))
+              (async/close! done1)
+              (is (= :inbox-closed (<! (await-message inbox 100)))
+                  (str "process called monitor with self as argument must not"
+                       " receive :DOWN message when exit is called for the"
+                       " process"))
+              (async/close! done))
+        pid (process/spawn pfn [] {})]
+    (await-completion done1 100)
+    (process/exit pid :abnormal)
+    (await-completion done 200))
+  (let [reg-name (uuid-keyword)
+        done (async/chan)
+        done1 (async/chan)
+        pfn (proc-fn [inbox]
+              (process/monitor reg-name)
+              (<! (async/timeout 50))
+              (async/close! done1)
+              (is (= :inbox-closed (<! (await-message inbox 100)))
+                  (str "process called monitor with self reg-name as argument"
+                       " must not receive :DOWN message when exit is called"
+                       " for the process"))
+              (async/close! done))
+        pid (process/spawn pfn [] {:register reg-name})]
+    (await-completion done1 100)
+    (process/exit pid :abnormal)
+    (await-completion done 200)))
 
 ;; ====================================================================
 ;; (demonitor [pid])
