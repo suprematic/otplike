@@ -1219,8 +1219,48 @@
 ; TODO check if spawn-link works like spawn
 
 ;; ====================================================================
-;; (monitor [pid])
-;;   ;
+;; (monitor [pid-or-name])
+;;   Sends a monitor request to the entity identified by pid-or-name.
+;;   If the monitored entity does not exist or when it dies,
+;;   the caller of monitor will be notified by a message on the
+;;   following format:
+;;
+;;   [tag, monitor-ref, type, object, info]
+;;
+;;   type can be one of the following keywords: :process.
+;;   A monitor is triggered only once, after that it is removed from
+;;   both monitoring process and the monitored entity. Monitors are
+;;   fired when the monitored process terminates, or does not
+;;   exist at the moment of creation. The monitoring is also turned
+;;   off when demonitor/1 is called.
+;;
+;;   When monitoring by name please note, that the registered-name is
+;;   resolved to pid only once at the moment of monitor instantiation,
+;;   later changes to the name registration will not affect the existing
+;;   monitor.
+;;
+;;   When a monitor is triggered, a :DOWN message that has the
+;;   following pattern
+;;
+;;   [:DOWN, monitor-ref, type, object, info]
+;;
+;;   is sent to the monitoring process.
+;;
+;;   In monitor message monitor-ref and type are the same as described
+;;   earlier, and:
+;;   object
+;;     The monitored entity, which triggered the event. That is the
+;;     argument of monitor call.
+;;   info
+;;     Either the exit reason of the process, or noproc (process did not
+;;     exist at the time of monitor creation).
+;;
+;;   Making several calls to monitor/2 for the same pid-or-name and/or
+;;   type is not an error; it results in as many independent monitoring
+;;   instances.
+;;   Monitoring self does nothing.
+;;
+;;   Returns true.
 
 (deftest ^:parallel monitor-receives-down-when-process-exits-by-pid
   (let [done (async/chan)
