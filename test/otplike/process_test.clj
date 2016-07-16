@@ -1216,46 +1216,41 @@
     (process/spawn pfn1 [] {:flags {:trap-exit true}})
     (await-completion done 300)))
 
-(deftest ^:parallel monitor-receives-down-when-process-exits-by-pid []
-  (let [done (async/chan)
-        pid1 (process/spawn
-               (proc-fn [inbox]
-                 (is (= :inbox-closed (<! (await-message inbox 150))))) [] {})
-
-        pid2 (process/spawn
-               (proc-fn [inbox]
-                (let [ref (process/monitor pid1)]
-                   (<!! (async/timeout 100))
-                   (process/exit pid1 :abnormal)
-                   (is (= [:down-message [ref pid1 :abnormal]] (<! (await-message inbox 100))))
-                   (async/close! done))) [] {})]
-    (await-completion done 300)))
-
-(deftest ^:parallel monitor-receives-down-when-process-exits-by-name []
-  (let [done (async/chan)
-        pid1 (process/spawn
-               (proc-fn [inbox]
-                 (is (= :inbox-closed (<! (await-message inbox 150))))) [] {:register :my-name})
-
-        pid2 (process/spawn
-               (proc-fn [inbox]
-                 (let [ref (process/monitor :my-name)]
-                   (<!! (async/timeout 100))
-                   (process/exit pid1 :abnormal)
-                   (is (= [:down-message [ref :my-name :abnormal]] (<! (await-message inbox 100))))
-                   (async/close! done))) [] {})]
-    (await-completion done 300)))
-
-
-
-
 ; TODO check if spawn-link works like spawn
 
 ;; ====================================================================
 ;; (monitor [pid])
 ;;   ;
 
+(deftest ^:parallel monitor-receives-down-when-process-exits-by-pid
+  (let [done (async/chan)
+        pfn1 (proc-fn [inbox]
+               (is (= :inbox-closed (<! (await-message inbox 150)))))
+        pid1 (process/spawn pfn1 [] {})
+        pfn2 (proc-fn [inbox]
+               (let [mref (process/monitor pid1)]
+                 (<!! (async/timeout 100))
+                 (process/exit pid1 :abnormal)
+                 (is (= [:down-message [mref pid1 :abnormal]]
+                        (<! (await-message inbox 100))))
+                 (async/close! done)))]
+    (process/spawn pfn2 [] {})
+    (await-completion done 300)))
 
+(deftest ^:parallel monitor-receives-down-when-process-exits-by-name
+  (let [done (async/chan)
+        pfn1 (proc-fn [inbox]
+               (is (= :inbox-closed (<! (await-message inbox 150)))))
+        pid1 (process/spawn pfn1 [] {:register :my-name})
+        pfn2 (proc-fn [inbox]
+               (let [mref (process/monitor :my-name)]
+                 (<!! (async/timeout 100))
+                 (process/exit pid1 :abnormal)
+                 (is (= [:down-message [mref :my-name :abnormal]]
+                        (<! (await-message inbox 100))))
+                 (async/close! done)))]
+    (process/spawn pfn2 [] {})
+    (await-completion done 300)))
 
 ;; ====================================================================
 ;; (demonitor [pid])
@@ -1265,7 +1260,7 @@
 
 ; -----------
 
-#_(deftest spawn-terminate-normal []
+#_(deftest spawn-terminate-normal
   (let [result (trace/trace-collector [:p1])]
     (process/spawn
       (fn [inbox p1 p2 & other]
@@ -1283,7 +1278,7 @@
            [_ _ [:return :normal]]
            [_ _ [:terminate :normal]]] true)))))
 
-#_(deftest spawn-terminate-nil []
+#_(deftest spawn-terminate-nil
   (let [result (trace/trace-collector [:p1])]
     (process/spawn (fn [_inbox]) [] {:name :p1})
     (let [trace (result 1000)]
@@ -1293,7 +1288,7 @@
            [_ _ [:return :nil]]
            [_ _ [:terminate :nil]]] true)))))
 
-#_(defn- link-to-normal* []
+#_(defn- link-to-normal*
   (let [p1-fn (fn [_inbox]
                 (go
                   (async/<! (async/timeout 500))
@@ -1302,20 +1297,20 @@
         p1 (process/spawn p1-fn [] {:name :p1})
         p2 (process/spawn p2-fn [] {:name :p2 :link-to p1})] [p1 p2]))
 
-#_(deftest link-to-normal []
+#_(deftest link-to-normal
   (let [result (trace/trace-collector [:p1 :p2])
         [p1 p2] (link-to-normal*)
         trace (result 1000)]
     (is (trace/terminated? trace p1 :blah))
     (is (trace/terminated? trace p2 :blah))))
 
-#_(defn- link-to-terminated* []
+#_(defn- link-to-terminated*
   (let [p1 (process/spawn (fn [_inbox]) [] {:name :p1})
         _  (async/<!! (async/timeout 500))
         p2 (process/spawn (fn [inbox] (go (<! inbox))) [] {:name :p2 :link-to p1})]
     [p1 p2]))
 
-#_(deftest link-to-terminated []
+#_(deftest link-to-terminated
   (let [result (trace/trace-collector [:p1 :p2])
         [p1 p2] (link-to-terminated*)
         trace (result 1000)]
