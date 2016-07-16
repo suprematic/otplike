@@ -1238,15 +1238,16 @@
     (await-completion done 300)))
 
 (deftest ^:parallel monitor-receives-down-when-process-exits-by-name
-  (let [done (async/chan)
+  (let [reg-name (uuid-keyword)
+        done (async/chan)
         pfn1 (proc-fn [inbox]
                (is (= :inbox-closed (<! (await-message inbox 150)))))
-        pid1 (process/spawn pfn1 [] {:register :my-name})
+        pid1 (process/spawn pfn1 [] {:register reg-name})
         pfn2 (proc-fn [inbox]
-               (let [mref (process/monitor :my-name)]
+               (let [mref (process/monitor reg-name)]
                  (<!! (async/timeout 100))
                  (process/exit pid1 :abnormal)
-                 (is (= [:down-message [mref :my-name :abnormal]]
+                 (is (= [:down-message [mref reg-name :abnormal]]
                         (<! (await-message inbox 100))))
                  (async/close! done)))]
     (process/spawn pfn2 [] {})
