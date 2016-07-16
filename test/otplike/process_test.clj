@@ -1556,8 +1556,21 @@
     (await-completion done 200)))
 
 ;; ====================================================================
-;; (demonitor [pid])
-;;   ;
+;; (demonitor [mref])
+;;   If mref is a reference that the calling process obtained by
+;;   calling monitor, this monitoring is turned off. If the monitoring
+;;   is already turned off, nothing happens.
+;;   Once demonitor has returned, it is guaranteed that no
+;;   [:DOWN, monitor-ref, _, _, _] message, because of the monitor,
+;;   will be placed in the caller message queue in the future.
+;;   A [:DOWN, monitor-ref, _, _, _] message can have been placed in
+;;   the caller message queue before the call, though. It is therefore
+;;   usually advisable to remove such a :DOWN message from the message
+;;   queue after monitoring has been stopped.
+;;   Returns true.
+;;   Throws when called not in process context, mref is not a
+;;   monitor-ref, or if mref refers to a monitoring started by another
+;;   process.
 
 
 
