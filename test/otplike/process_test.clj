@@ -215,7 +215,7 @@
 (deftest ^:parallel exit-normal-trap-exit
   (let [done (async/chan)
         pfn (proc-fn [inbox]
-              (is (= [:exit-message [:reason :normal]]
+              (is (= [:exit [:reason :normal]]
                      (<! (await-message inbox 100)))
                   (str "exit must send [:EXIT pid :normal] message"
                        " to process trapping exits"))
@@ -251,7 +251,7 @@
 (deftest ^:parallel exit-abnormal-trap-exit
   (let [done (async/chan)
         pfn (proc-fn [inbox]
-              (is (= [:exit-message [:reason :abnormal]]
+              (is (= [:exit [:reason :abnormal]]
                      (<! (await-message inbox 100)))
                   (str "exit must send [:EXIT _ reason] message"
                        " to process trapping exits"))
@@ -322,7 +322,7 @@
     (process/spawn
       (proc-fn [inbox]
         (process/exit (process/self) :normal)
-        (is (= [:exit-message [:reason :normal]]
+        (is (= [:exit [:reason :normal]]
                (<! (await-message inbox 100)))
             (str "exit with reason :normal must send [:EXIT pid :normal]"
                  " message to process trapping exits"))
@@ -334,12 +334,12 @@
     (process/spawn
       (proc-fn [inbox]
         (process/exit (process/self) :abnormal-1)
-        (is (= [:exit-message [:reason :abnormal-1]]
+        (is (= [:exit [:reason :abnormal-1]]
                (<! (await-message inbox 300)))
             (str "exit must send [:EXIT pid reason]"
                  " message to process trapping exits"))
         (process/exit (process/self) :abnormal-2)
-        (is (= [:exit-message [:reason :abnormal-2]]
+        (is (= [:exit [:reason :abnormal-2]]
                (<! (await-message inbox 300)))
             (str "exit must send [:EXIT pid reason]"
                  " message to process trapping exits"))
@@ -403,7 +403,7 @@
         pfn (proc-fn [inbox]
               (process/flag :trap-exit true)
               (async/close! done1)
-              (is (= [:exit-message [:reason :normal]]
+              (is (= [:exit [:reason :normal]]
                      (<! (await-message inbox 100)))
                   (str "flag :trap-exit set to true in process must"
                        " make process to trap exits"))
@@ -435,7 +435,7 @@
         pfn (proc-fn [inbox]
               (process/flag :trap-exit true)
               (async/close! done1)
-              (is (= [:exit-message [:reason :abnormal]]
+              (is (= [:exit [:reason :abnormal]]
                      (<! (await-message inbox 50)))
                   (str "flag :trap-exit set to true in process must"
                        " make process to trap exits"))
@@ -603,7 +603,7 @@
   (let [done1 (async/chan)
         done2 (async/chan)
         pfn2 (proc-fn [inbox]
-               (is (= [:exit-message [:reason :abnormal]]
+               (is (= [:exit [:reason :abnormal]]
                       (<! (await-message inbox 100)))
                    (str "process trapping exits must get exit message"
                         " when linked process exits with reason"
@@ -643,7 +643,7 @@
   (let [done1 (async/chan)
         done2 (async/chan)
         pfn2 (proc-fn [inbox]
-               (is (= [:exit-message [:reason :abnormal]]
+               (is (= [:exit [:reason :abnormal]]
                       (<! (await-message inbox 100)))
                    (str "process trapping exits must get exit message"
                         " when linked process exits with reason"
@@ -709,7 +709,7 @@
         pfn1 (proc-fn [inbox]
                (try
                  (process/link pid2)
-                 (is (= [:exit-message [:reason :noproc]]
+                 (is (= [:exit [:reason :noproc]]
                         (<! (await-message inbox 50)))
                      (str "linking to terminated process must either"
                           " throw or send exit message to process"
@@ -902,7 +902,7 @@
                (async/close! done1)
                (<! (async/timeout 100))
                (process/unlink pid)
-               (is (= [:exit-message [:reason :abnormal]]
+               (is (= [:exit [:reason :abnormal]]
                       (<! (await-message inbox 100)))
                    (str "exit message from abnormally terminated linked"
                         " process, terminated before unlink have been"
@@ -1088,7 +1088,7 @@
     (await-completion done 200))
   (let [done (async/chan)
         pfn (proc-fn [inbox]
-              (is (= [:exit-message [:reason :abnormal]]
+              (is (= [:exit [:reason :abnormal]]
                      (<! (await-message inbox 100)))
                   (str "process spawned option :trap-exit set to true"
                        " must trap exits"))
@@ -1118,7 +1118,7 @@
                   "test failed"))
         pid (process/spawn pfn [] {})
         pfn1 (proc-fn [inbox]
-               (is (= [:exit-message [:reason :abnormal]]
+               (is (= [:exit [:reason :abnormal]]
                       (<! (await-message inbox 200)))
                    (str "process trapping exits and spawned with option"
                         " :link-to must receive exit message when linked"
@@ -1188,7 +1188,7 @@
                   "test failed"))
         pfn1 (proc-fn [inbox]
                (process/spawn-link pfn [] {})
-               (is (=  [:exit-message [:reason :abnormal]]
+               (is (=  [:exit [:reason :abnormal]]
                       (<! (await-message inbox 200)))
                    (str "process trapping exits and spawned with option"
                         " :link-to must receive exit message when linked"
@@ -1254,7 +1254,7 @@
                (let [mref (process/monitor pid1)]
                  (<! (async/timeout 50))
                  (process/exit pid1 :abnormal)
-                 (is (= [:down-message [mref pid1 :abnormal]]
+                 (is (= [:down [mref pid1 :abnormal]]
                         (<! (await-message inbox 100)))
                      (str "process must receive :DOWN message containing proper"
                           " monitor ref, pid and reason when monitored by pid"
@@ -1270,7 +1270,7 @@
                (let [mref (process/monitor pid1)]
                  (<! (async/timeout 50))
                  (async/close! done1)
-                 (is (= [:down-message [mref pid1 :normal]]
+                 (is (= [:down [mref pid1 :normal]]
                         (<! (await-message inbox 100)))
                      (str "process must receive :DOWN message containing proper"
                           " monitor ref, pid and reason when monitored by pid"
@@ -1288,7 +1288,7 @@
                (let [mref (process/monitor reg-name)]
                  (<! (async/timeout 50))
                  (process/exit pid1 :kill)
-                 (is (= [:down-message [mref reg-name :killed]]
+                 (is (= [:down [mref reg-name :killed]]
                         (<! (await-message inbox 100)))
                      (str "process must receive :DOWN message containing proper"
                           " monitor ref, pid and reason when monitored by pid"
@@ -1306,7 +1306,7 @@
                (let [mref (process/monitor reg-name)]
                  (<! (async/timeout 50))
                  (process/exit pid1 :abnormal)
-                 (is (= [:down-message [mref reg-name :abnormal]]
+                 (is (= [:down [mref reg-name :abnormal]]
                         (<! (await-message inbox 100)))
                      (str "process must receive :DOWN message containing proper"
                           " monitor ref, reg-name and reason when monitored by"
@@ -1413,7 +1413,7 @@
         pfn (proc-fn [inbox]
               (let [reg-name (uuid-keyword)
                     mref (process/monitor reg-name)]
-                (is (= [:down-message [mref reg-name :noproc]]
+                (is (= [:down [mref reg-name :noproc]]
                        (<! (await-message inbox 50)))
                     (str "process must receive :DOWN message with :noproc"
                          " reason when monitor called with never registered"
@@ -1421,7 +1421,7 @@
               (let [pid (process/spawn (proc-fn [_inbox]) [] {})
                     _ (<! (async/timeout 50))
                     mref (process/monitor pid)]
-                (is (= [:down-message [mref pid :noproc]]
+                (is (= [:down [mref pid :noproc]]
                        (<! (await-message inbox 50)))
                     (str "process must receive :DOWN message with :noproc"
                          " reason when monitor called with terminated process"
@@ -1430,7 +1430,7 @@
                     _pid (process/spawn (proc-fn [_]) [] {:register reg-name})
                     _ (<! (async/timeout 50))
                     mref (process/monitor reg-name)]
-                (is (= [:down-message [mref reg-name :noproc]]
+                (is (= [:down [mref reg-name :noproc]]
                        (<! (await-message inbox 50)))
                     (str "process must receive :DOWN message with :noproc"
                          " reason when monitor called with terminated process"
@@ -1462,7 +1462,7 @@
                     _ (<! (async/timeout 50))
                     _ (async/close! done1)
                     msgs (doall (take 3 (repeatedly #(<!! (await-message inbox 50)))))]
-                (is (= (map (fn [mref] [:down-message [mref pid :normal]])
+                (is (= (map (fn [mref] [:down [mref pid :normal]])
                             mrefs)
                        msgs)
                     (str "monitoring process must receive one :DOWN message"
@@ -1475,7 +1475,7 @@
   down-message-is-not-sent-when-process-trapping-exits-receives-exit-message
   (let [done (async/chan)
         pfn1 (proc-fn [inbox]
-               (is (= [:exit-message [:reason :abnormal]]
+               (is (= [:exit [:reason :abnormal]]
                       (<! (await-message inbox 100)))
                    "test failed")
                (await-completion done 200))

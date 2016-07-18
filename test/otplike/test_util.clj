@@ -9,8 +9,8 @@
   (async/go
     (let [timeout (async/timeout timeout-ms)]
       (match (async/alts! [inbox timeout])
-        [[:EXIT _ reason] inbox] [:exit-message [:reason reason]]
-        [[:DOWN ref :process object reason] inbox] [:down-message [ref object reason]]
+        [[:EXIT _ reason] inbox] [:exit [:reason reason]]
+        [[:DOWN ref :process object reason] inbox] [:down [ref object reason]]
         [nil inbox] :inbox-closed
         [msg inbox] [:message msg]
         [nil timeout] :timeout))))
