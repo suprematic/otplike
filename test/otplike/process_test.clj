@@ -2,30 +2,12 @@
   (:require [clojure.test :refer [is deftest]]
             [otplike.process :as process :refer [! proc-fn]]
             [otplike.trace :as trace]
+            [otplike.test-util :refer :all]
             [clojure.core.async :as async :refer [<!! <! >! put! go go-loop]]
             [clojure.core.async.impl.protocols :as ap]
             [clojure.core.match :refer [match]]))
 
 (trace/set-trace  (fn  [_pid _event]))
-
-(defn- uuid-keyword []
-  (keyword (str (java.util.UUID/randomUUID))))
-
-(defn- await-message [inbox timeout-ms]
-  (go
-    (let [timeout (async/timeout timeout-ms)]
-      (match (async/alts! [inbox timeout])
-        [[:EXIT _ reason] inbox] [:exit-message [:reason reason]]
-        [[:DOWN ref :process object reason] inbox] [:down-message [ref object reason]]
-        [nil inbox] :inbox-closed
-        [msg inbox] [:message msg]
-        [nil timeout] :timeout))))
-
-(defn- await-completion [chan timeout-ms]
-  (let [timeout (async/timeout timeout-ms)]
-    (match (async/alts!! [chan timeout])
-      [nil chan] :ok
-      [nil timeout] (throw (Exception. (str "timeout " timeout-ms))))))
 
 ;; ====================================================================
 ;; (self [])
