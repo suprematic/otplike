@@ -1,10 +1,7 @@
 (ns otplike.trace
   (:require
     [clojure.core.match :refer [match]]
-    [clojure.core.async :as async]))
-
-(def traceble
-  #{:start :terminate :_deliver :_inbound :return})
+    [clojure.core.async :as async :refer [<!! <! >! put! go go-loop]]))
 
 (defn- default-trace-fn [pid event]
   (match event
@@ -19,9 +16,22 @@
 (def *trace-fn
   (atom default-trace-fn))
 
+(def *trace-chan
+  (async/chan 1024))
+
+(go
+  (loop []
+    (when-let [[pid event] (<! *trace-chan)]
+      (when-let [trace-fn @*trace-fn]
+        (try
+          (trace-fn pid event)
+          (catch Throwable e
+            (.printStackTrace e)))
+        (recur)))))
+
 (defn trace [pid event]
   (when-let [trace-fn @*trace-fn]
-    (trace-fn pid event)))
+    (async/put! *trace-chan [pid event])))
 
 (defn set-trace [tracefn]
   (reset! *trace-fn tracefn))
