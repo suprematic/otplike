@@ -23,7 +23,8 @@
         :get-async (do
                      (gen-server/reply from state)
                      [:noreply state])
-        :get-sync [:reply state state]))
+        :get-sync [:reply state state]
+        :stop [:stop :normal state]))
 
     (handle-cast [_ message state]
       (println "handle-cast: " message ", state: " state)
@@ -55,7 +56,8 @@
          :get-async (do
                       (gen-server/reply from state)
                       [:noreply state])
-         :get-sync [:reply state state]))
+         :get-sync [:reply state state]
+         :stop [:stop :normal state]))
 
      :handle-cast
      (fn [message state]
@@ -75,4 +77,5 @@
                 (gen-server/cast pid :inc)
                 (gen-server/cast pid :dec)
                 (println "state-async: " (gen-server/call pid :get-async))
-                (println "state-sync: " (gen-server/call pid :get-sync)))))
+                (println "state-sync: " (gen-server/call pid :get-sync))
+                (gen-server/call pid :stop))))
