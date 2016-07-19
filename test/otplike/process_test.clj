@@ -12,20 +12,18 @@
 ;; (self [])
 
 (deftest ^:parallel self-returns-process-pid-in-process-context
-  (let [done (async/chan)]
-    (process/spawn
-      (proc-fn [inbox]
-        (is (process/pid? (process/self))
-            "self must return pid when called in process context")
-        (is (= (process/self) (process/self))
-            "self must return the same pid when called by the same process")
-        (! (process/self) :msg)
-        (is (= [:message :msg] (<! (await-message inbox 100)))
-            "message sent to self must appear in inbox")
-        (async/close! done))
-      []
-      {})
-    (await-completion done 500)))
+  (let [done (async/chan)
+        pfn (proc-fn [inbox]
+              (is (process/pid? (process/self))
+                  "self must return pid when called in process context")
+              (is (= (process/self) (process/self))
+                  "self must return the same pid when called by the same process")
+              (! (process/self) :msg)
+              (is (= [:message :msg] (<! (await-message inbox 100)))
+                  "message sent to self must appear in inbox")
+              (async/close! done))]
+    (process/spawn pfn [] {})
+    (await-completion done 200)))
 
 (deftest ^:parallel self-fails-in-non-process-context
   (is (thrown? Exception (process/self))
@@ -658,9 +656,9 @@
                (is (= :inbox-closed (<! (await-message inbox 100)))
                    "exit must close inbox of process not trapping exits"))
         pid1 (process/spawn pfn1 [] {})]
-    (await-completion done1 100)
+    (await-completion done1 500)
     (process/exit pid1 :abnormal)
-    (await-completion done2 300)))
+    (await-completion done2 500)))
 
 (deftest ^:parallel link-creates-exactly-one-link-when-called-multiple-times
   (let [done1 (async/chan)
@@ -739,12 +737,7 @@
 (deftest ^:parallel link-to-self-does-not-throw
   (let [done (async/chan)
         pfn (proc-fn [_inbox]
-              (is (try
-                    (process/link (process/self))
-                    true
-                    (catch Exception e
-                      (.printStackTrace e)
-                      false))
+              (is (process/link (process/self))
                   "link to self must not throw when process is alive")
               (async/close! done))]
     (process/spawn pfn [] {})
@@ -962,7 +955,7 @@
     (await-completion done 100)))
 
 (deftest ^:parallel spawn-returns-process-pid
-  (let [done (async/chan)
+  (let [done (async/chan 1)
         pfn (proc-fn [_inbox] (async/put! done (process/self)))
         pid1 (process/spawn pfn [] {})
         timeout (async/timeout 100)
@@ -1114,7 +1107,7 @@
     (await-completion done 300))
   (let [done (async/chan)
         pfn (proc-fn [inbox]
-              (is (= :inbox-closed (<! (await-message inbox 100)))
+              (is (= :inbox-closed (<! (await-message inbox 250)))
                   "test failed"))
         pid (process/spawn pfn [] {})
         pfn1 (proc-fn [inbox]
@@ -1242,7 +1235,7 @@
 ;;   Monitoring self does nothing.
 ;;
 ;;   Returns monitor ref.
-;;   Throws when callen not in process context.
+;;   Throws when called not in process context.
 
 (deftest ^:parallel down-message-is-sent-when-monitored-process-exits
   (let [done (async/chan)
@@ -1344,7 +1337,7 @@
                        " reg-name of alive process as argument"))
               (async/close! done))]
     (process/spawn pfn [] {})
-    (await-completion done 100))
+    (await-completion done 200))
   (let [done (async/chan)
         pid (process/spawn (proc-fn [_inbox]) [] {})
         pfn (proc-fn [inbox]
@@ -1365,7 +1358,7 @@
                        " reg-name of terminated process as argument"))
               (async/close! done))]
     (process/spawn pfn [] {})
-    (await-completion done 200))
+    (await-completion done 500))
   (let [reg-name (uuid-keyword)
         done (async/chan)
         pfn (proc-fn [inbox]
