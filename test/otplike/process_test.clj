@@ -3,7 +3,7 @@
             [otplike.process :as process :refer [! proc-fn]]
             [otplike.trace :as trace]
             [otplike.test-util :refer :all]
-            [clojure.core.async :as async :refer [<!! <!]]
+            [clojure.core.async :as async :refer [<!! <! >!]]
             [clojure.core.match :refer [match]]))
 
 (trace/set-trace (fn [_pid _event]))
@@ -1540,7 +1540,8 @@
 ;; (demonitor [mref])
 ;;   If mref is a reference that the calling process obtained by
 ;;   calling monitor, this monitoring is turned off. If the monitoring
-;;   is already turned off, nothing happens.
+;;   is already turned off, nothing happens. If mref was created by
+;;   other process, nothing happens.
 ;;   Once demonitor has returned, it is guaranteed that no
 ;;   [:DOWN, monitor-ref, _, _, _] message, because of the monitor,
 ;;   will be placed in the caller message queue in the future.
@@ -1550,7 +1551,225 @@
 ;;   queue after monitoring has been stopped.
 ;;   Returns true.
 ;;   Throws when called not in process context, mref is not a
-;;   monitor-ref, or if mref refers to a monitoring started by another
-;;   process.
+;;   monitor-ref.
 
+(deftest ^:parallel demonitor-stops-monitoring
+  (let [done (async/chan)
+        done1 (async/chan)
+        pid (process/spawn (proc-fn [inbox] (await-completion done1 200)) [] {})
+        pfn (proc-fn [inbox]
+               (let [mref (process/monitor pid)]
+                 (<! (async/timeout 50))
+                 (process/demonitor mref)
+                 (<! (async/timeout 50))
+                 (async/close! done1)
+                 (is (= :timeout (<! (await-message inbox 100)))
+                     (str "demonitor called after monitored process exited"
+                          " must not affect monitoring process"))
+                 (async/close! done)))]
+    (process/spawn pfn [] {})
+    (await-completion done 300)))
 
+(deftest ^:parallel
+  demonitor-called-after-monitored-process-exited-does-nothing
+  (let [done (async/chan)
+        done1 (async/chan)
+        pid (process/spawn (proc-fn [inbox] (await-completion done1 100)) [] {})
+        pfn (proc-fn [inbox]
+               (let [mref (process/monitor pid)]
+                 (<! (async/timeout 50))
+                 (async/close! done1)
+                 (<! (async/timeout 50))
+                 (process/demonitor mref)
+                 (is (= [:down [mref pid :normal]]
+                        (<! (await-message inbox 100)))
+                     (str "demonitor called after monitored process exited"
+                          " must not affect monitoring process"))
+                 (is (= :timeout (<! (await-message inbox 100)))
+                     (str "demonitor called after monitored process exited"
+                          " must not affect monitoring process"))
+                 (async/close! done)))]
+    (process/spawn pfn [] {})
+    (await-completion done 300)))
+
+(deftest ^:parallel demonitor-called-multiple-times-does-nothing
+  (let [done (async/chan)
+        pfn (proc-fn [inbox]
+              (is (= :timeout (<! (await-message inbox 100)))
+                  (str "demonitor called multiple times must not affect"
+                       " monitored process")))
+        pid (process/spawn pfn [] {})
+        pfn1 (proc-fn [inbox]
+               (let [mref (process/monitor pid)]
+                 (is (process/demonitor mref) "test failed")
+                 (is (process/demonitor mref)
+                     (str "demonitor called multiple times must not affect"
+                          " calling process"))
+                 (is (process/demonitor mref)
+                     (str "demonitor called multiple times must not affect"
+                          " calling process"))
+                 (is (= :timeout (<! (await-message inbox 100)))
+                     (str "demonitor called multiple times must not affect"
+                          " monitoring process"))
+                 (async/close! done)))]
+    (process/spawn pfn1 [] {})
+    (await-completion done 200)))
+
+(deftest ^:parallel demonitor-returns-true
+  (let [done (async/chan)
+        pid (process/spawn (proc-fn [_] (await-completion done 100)) [] {})
+        pfn (proc-fn [_inbox]
+              (let [mref (process/monitor pid)]
+                (is (= true (process/demonitor mref))
+                    (str "demonitor must return true when called while"
+                         " monitored process is alive"))
+                (is (= true (process/demonitor mref))
+                    "demonitor must return true when called multiple times")
+                (is (= true (process/demonitor mref))
+                    "demonitor must return true when called multiple times")
+                (async/close! done)))]
+    (process/spawn pfn [] {})
+    (await-completion done 100))
+  (let [done (async/chan)
+        pid (process/spawn (proc-fn [_]) [] {})
+        pfn (proc-fn [_inbox]
+              (let [mref (process/monitor pid)]
+                (<! (async/timeout 50))
+                (is (= true (process/demonitor mref))
+                    (str "demonitor must return true when called when"
+                         " monitored process have terminated"))
+                (async/close! done)))]
+    (process/spawn pfn [] {})
+    (await-completion done 200))
+  (let [done (async/chan)
+        pfn1 (proc-fn [_inbox]
+              (is (await-completion done 200) "test failed"))
+        pid1 (process/spawn pfn1 [] {})
+        pfn2 (proc-fn [inbox]
+               (let [[_ mref] (<! (await-message inbox 100))]
+                 (is (process/monitor-ref? mref) "test failed")
+                 (is (= true (process/demonitor mref))
+                     (str "demonitor must return true when called byj"
+                          " process other than process called monitor"))
+                 (async/close! done)))
+        pid2 (process/spawn pfn2 [] {})
+        pfn3 (proc-fn [_inbox]
+              (let [mref (process/monitor pid1)]
+                (<! (async/timeout 50))
+                (! pid2 mref)
+                (await-completion done 100)))]
+    (process/spawn pfn3 [] {})
+    (await-completion done 200)))
+
+(deftest ^:parallel demonitor-throws-on-not-a-monitor-ref
+  (let [pfn (proc-fn [_]
+              (is (thrown? Exception (process/demonitor nil))
+                  "demonitor must throw on not a monitor-ref")
+              (is (thrown? Exception (process/demonitor 1))
+                  "demonitor must throw on not a monitor-ref")
+              (is (thrown? Exception (process/demonitor "mref"))
+                  "demonitor must throw on not a monitor-ref")
+              (is (thrown? Exception (process/demonitor true))
+                  "demonitor must throw on not a monitor-ref")
+              (is (thrown? Exception (process/demonitor false))
+                  "demonitor must throw on not a monitor-ref")
+              (is (thrown? Exception (process/demonitor []))
+                  "demonitor must throw on not a monitor-ref")
+              (is (thrown? Exception (process/demonitor '()))
+                  "demonitor must throw on not a monitor-ref")
+              (is (thrown? Exception (process/demonitor {}))
+                  "demonitor must throw on not a monitor-ref")
+              (is (thrown? Exception (process/demonitor #{}))
+                  "demonitor must throw on not a monitor-ref"))]
+    (process/spawn pfn [] {})))
+
+(deftest ^:parallel demonitor-throws-when-called-not-in-process-context
+  (let [done (async/chan)
+        mref-chan (async/chan 1)
+        pid (process/spawn (proc-fn [_] (await-completion done 100)) [] {})
+        pfn (proc-fn [_inbox]
+              (>! mref-chan (process/monitor pid))
+              (await-completion done 100))]
+    (process/spawn pfn [] {})
+    (match (async/alts!! [mref-chan (async/timeout 100)])
+      [(mref :guard #(process/monitor-ref? %)) mref-chan]
+      (is (thrown? Exception (process/demonitor mref))
+          (str "demonitor must throw when called not in process context"
+               " when both processes are alive")))
+    (async/close! mref-chan)
+    (async/close! done))
+  (let [done (async/chan)
+        mref-chan (async/chan 1)
+        pid (process/spawn (proc-fn [_inbox]) [] {})
+        pfn (proc-fn [_inbox]
+              (>! mref-chan (process/monitor pid))
+              (await-completion done 100))]
+    (process/spawn pfn [] {})
+    (match (async/alts!! [mref-chan (async/timeout 100)])
+      [(mref :guard #(process/monitor-ref? %)) mref-chan]
+      (is (thrown? Exception (process/demonitor mref))
+          (str "demonitor must throw when called not in process context"
+               " when monitoring processes is alive")))
+    (async/close! mref-chan)
+    (async/close! done))
+  (let [done (async/chan 1)
+        mref-chan (async/chan)
+        pid (process/spawn (proc-fn [_] (await-completion done 100)) [] {})]
+    (process/spawn (proc-fn [_] (>! mref-chan (process/monitor pid))) [] {})
+    (<!! (async/timeout 50))
+    (match (async/alts!! [mref-chan (async/timeout 1000)])
+      [(mref :guard #(process/monitor-ref? %)) mref-chan]
+      (is (thrown? Exception (process/demonitor mref))
+          (str "demonitor must throw when called not in process context"
+               " when monitored processes is alive")))
+    (async/close! mref-chan)
+    (async/close! done)))
+
+(deftest ^:parallel
+  demonitor-does-nothing-when-monitoring-started-by-other-process
+  (let [done (async/chan)
+        done1 (async/chan)
+        pfn1 (proc-fn [inbox]
+               (let [[_ mref] (<! (await-message inbox 100))]
+                 (is (process/monitor-ref? mref) "testf failed")
+                 (is (process/demonitor mref)
+                     (str "demonitor return true when called with monitor-ref"
+                          " of monitoring started by other process"))
+                 (<! (async/timeout 50))
+                 (async/close! done1)))
+        pid1 (process/spawn pfn1 [] {})
+        pfn2 (proc-fn [inbox] (is (await-completion done1 200) "test failed"))
+        pid2 (process/spawn pfn2 [] {})
+        pfn3 (proc-fn [inbox]
+              (let [mref (process/monitor pid2)]
+                (! pid1 mref)
+                (is (= [:down [mref pid2 :normal]]
+                       (<! (await-message inbox 200)))
+                    (str "demonitor called by process other than process"
+                         " started monitoring")))
+              (async/close! done))]
+    (process/spawn pfn3 [] {})
+    (await-completion done 200)))
+
+(deftest ^:parallel demonitor-self-does-nothing
+  (let [done (async/chan)
+        pfn (proc-fn [inbox]
+              (let [mref (process/monitor (process/self))]
+                (is (process/demonitor mref)
+                    "demonitor self must return true and do nothing"))
+              (is (= :timeout (<! (await-message inbox 100)))
+                  "demonitor self must do nothing")
+              (async/close! done))]
+    (process/spawn pfn [] {})
+    (await-completion done 200))
+  (let [reg-name (uuid-keyword)
+        done (async/chan)
+        pfn (proc-fn [inbox]
+              (let [mref (process/monitor reg-name)]
+                (is (process/demonitor mref)
+                    "demonitor self must return true and do nothing"))
+              (is (= :timeout (<! (await-message inbox 100)))
+                  "demonitor self must do nothing")
+              (async/close! done))]
+    (process/spawn pfn [] {:register reg-name})
+    (await-completion done 200)))
