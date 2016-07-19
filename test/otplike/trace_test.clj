@@ -26,7 +26,7 @@
              [_ (_ :guard #(= pid %)) [:return :abnormal]]
              [_ (_ :guard #(= pid %)) [:terminate :abnormal]]] true)))))
 
-(deftest link-to-normal
+#_(deftest link-to-normal
   (let [result (trace/trace-collector [:p1 :p2])
         done (async/chan)
         p1-fn (process/proc-fn [_inbox]
@@ -42,7 +42,7 @@
     (is (trace/terminated? trace p1 :blah))
     (is (trace/terminated? trace p2 :blah))))
 
-(deftest link-to-terminated
+#_(deftest link-to-terminated
   (let [result (trace/trace-collector [:p1 :p2])
         p1 (process/spawn (process/proc-fn [_inbox]) [] {:name :p1})
         _  (async/<!! (async/timeout 50))
