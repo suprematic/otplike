@@ -462,7 +462,15 @@
           (swap! *processes assoc pid process))
         (trace/trace pid [:start (str proc-func) args options])
         (binding [*self* pid] ; workaround for ASYNC-170. once fixed, binding should move to (start-process...)
-          (let [return (start-process proc-func outbox args)]
+          (let [return (try
+                         (start-process proc-func outbox args)
+                         (catch Throwable e
+                           (close! outbox)
+                           (dosync
+                             (swap! *processes dissoc pid)
+                             (when register
+                               (swap! *registered dissoc register)))
+                           (throw e)))]
             (go
               (when link-to
                 (doseq [link-to (apply hash-set (flatten [link-to]))] ; ??? probably optimize by sending link requests concurently
