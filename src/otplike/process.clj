@@ -37,17 +37,24 @@
       (trace/trace this [:inbound val])
       (ap/put! inbox val handler))))
 
-(defrecord MonitorRef [id pid])
+(defrecord MonitorRef [id other-pid])
 
 (defn monitor-ref?
   "Returns true if term is a monitor reference, false otherwise."
-  [ref]
-  (instance? MonitorRef ref))
+  [mref]
+  (instance? MonitorRef mref))
 
 (defn pid?
   "Returns true if term is a process identifier, false otherwise."
   [pid]
   (instance? Pid pid))
+
+(defn- new-monitor-ref
+  ([]
+   (new-monitor-ref nil))
+  ([other-pid]
+   {:pre [(or (pid? other-pid) (nil? other-pid))]}
+   (->MonitorRef (swap! *refids inc) other-pid)))
 
 (defn pid->str
   "Returns a string corresponding to the text representation of pid.
@@ -292,12 +299,13 @@
         (do (<!! complete) true)
         (throw (Exception. "stopped"))))))
 
-(defn- monitor-message [ref object reason]
-  {:pre [(monitor-ref? ref)]}
-  [:DOWN ref :process object reason])
+(defn- monitor-message [mref object reason]
+  {:pre [(monitor-ref? mref)]}
+  [:DOWN mref :process object reason])
 
-(defn- monitor-fn [ref object phase {:keys [monitors pid] :as process} other-pid]
-  {:pre [(monitor-ref? ref)
+(defn- monitor-fn
+  [mref object phase {:keys [monitors pid] :as process} other-pid]
+  {:pre [(monitor-ref? mref)
          (keyword? phase)
          (map? @monitors)
          (instance? ProcessRecord process)
@@ -305,47 +313,53 @@
   (case phase
     :phase-one
     (do
-      (trace/trace pid [:monitor ref other-pid object])
-      (swap! monitors assoc ref [other-pid object]))
+      (trace/trace pid [:monitor mref other-pid object])
+      (swap! monitors assoc mref [other-pid object]))
     :noproc
-    (! pid (monitor-message ref object :noproc))
+    (! pid (monitor-message mref object :noproc))
     nil))
 
 (defn- resolve-pid [pid-or-name]
+  {:post [(let [[pid _object] %]
+            (or (nil? pid) (pid? pid)))]}
   (if (pid? pid-or-name)
     [pid-or-name pid-or-name]
     [(whereis pid-or-name) pid-or-name]))
 
 (defn monitor [pid-or-name]
+  {:post [(monitor-ref? %)]}
   (let [self (self)
-        [pid object] (resolve-pid pid-or-name)
-        ref (MonitorRef. (swap! *refids inc) (or pid :noproc))]
-    (when (not= pid self)
-      (if pid
-        (two-phase-start self pid (partial monitor-fn ref object))
-        (! self (monitor-message ref object :noproc))))
-    ref))
+        [other-pid object] (resolve-pid pid-or-name)]
+    (if (= other-pid self)
+      (new-monitor-ref)
+      (if other-pid
+        (let [mref (new-monitor-ref other-pid)]
+          (two-phase-start self other-pid (partial monitor-fn mref object))
+          mref)
+        (let [mref (new-monitor-ref)]
+          (! self (monitor-message mref object :noproc))
+          mref)))))
 
-(defn- demonitor-fn [ref phase {:keys [monitors] :as process} other-pid]
-  {:pre [(monitor-ref? ref)
+(defn- demonitor-fn [mref phase {:keys [monitors] :as process} other-pid]
+  {:pre [(monitor-ref? mref)
          (keyword? phase)
          (map? @monitors)
          (instance? ProcessRecord process)
          (pid? other-pid)]}
   (case phase
     :phase-one
-    (let [[pid object] (@monitors ref)]
+    (let [[pid object] (@monitors mref)]
       (when (= pid other-pid)
-        (trace/trace pid [:demonitor ref other-pid object])
-        (swap! monitors dissoc ref)))
+        (trace/trace pid [:demonitor mref other-pid object])
+        (swap! monitors dissoc mref)))
     nil))
 
-(defn demonitor [{:keys [pid] :as ref}]
-  {:pre [(monitor-ref? ref)
-         (or (pid? pid) (= pid :noproc))]}
+(defn demonitor [{:keys [other-pid] :as mref}]
+  {:post [(= true %)]}
+  (u/check-args [(monitor-ref? mref)])
   (let [self (self)]
-    (when (pid? pid)
-      (let [return (two-phase-start self pid (partial demonitor-fn ref))]
+    (when other-pid
+      (let [return (two-phase-start self other-pid (partial demonitor-fn mref))]
         (<!! return)))
     true))
 
@@ -508,8 +522,8 @@
                         (doseq [p @linked]
                           (!control p [:exit pid reason]))
 
-                        (doseq [[ref [pid object]] @monitors]
-                          (! pid (monitor-message ref object reason)))))))))))))
+                        (doseq [[mref [pid object]] @monitors]
+                          (! pid (monitor-message mref object reason)))))))))))))
     pid))
 
 (defn spawn-link
