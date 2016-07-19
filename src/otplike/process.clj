@@ -326,7 +326,50 @@
     [pid-or-name pid-or-name]
     [(whereis pid-or-name) pid-or-name]))
 
-(defn monitor [pid-or-name]
+(defn monitor
+  "Sends a monitor request to the entity identified by pid-or-name.
+  If the monitored entity does not exist or when it dies,
+  the caller of monitor will be notified by a message on the
+  following format:
+
+  [tag, monitor-ref, type, object, info]
+
+  type can be one of the following keywords: :process.
+  A monitor is triggered only once, after that it is removed from
+  both monitoring process and the monitored entity. Monitors are
+  fired when the monitored process terminates, or does not
+  exist at the moment of creation. The monitoring is also turned
+  off when demonitor/1 is called.
+
+  When monitoring by name please note, that the registered-name is
+  resolved to pid only once at the moment of monitor instantiation,
+  later changes to the name registration will not affect the existing
+  monitor.
+
+  When a monitor is triggered, a :DOWN message that has the
+  following pattern
+
+  [:DOWN, monitor-ref, type, object, info]
+
+  is sent to the monitoring process.
+
+  In monitor message monitor-ref and type are the same as described
+  earlier, and:
+  object
+    The monitored entity, which triggered the event. That is the
+    argument of monitor call.
+  info
+    Either the exit reason of the process, or :noproc (process did not
+    exist at the time of monitor creation).
+
+  Making several calls to monitor/2 for the same pid-or-name and/or
+  type is not an error; it results in as many independent monitoring
+  instances.
+  Monitoring self does nothing.
+
+  Returns monitor-ref.
+  Throws when called not in process context."
+  [pid-or-name]
   {:post [(monitor-ref? %)]}
   (let [self (self)
         [other-pid object] (resolve-pid pid-or-name)]
@@ -354,7 +397,24 @@
         (swap! monitors dissoc mref)))
     nil))
 
-(defn demonitor [{:keys [other-pid] :as mref}]
+(defn demonitor
+  "If mref is a reference that the calling process obtained by
+  calling monitor, this monitoring is turned off. If the monitoring
+  is already turned off, nothing happens. If mref was created by
+  other process, nothing happens.
+
+  Once demonitor has returned, it is guaranteed that no
+  [:DOWN, monitor-ref, _, _, _] message, because of the monitor,
+  will be placed in the caller message queue in the future.
+  A [:DOWN, monitor-ref, _, _, _] message can have been placed in
+  the caller message queue before the call, though. It is therefore
+  usually advisable to remove such a :DOWN message from the message
+  queue after monitoring has been stopped.
+
+  Returns true.
+  Throws when called not in process context, mref is not a
+  monitor-ref."
+  [{:keys [other-pid] :as mref}]
   {:post [(= true %)]}
   (u/check-args [(monitor-ref? mref)])
   (let [self (self)]
