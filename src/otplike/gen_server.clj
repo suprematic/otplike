@@ -153,7 +153,7 @@
       (! server [:call from message])
       (match (async/alts!! [from timeout])
         [value port] value
-        [nil timeout] :timeout))))
+        [nil timeout] (throw (Exception. "timeout"))))))
 
 (def reply async/put!)
 
