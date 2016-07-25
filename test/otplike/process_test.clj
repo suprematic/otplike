@@ -213,7 +213,7 @@
 (deftest ^:parallel exit-normal-trap-exit
   (let [done (async/chan)
         pfn (proc-fn [inbox]
-              (is (= [:exit [:reason :normal]]
+              (is (= [:exit [(process/self) :normal]]
                      (<! (await-message inbox 100)))
                   (str "exit must send [:EXIT pid :normal] message"
                        " to process trapping exits"))
@@ -249,7 +249,7 @@
 (deftest ^:parallel exit-abnormal-trap-exit
   (let [done (async/chan)
         pfn (proc-fn [inbox]
-              (is (= [:exit [:reason :abnormal]]
+              (is (= [:exit [(process/self) :abnormal]]
                      (<! (await-message inbox 100)))
                   (str "exit must send [:EXIT _ reason] message"
                        " to process trapping exits"))
@@ -320,7 +320,7 @@
     (process/spawn
       (proc-fn [inbox]
         (process/exit (process/self) :normal)
-        (is (= [:exit [:reason :normal]]
+        (is (= [:exit [(process/self) :normal]]
                (<! (await-message inbox 100)))
             (str "exit with reason :normal must send [:EXIT pid :normal]"
                  " message to process trapping exits"))
@@ -332,12 +332,12 @@
     (process/spawn
       (proc-fn [inbox]
         (process/exit (process/self) :abnormal-1)
-        (is (= [:exit [:reason :abnormal-1]]
+        (is (= [:exit [(process/self) :abnormal-1]]
                (<! (await-message inbox 300)))
             (str "exit must send [:EXIT pid reason]"
                  " message to process trapping exits"))
         (process/exit (process/self) :abnormal-2)
-        (is (= [:exit [:reason :abnormal-2]]
+        (is (= [:exit [(process/self) :abnormal-2]]
                (<! (await-message inbox 300)))
             (str "exit must send [:EXIT pid reason]"
                  " message to process trapping exits"))
@@ -401,7 +401,7 @@
         pfn (proc-fn [inbox]
               (process/flag :trap-exit true)
               (async/close! done1)
-              (is (= [:exit [:reason :normal]]
+              (is (= [:exit [(process/self) :normal]]
                      (<! (await-message inbox 100)))
                   (str "flag :trap-exit set to true in process must"
                        " make process to trap exits"))
@@ -433,7 +433,7 @@
         pfn (proc-fn [inbox]
               (process/flag :trap-exit true)
               (async/close! done1)
-              (is (= [:exit [:reason :abnormal]]
+              (is (= [:exit [(process/self) :abnormal]]
                      (<! (await-message inbox 50)))
                   (str "flag :trap-exit set to true in process must"
                        " make process to trap exits"))
@@ -600,12 +600,18 @@
 (deftest ^:parallel link-creates-link-with-alive-process-trapping-exits
   (let [done1 (async/chan)
         done2 (async/chan)
+        ch (async/chan)
         pfn2 (proc-fn [inbox]
-               (is (= [:exit [:reason :abnormal]]
-                      (<! (await-message inbox 100)))
-                   (str "process trapping exits must get exit message"
-                        " when linked process exits with reason"
-                        " other than :normal"))
+               (try
+                 (match (async/alts! [ch (async/timeout 100)])
+                   [(pid :guard process/pid?) ch]
+                   (is (= [:exit [pid :abnormal]]
+                          (<! (await-message inbox 100)))
+                       (str "process trapping exits must get exit message"
+                            " when linked process exits with reason"
+                            " other than :normal")))
+                 (catch Exception e
+                   (is false (str "test failed: " e))))
                (async/close! done2))
         pid2 (process/spawn pfn2 [] {:flags {:trap-exit true}})
         pfn1 (proc-fn [inbox]
@@ -614,6 +620,8 @@
                (is (= :inbox-closed (<! (await-message inbox 100)))
                    "exit must close inbox of process not trapping exits"))
         pid1 (process/spawn pfn1 [] {})]
+    (async/>!! ch pid1)
+    (async/close! ch)
     (await-completion done1 100)
     (process/exit pid1 :abnormal)
     (await-completion done2 300)))
@@ -640,12 +648,19 @@
     (await-completion done2 300))
   (let [done1 (async/chan)
         done2 (async/chan)
-        pfn2 (proc-fn [inbox]
-               (is (= [:exit [:reason :abnormal]]
-                      (<! (await-message inbox 100)))
-                   (str "process trapping exits must get exit message"
-                        " when linked process exits with reason"
-                        " other than :normal"))
+        ch (async/chan)
+        pfn2 (proc-fn
+               [inbox]
+               (try
+                 (match (async/alts! [ch (async/timeout 100)])
+                   [(pid :guard process/pid?) ch]
+                   (is (= [:exit [pid :abnormal]]
+                          (<! (await-message inbox 100)))
+                       (str "process trapping exits must get exit message"
+                            " when linked process exits with reason"
+                            " other than :normal")))
+                 (catch Exception e
+                   (is false (str "test failed: " e))))
                (async/close! done2))
         pid2 (process/spawn pfn2 [] {:flags {:trap-exit true}})
         pfn1 (proc-fn [inbox]
@@ -656,6 +671,8 @@
                (is (= :inbox-closed (<! (await-message inbox 100)))
                    "exit must close inbox of process not trapping exits"))
         pid1 (process/spawn pfn1 [] {})]
+    (async/>!! ch pid1)
+    (async/close! ch)
     (await-completion done1 500)
     (process/exit pid1 :abnormal)
     (await-completion done2 500)))
@@ -707,7 +724,7 @@
         pfn1 (proc-fn [inbox]
                (try
                  (process/link pid2)
-                 (is (= [:exit [:reason :noproc]]
+                 (is (= [:exit [pid2 :noproc]]
                         (<! (await-message inbox 50)))
                      (str "linking to terminated process must either"
                           " throw or send exit message to process"
@@ -895,7 +912,7 @@
                (async/close! done1)
                (<! (async/timeout 100))
                (process/unlink pid)
-               (is (= [:exit [:reason :abnormal]]
+               (is (= [:exit [pid :abnormal]]
                       (<! (await-message inbox 100)))
                    (str "exit message from abnormally terminated linked"
                         " process, terminated before unlink have been"
@@ -1081,7 +1098,7 @@
     (await-completion done 200))
   (let [done (async/chan)
         pfn (proc-fn [inbox]
-              (is (= [:exit [:reason :abnormal]]
+              (is (= [:exit [(process/self) :abnormal]]
                      (<! (await-message inbox 100)))
                   (str "process spawned option :trap-exit set to true"
                        " must trap exits"))
@@ -1111,7 +1128,7 @@
                   "test failed"))
         pid (process/spawn pfn [] {})
         pfn1 (proc-fn [inbox]
-               (is (= [:exit [:reason :abnormal]]
+               (is (= [:exit [pid :abnormal]]
                       (<! (await-message inbox 200)))
                    (str "process trapping exits and spawned with option"
                         " :link-to must receive exit message when linked"
@@ -1180,12 +1197,12 @@
               (is (= :inbox-closed (<! (await-message inbox 100)))
                   "test failed"))
         pfn1 (proc-fn [inbox]
-               (process/spawn-link pfn [] {})
-               (is (=  [:exit [:reason :abnormal]]
-                      (<! (await-message inbox 200)))
-                   (str "process trapping exits and spawned with option"
-                        " :link-to must receive exit message when linked"
-                        " process exited"))
+               (let [pid (process/spawn-link pfn [] {})]
+                 (is (=  [:exit [pid :abnormal]]
+                        (<! (await-message inbox 200)))
+                     (str "process trapping exits and spawned with option"
+                          " :link-to must receive exit message when linked"
+                          " process exited")))
                (async/close! done))]
     (process/spawn pfn1 [] {:flags {:trap-exit true}})
     (await-completion done 300)))
@@ -1426,7 +1443,7 @@
   down-message-is-not-sent-when-process-trapping-exits-receives-exit-message
   (let [done (async/chan)
         pfn1 (proc-fn [inbox]
-               (is (= [:exit [:reason :abnormal]]
+               (is (= [:exit [(process/self) :abnormal]]
                       (<! (await-message inbox 100)))
                    "test failed")
                (await-completion done 200))
