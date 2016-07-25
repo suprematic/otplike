@@ -161,7 +161,7 @@
   {:post [(or (true? %) (false? %))]}
   (u/check-args [(pid? pid)
                  (some? reason)])
-  (!control pid [:exit nil reason]))
+  (!control pid [:exit pid reason]))
 
 (defn flag
   "Sets the value of a process flag. See description of each flag below.
@@ -239,7 +239,7 @@
                  (swap! linked conj other-pid))
     :noproc (do
                (trace/trace pid [:link-timeout other-pid])
-               (exit pid :noproc)))) ; TODO crash :noproc vs. exit :noproc
+               (!control pid [:exit other-pid :noproc])))) ; TODO crash :noproc vs. exit :noproc
 
 (defn link
   "Creates a link between the calling process and another process
