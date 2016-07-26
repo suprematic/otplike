@@ -392,6 +392,20 @@
 ; TODO
 (deftest ^:parallel exit-kill-reason-killed) ; use link or monitor to test the reason
 
+(deftest ^:parallel
+  exit-sends-exit-message-containing-pid-of-the-target-process
+  (let [done (async/chan)
+        pfn (proc-fn[inbox]
+              (is (= [:exit [(process/self) :abnormal]]
+                     (<! (await-message inbox 100)))
+                  (str "trapping exits process must receive exit message"
+                       " containing its pid, after exit was called for the"
+                       " process"))
+              (async/close! done))
+        pid (process/spawn pfn [] {:flags {:trap-exit true}})]
+    (process/exit pid :abnormal)
+    (await-completion done 200)))
+
 ;; ====================================================================
 ;; (flag [flag value])
 
@@ -759,6 +773,38 @@
               (async/close! done))]
     (process/spawn pfn [] {})
     (await-completion done 200)))
+
+(deftest linked-process-receives-exited-process-pid
+  (let [done (async/chan)
+        done1 (async/chan)
+        pfn1 (proc-fn [inbox]
+               (is (await-completion done1 200) "test failed"))
+        pid1 (process/spawn pfn1 [] {})
+        pfn2 (proc-fn [inbox]
+               (process/link pid1)
+               (<! (async/timeout 100))
+               (async/close! done1)
+               (is (= [:exit [pid1 :normal]]
+                      (<! (await-message inbox 100)))
+                   (str "process 1 linked to process 2, must receive exit "
+                        " message containing pid of a proces 2, after process 2"
+                        " terminated"))
+               (async/close! done))]
+    (process/spawn pfn2 [] {:flags {:trap-exit true}})
+    (await-completion done 300))
+  (let [done (async/chan)
+        pid (process/spawn (proc-fn [inbox]) [] {})
+        pfn (proc-fn [inbox]
+              (<! (async/timeout 100))
+              (process/link pid)
+              (is (= [:exit [pid :noproc]]
+                     (<! (await-message inbox 100)))
+                  (str "process 1 tried to link terminated process 2, must"
+                       " receive exit message containing pid of a proces 2"
+                       " when trapping exits"))
+              (async/close! done))]
+    (process/spawn pfn [] {:flags {:trap-exit true}})
+    (await-completion done 300)))
 
 ;; ====================================================================
 ;; (unlink [pid])
