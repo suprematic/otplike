@@ -391,6 +391,7 @@
 
 ; TODO
 (deftest ^:parallel exit-kill-reason-killed) ; use link or monitor to test the reason
+(deftest ^:parallel exit-kill-does-not-propagate)
 
 (deftest ^:parallel
   exit-sends-exit-message-containing-pid-of-the-target-process
@@ -1217,7 +1218,9 @@
     (process/exit pid :abnormal)
     (await-completion done 200)))
 
-; TODO: (deftest spawned-process-available-from-within-process-by-reg-name)
+; TODO:
+;(deftest spawned-process-available-from-within-process-by-reg-name)
+;(deftest there-are-no-residue-of-process-after-proc-fun-throwed)
 
 ;; ====================================================================
 ;; (spawn-link [proc-fun args options])
