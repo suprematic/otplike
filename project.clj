@@ -7,4 +7,6 @@
                  [org.clojure/core.async "0.2.385"]
                  [org.clojure/core.match "0.3.0-alpha4"]]
 
+  :source-paths  ["src" "examples"]
+
   :plugins [[lein-ancient "0.6.10"]])
