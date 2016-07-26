@@ -640,3 +640,18 @@
 
 (defmacro defproc [name & args-body]
   `(def ~name (proc-fn ~@args-body)))
+
+(defmacro defn-proc [name args & body]
+  `(defn ~name []
+     (let [done# (async/chan)]
+       (spawn
+         (proc-fn
+           ~args
+           (try
+             (let [res# (do ~@body)]
+               (when (some? res#) (>! done# res#)))
+             (finally
+               (async/close! done#))))
+         []
+         {})
+       (<!! done#))))
