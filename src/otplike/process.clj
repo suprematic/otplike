@@ -22,6 +22,8 @@
 
 (def ^:private ^:dynamic *self* nil)
 
+(def ^:private ^:dynamic *inbox* nil)
+
 (defn- ->nil [x])
 
 (declare pid->str)
@@ -539,7 +541,8 @@
             (swap! *registered assoc register pid))
           (swap! *processes assoc pid process))
         (trace/trace pid [:start (str proc-func) args options])
-        (binding [*self* pid] ; workaround for ASYNC-170. once fixed, binding should move to (start-process...)
+        (binding [*self* pid
+                  *inbox* outbox] ; workaround for ASYNC-170. once fixed, binding should move to (start-process...)
           (let [return (try
                          (start-process proc-func outbox args)
                          (catch Throwable e
@@ -601,6 +604,29 @@
   (u/check-args [(or (nil? opts) (map? opts))])
   (let [opts (update-in opts [:link-to] conj (self))]
     (spawn proc-func args opts)))
+
+(defn inbox* [] *inbox*)
+
+(defmacro receive* [park? clauses]
+  (if (even? (count clauses))
+    `(match (~(if park? `<! `<!!) (inbox*)) ~@clauses)
+    (match (last clauses)
+      (['after (ms :guard #(and (integer? %) (not (neg? %)))) & body] :seq)
+      `(let [inbox# (inbox*)
+             timeout# (async/timeout ~ms)]
+         (match (~(if park? `async/alts! `async/alts!!) [inbox# timeout#])
+           [nil timeout#] (do ~@body)
+           [nil inbox#] (throw (Exception. "stopped"))
+           [msg# inbox#] (match msg# ~@(butlast clauses)))))))
+
+(defmacro receive! [& clauses]
+  `(receive* true ~clauses))
+
+(defmacro receive!! [& clauses]
+  `(receive* false ~clauses))
+
+#_(defmacro receive [& clauses]
+  `(go (receive! ~clauses)))
 
 (defmacro proc-fn [args & body]
   (assert (vector? args))
