@@ -139,12 +139,12 @@
   If reason is any term, except :normal or :kill:
   - if pid is not trapping exits, pid itself exits with exit reason.
   - if pid is trapping exits, the exit signal is transformed into a
-    message [:EXIT, from, reason] and delivered to the message queue
+    message [:EXIT from reason] and delivered to the message queue
     of pid. from is the process identifier of the process that sent
     the exit signal.
   If reason is :normal, pid does not exit. If pid is trapping exits,
   the exit signal is transformed into a message
-  [:EXIT, from, :normal] and delivered to its message queue.
+  [:EXIT from :normal] and delivered to its message queue.
   If reason is :kill, an untrappable exit signal is sent to pid,
   which unconditionally exits with reason :killed.
   Returns true if exit signal was sent (process was alive), false
@@ -170,7 +170,7 @@
 
   :trap-exit
   When :trap-exit is set to true, exit signals arriving to a process
-  are converted to [:EXIT, from, reason] messages, which can be
+  are converted to [:EXIT from reason] messages, which can be
   received as ordinary messages. If :trap-exit is set to false, the
   process exits if it receives an exit signal other than :normal and
   the exit signal is propagated to its linked processes. Application
@@ -332,7 +332,7 @@
   the caller of monitor will be notified by a message on the
   following format:
 
-  [tag, monitor-ref, type, object, info]
+  [tag monitor-ref type object info]
 
   type can be one of the following keywords: :process.
   A monitor is triggered only once, after that it is removed from
@@ -349,7 +349,7 @@
   When a monitor is triggered, a :DOWN message that has the
   following pattern
 
-  [:DOWN, monitor-ref, type, object, info]
+  [:DOWN monitor-ref type object info]
 
   is sent to the monitoring process.
 
@@ -404,9 +404,9 @@
   other process, nothing happens.
 
   Once demonitor has returned, it is guaranteed that no
-  [:DOWN, monitor-ref, _, _, _] message, because of the monitor,
+  [:DOWN monitor-ref _ _ _] message, because of the monitor,
   will be placed in the caller message queue in the future.
-  A [:DOWN, monitor-ref, _, _, _] message can have been placed in
+  A [:DOWN monitor-ref _ _ _] message can have been placed in
   the caller message queue before the call, though. It is therefore
   usually advisable to remove such a :DOWN message from the message
   queue after monitoring has been stopped.
