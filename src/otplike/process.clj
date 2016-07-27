@@ -541,6 +541,9 @@
             (swap! *registered assoc register pid))
           (swap! *processes assoc pid process))
         (trace/trace pid [:start (str proc-func) args options])
+        ; FIXME bindings from folded binding blocks are stacked, so no values
+        ; bound between bottom and top folded binding blocks are garbage
+        ; collected; see "ring" benchmark example
         (binding [*self* pid
                   *inbox* outbox] ; workaround for ASYNC-170. once fixed, binding should move to (start-process...)
           (let [return (try
