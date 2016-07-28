@@ -98,7 +98,7 @@
     [:cast request]
     (cast-or-info :cast impl request state)
 
-    [:exit :shutdown]
+    [:EXIT _ :shutdown]
     (do
       (terminate impl :shutdown state)
       [:terminate :shutdown])
