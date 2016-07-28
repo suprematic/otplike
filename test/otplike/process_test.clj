@@ -6,8 +6,6 @@
             [clojure.core.async :as async :refer [<!! <! >!]]
             [clojure.core.match :refer [match]]))
 
-(trace/set-trace (fn [_pid _event]))
-
 ;; ====================================================================
 ;; (self [])
 
