@@ -13,10 +13,10 @@
   (atom 0))
 
 (def ^:private *processes
-  (atom {}))
+  (ref {}))
 
 (def ^:private *registered
-  (atom {}))
+  (ref {}))
 
 (def ^:private *control-timout 100)
 
@@ -183,7 +183,7 @@
       (let [old-value (flag @flags)]
         (match flag
           :trap-exit (do
-                       (swap! flags assoc flag (boolean value))
+                       (alter flags assoc flag (boolean value))
                        (boolean old-value)))))
     (throw (Exception. "stopped"))))
 
@@ -233,10 +233,12 @@
   (case phase
     :phase-one (do
                  (trace/trace pid [:link-phase-one other-pid])
-                 (swap! linked conj other-pid))
+                 (dosync
+                   (alter linked conj other-pid)))
     :phase-two (do
                  (trace/trace pid [:link-phase-two other-pid])
-                 (swap! linked conj other-pid))
+                 (dosync
+                   (alter linked conj other-pid)))
     :noproc (do
                (trace/trace pid [:link-timeout other-pid])
                (exit pid :noproc)))) ; TODO crash :noproc vs. exit :noproc
@@ -266,7 +268,8 @@
          (pid? pid)
          (pid? other-pid)]}
   (let [p2unlink #(do (trace/trace pid [% other-pid])
-                      (swap! linked disj other-pid))]
+                      (dosync
+                        (alter linked disj other-pid)))]
     (case phase
       :phase-one (p2unlink :unlink-phase-one)
       :phase-two (p2unlink :unlink-phase-two)
@@ -314,7 +317,8 @@
     :phase-one
     (do
       (trace/trace pid [:monitor mref other-pid object])
-      (swap! monitors assoc mref [other-pid object]))
+      (dosync
+        (alter monitors assoc mref [other-pid object])))
     :noproc
     (! pid (monitor-message mref object :noproc))
     nil))
@@ -394,7 +398,8 @@
     (let [[pid object] (@monitors mref)]
       (when (= pid other-pid)
         (trace/trace pid [:demonitor mref other-pid object])
-        (swap! monitors dissoc mref)))
+        (dosync
+          (alter monitors dissoc mref))))
     nil))
 
 (defn demonitor
@@ -521,9 +526,9 @@
         inbox     (async/chan (or inbox-size 1024))
         pid       (Pid. id (or name (str "proc" id)))
         control   (async/chan 128)
-        linked    (atom #{})
-        monitors  (atom {})
-        flags     (atom (or flags {}))]
+        linked    (ref #{})
+        monitors  (ref {})
+        flags     (ref (or flags {}))]
     (locking *processes
       (let [outbox  (outbox pid inbox)
             process (new-process
@@ -532,8 +537,8 @@
           (when (some? register)
             (when (@*registered register)
               (throw (Exception. (str "already registered: " register))))
-            (swap! *registered assoc register pid))
-          (swap! *processes assoc pid process))
+            (alter *registered assoc register pid))
+          (alter *processes assoc pid process))
         (trace/trace pid [:start (str proc-func) args options])
         (binding [*self* pid] ; workaround for ASYNC-170. once fixed, binding should move to (start-process...)
           (let [return (try
@@ -541,9 +546,9 @@
                          (catch Throwable e
                            (close! outbox)
                            (dosync
-                             (swap! *processes dissoc pid)
+                             (alter *processes dissoc pid)
                              (when register
-                               (swap! *registered dissoc register)))
+                               (alter *registered dissoc register)))
                            (throw e)))]
             (go
               (when link-to
@@ -573,12 +578,12 @@
                         (trace/trace pid [:terminate reason])
                         (close! outbox)
                         (dosync
-                          (swap! *processes dissoc pid)
+                          (alter *processes dissoc pid)
                           (when register
-                            (swap! *registered dissoc register))
+                            (alter *registered dissoc register))
                           (doseq [p @linked]
                             (when-let [p (@*processes p)]
-                              (swap! (:linked p) disj process))))
+                              (alter (:linked p) disj process))))
                         (doseq [p @linked]
                           (!control p [:exit pid reason]))
 
