@@ -1,4 +1,12 @@
 (ns otplike.example.benchmark-ring
+  "Creates n processes. Exits when all created processes exited.
+  Each process (except the last one):
+  1. Creates next process.
+  2. Sends message to created process.
+  3. Waits for message (from parent process).
+  4. Exits normally.
+  The last process created does the same but sends message to the first
+  process so the first process could exit."
   (:require [otplike.process :as process :refer [!]]
             [clojure.core.async :as async :refer [<! <!!]]))
 

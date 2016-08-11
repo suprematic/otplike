@@ -3,7 +3,7 @@
             [clojure.core.match :refer [match]]))
 
 ;; Example
-; => (require '[otplike.example.e7-bike-rent :as e7] :reload))
+; => (require '[otplike.example.e7-bike-rent :as e7] :reload)
 ; => (e7/start [1 2 3]))
 ; => (process/defn-proc p [inbox]
 ;      (let [[_ bike] (e7/rent)]
