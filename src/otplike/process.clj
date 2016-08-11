@@ -2,7 +2,7 @@
   (:require [clojure.core.async :as async :refer [<!! <! >! put! go go-loop]]
             [clojure.core.async.impl.protocols :as ap]
             [clojure.core.match :refer [match]]
-            [otplike.trace :as trace]
+            [otplike.trace]
             [otplike.util :as u]
             [clojure.core.async.impl.protocols :as impl]))
 
@@ -29,6 +29,9 @@
 
 (declare pid->str)
 
+(defn trace [pid message]
+  (otplike.trace/send-trace [pid (@*registered-reverse pid)] message))
+
 (defrecord Pid [id name]
   Object
   (toString [self]
@@ -37,7 +40,7 @@
   ap/WritePort
   (put! [this val handler]
     (when-let [{:keys [inbox]} (@*processes this)]
-      (trace/trace this [:inbound val])
+      (trace this [:inbound val])
       (ap/put! inbox val handler))))
 
 (defrecord MonitorRef [id other-pid])
@@ -235,15 +238,15 @@
          (pid? other-pid)]}
   (case phase
     :phase-one (do
-                 (trace/trace pid [:link-phase-one other-pid])
+                 (trace pid [:link-phase-one other-pid])
                  (dosync
                    (alter linked conj other-pid)))
     :phase-two (do
-                 (trace/trace pid [:link-phase-two other-pid])
+                 (trace pid [:link-phase-two other-pid])
                  (dosync
                    (alter linked conj other-pid)))
     :noproc (do
-               (trace/trace pid [:link-timeout other-pid])
+               (trace pid [:link-timeout other-pid])
                (exit pid :noproc)))) ; TODO crash :noproc vs. exit :noproc
 
 (defn link
@@ -270,7 +273,7 @@
   {:pre [(instance? ProcessRecord process)
          (pid? pid)
          (pid? other-pid)]}
-  (let [p2unlink #(do (trace/trace pid [% other-pid])
+  (let [p2unlink #(do (trace pid [% other-pid])
                       (dosync
                         (alter linked disj other-pid)))]
     (case phase
@@ -319,7 +322,7 @@
   (case phase
     :phase-one
     (do
-      (trace/trace pid [:monitor mref other-pid object])
+      (trace pid [:monitor mref other-pid object])
       (dosync
         (alter monitors assoc mref [other-pid object])))
     :noproc
@@ -400,7 +403,7 @@
     :phase-one
     (let [[pid object] (@monitors mref)]
       (when (= pid other-pid)
-        (trace/trace pid [:demonitor mref other-pid object])
+        (trace pid [:demonitor mref other-pid object])
         (dosync
           (alter monitors dissoc mref))))
     nil))
@@ -435,7 +438,7 @@
 (defn- dispatch-control [{:keys [flags pid linked] :as process} message]
   {:pre [(instance? ProcessRecord process)]
    :post []}
-  (trace/trace pid [:control message])
+  (trace pid [:control message])
     (let [trap-exit (:trap-exit @flags)]
       (match message
         [:exit xpid :kill] [::break :killed]
@@ -474,7 +477,7 @@
       (let [[value _] (async/alts! [stop inbox] :priority true)]
         (if (some? value)
           (do
-            (trace/trace pid [:deliver value])
+            (trace pid [:deliver value])
             (>! outbox value)
             (recur))
           (async/close! outbox))))
@@ -553,7 +556,7 @@
             process (new-process
                       pid inbox control monitors exit outbox linked flags)]
         (sync-register pid process register)
-        (trace/trace pid [:start (str proc-func) args options])
+        (trace pid [:start (str proc-func) args options])
         (binding [*self* pid] ; workaround for ASYNC-170. once fixed, binding should move to (start-process...)
           (let [return (try
                          (start-process proc-func outbox args)
@@ -575,7 +578,7 @@
 
                                   [val return]
                                   (do
-                                    (trace/trace pid [:return (or val :nil)])
+                                    (trace pid [:return (or val :nil)])
                                     [::break (if (some? val) val :nil)])
 
                                   (:or [nil control] [nil return])
@@ -586,7 +589,7 @@
 
                       [::break reason]
                       (do
-                        (trace/trace pid [:terminate reason])
+                        (trace pid [:terminate reason])
                         (close! outbox)
                         (dosync
                           (sync-unregister pid)
