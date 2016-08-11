@@ -46,6 +46,12 @@ compromises must be made to get it working.
 Look for examples in `examples` directory of a project.
 
 
+## Known issues
+
+* A chain of N processes, when each next process is created by the previous one,
+holds amount of memory proportional to N _until last process exits_.
+
+
 ## Contributing
 
 Please use the project's GitHub issues page for all questions, ideas, etc.
