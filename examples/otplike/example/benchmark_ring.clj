@@ -14,10 +14,11 @@
 (defn start [n]
   (let [done (async/chan)]
     (process/spawn (process/proc-fn [inbox]
-                     (process/spawn proc [n (process/self)] {})
-                     (process/receive! :ok :ok)
-                     #_(println "done" n)
-                     (async/close! done))
+                     (let [pid (process/spawn proc [n (process/self)] {})]
+                       (! pid :ok)
+                       (process/receive! :ok :ok)
+                       (println "done" n)
+                       (async/close! done)))
                  []
                  {})
     (<!! done)))
