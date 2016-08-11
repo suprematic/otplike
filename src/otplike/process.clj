@@ -18,6 +18,9 @@
 (def ^:private *registered
   (ref {}))
 
+(def ^:private *registered-reverse
+  (ref {}))
+
 (def ^:private *control-timout 100)
 
 (def ^:private ^:dynamic *self* nil)
@@ -506,14 +509,16 @@
     (when (some? register)
       (when (@*registered register)
         (throw (Exception. (str "already registered: " register))))
-      (alter *registered assoc register pid))
+      (alter *registered assoc register pid)
+      (alter *registered-reverse assoc pid register))
     (alter *processes assoc pid process)))
 
-(defn- sync-unregister [pid register]
+(defn- sync-unregister [pid]
   (dosync
     (alter *processes dissoc pid)
-    (when register
-      (alter *registered dissoc register))))
+    (when-let [register (@*registered-reverse pid)]
+      (alter *registered dissoc register)
+      (alter *registered-reverse dissoc pid))))
 
 (defn spawn
   "Returns the process identifier of a new process started by the
@@ -554,7 +559,7 @@
                          (start-process proc-func outbox args)
                          (catch Throwable e
                            (close! outbox)
-                           (sync-unregister pid register)
+                           (sync-unregister pid)
                            (throw e)))]
             (go
               (when link-to
@@ -584,7 +589,7 @@
                         (trace/trace pid [:terminate reason])
                         (close! outbox)
                         (dosync
-                          (sync-unregister pid register)
+                          (sync-unregister pid)
                           (doseq [p @linked]
                             (when-let [p (@*processes p)]
                               (alter (:linked p) disj process))))
