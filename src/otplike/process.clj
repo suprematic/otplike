@@ -501,6 +501,20 @@
     (fn? form) form
     (symbol? form) (some-> form resolve var-get)))
 
+(defn- sync-register [pid process register]
+  (dosync
+    (when (some? register)
+      (when (@*registered register)
+        (throw (Exception. (str "already registered: " register))))
+      (alter *registered assoc register pid))
+    (alter *processes assoc pid process)))
+
+(defn- sync-unregister [pid register]
+  (dosync
+    (alter *processes dissoc pid)
+    (when register
+      (alter *registered dissoc register))))
+
 (defn spawn
   "Returns the process identifier of a new process started by the
   application of proc-fun to args.
@@ -533,22 +547,14 @@
       (let [outbox  (outbox pid inbox)
             process (new-process
                       pid inbox control monitors exit outbox linked flags)]
-        (dosync
-          (when (some? register)
-            (when (@*registered register)
-              (throw (Exception. (str "already registered: " register))))
-            (alter *registered assoc register pid))
-          (alter *processes assoc pid process))
+        (sync-register pid process register)
         (trace/trace pid [:start (str proc-func) args options])
         (binding [*self* pid] ; workaround for ASYNC-170. once fixed, binding should move to (start-process...)
           (let [return (try
                          (start-process proc-func outbox args)
                          (catch Throwable e
                            (close! outbox)
-                           (dosync
-                             (alter *processes dissoc pid)
-                             (when register
-                               (alter *registered dissoc register)))
+                           (sync-unregister pid register)
                            (throw e)))]
             (go
               (when link-to
@@ -578,9 +584,7 @@
                         (trace/trace pid [:terminate reason])
                         (close! outbox)
                         (dosync
-                          (alter *processes dissoc pid)
-                          (when register
-                            (alter *registered dissoc register))
+                          (sync-unregister pid register)
                           (doseq [p @linked]
                             (when-let [p (@*processes p)]
                               (alter (:linked p) disj process))))
