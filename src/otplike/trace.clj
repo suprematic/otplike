@@ -1,7 +1,7 @@
 (ns otplike.trace
   (:require
     [clojure.core.match :refer [match]]
-    [clojure.core.async :as async :refer [<!! <! >! put! go go-loop]]))
+    [clojure.core.async :as async :refer [<!! <! >! >!! go go-loop]]))
 
 (def ^:private *trace-chan
   (async/chan 1024))
@@ -29,7 +29,7 @@
   (async/untap *trace-mult chan))
 
 (defn send-trace [{:keys [id] :as pid} [type :as event]]
-  (async/put! *trace-chan [pid event]))
+  (>!! *trace-chan [pid event]))
 
 (defn filter-pid [pid]
   (fn [[[pid1 _] _]]
