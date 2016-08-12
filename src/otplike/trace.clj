@@ -21,8 +21,8 @@
   (go
     (loop [ch (apply trace params)]
       (when-let [[pid event] (<! ch)]
-        (print "pid:" pid
-          (clojure.pprint/write event :stream nil))
+        (println (str "pid: " pid " "
+                      (clojure.pprint/write event :stream nil)))
         (recur ch)))))
 
 (defn untrace [chan]
