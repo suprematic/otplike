@@ -3,69 +3,50 @@
     [clojure.core.match :refer [match]]
     [clojure.core.async :as async :refer [<!! <! >! put! go go-loop]]))
 
-(defn- default-trace-fn [pid event]
-  (match event
-    [:terminate reason]
-    (when-not (or (= reason :normal) (= reason :shutdown))
-      (locking println
-        (println "ERROR:" pid "terminated with reason"
-                 (clojure.pprint/write reason :stream nil))))
-    _
-    nil))
-
-(def *trace-fn
-  (atom default-trace-fn))
-
-(def *trace-chan
+(def ^:private *trace-chan
   (async/chan 1024))
 
-(go
-  (loop []
-    (when-let [[pid event] (<! *trace-chan)]
-      (when-let [trace-fn @*trace-fn]
-        (try
-          (trace-fn pid event)
-          (catch Throwable e
-            (.printStackTrace e)))
-        (recur)))))
+(def ^:private *trace-mult
+  (async/mult *trace-chan))
 
-(defn trace [pid event]
-  (when-let [trace-fn @*trace-fn]
-    (async/put! *trace-chan [pid event])))
+(defn trace
+  ([xform]
+   (trace (async/buffer 1024) xform))
+  ([buf-or-n xform]
+    (let [chan (async/chan buf-or-n xform)]
+      (async/tap *trace-mult chan)
+      chan)))
 
-(defn set-trace [tracefn]
-  (reset! *trace-fn tracefn))
+(defn console-trace [& params]
+  (go
+    (loop [ch (apply trace params)]
+      (when-let [[pid event] (<! ch)]
+        (print "pid:" pid
+          (clojure.pprint/write event :stream nil))
+        (recur ch)))))
 
-(defn- timestamp-ms []
-  (System/currentTimeMillis))
+(defn untrace [chan]
+  (async/untap *trace-mult chan))
 
-(defn trace-collector [stop-list]
-  (let [result (async/chan)
-        traces (atom [])
-        stop-list (atom (apply hash-set stop-list))
-        saved @*trace-fn]
-    (set-trace
-      (fn [pid event]
-        (swap! traces conj [(timestamp-ms) pid event])
+(defn send-trace [{:keys [id] :as pid} [type :as event]]
+  (async/put! *trace-chan [pid event]))
 
-        (when-let [name (:name pid)]
-          (when (= (first event) :terminate)
-            (swap! stop-list disj name)))
+(defn filter-pid [pid]
+  (fn [[[pid1 _] _]]
+    (= pid pid1)))
 
-        (when (empty? @stop-list)
-          (async/close! result))))
+(defn filter-name [name]
+  (fn [[[_ name1] _]]
+    (and name1 (= name name1))))
 
-    (fn [timeout]
-      (async/alts!! [result (async/timeout timeout)])
-      (set-trace saved)
-        @traces)))
+(defn filter-event [efn]
+  (fn [[_ event]]
+    (efn event)))
 
-(defn terminated? [trace pid reason]
-  (some
-    (fn [t]
-      (match t
-        [_ pid [:terminate reason]]
-        true
-        _
-        false))
-    trace))
+(defn crashed? [event]
+  (match event
+    [:terminate reason]
+    (not (#{:normal :shutdown} reason))
+    _
+    false))
+

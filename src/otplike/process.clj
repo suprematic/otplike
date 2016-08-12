@@ -2,7 +2,7 @@
   (:require [clojure.core.async :as async :refer [<!! <! >! put! go go-loop]]
             [clojure.core.async.impl.protocols :as ap]
             [clojure.core.match :refer [match]]
-            [otplike.trace :as trace]
+            [otplike.trace]
             [otplike.util :as u]
             [clojure.core.async.impl.protocols :as impl]))
 
@@ -13,10 +13,13 @@
   (atom 0))
 
 (def ^:private *processes
-  (atom {}))
+  (ref {}))
 
 (def ^:private *registered
-  (atom {}))
+  (ref {}))
+
+(def ^:private *registered-reverse
+  (ref {}))
 
 (def ^:private *control-timout 100)
 
@@ -28,6 +31,9 @@
 
 (declare pid->str)
 
+(defn trace [pid message]
+  (otplike.trace/send-trace [pid (@*registered-reverse pid)] message))
+
 (defrecord Pid [id name]
   Object
   (toString [self]
@@ -36,7 +42,7 @@
   ap/WritePort
   (put! [this val handler]
     (when-let [{:keys [inbox]} (@*processes this)]
-      (trace/trace this [:inbound val])
+      (trace this [:inbound val])
       (ap/put! inbox val handler))))
 
 (defrecord MonitorRef [id other-pid])
@@ -185,7 +191,7 @@
       (let [old-value (flag @flags)]
         (match flag
           :trap-exit (do
-                       (swap! flags assoc flag (boolean value))
+                       (alter flags assoc flag (boolean value))
                        (boolean old-value)))))
     (throw (Exception. "stopped"))))
 
@@ -234,13 +240,15 @@
          (pid? other-pid)]}
   (case phase
     :phase-one (do
-                 (trace/trace pid [:link-phase-one other-pid])
-                 (swap! linked conj other-pid))
+                 (trace pid [:link-phase-one other-pid])
+                 (dosync
+                   (alter linked conj other-pid)))
     :phase-two (do
-                 (trace/trace pid [:link-phase-two other-pid])
-                 (swap! linked conj other-pid))
+                 (trace pid [:link-phase-two other-pid])
+                 (dosync
+                   (alter linked conj other-pid)))
     :noproc (do
-               (trace/trace pid [:link-timeout other-pid])
+               (trace pid [:link-timeout other-pid])
                (!control pid [:exit other-pid :noproc])))) ; TODO crash :noproc vs. exit :noproc
 
 (defn link
@@ -267,8 +275,9 @@
   {:pre [(instance? ProcessRecord process)
          (pid? pid)
          (pid? other-pid)]}
-  (let [p2unlink #(do (trace/trace pid [% other-pid])
-                      (swap! linked disj other-pid))]
+  (let [p2unlink #(do (trace pid [% other-pid])
+                      (dosync
+                        (alter linked disj other-pid)))]
     (case phase
       :phase-one (p2unlink :unlink-phase-one)
       :phase-two (p2unlink :unlink-phase-two)
@@ -315,8 +324,9 @@
   (case phase
     :phase-one
     (do
-      (trace/trace pid [:monitor mref other-pid object])
-      (swap! monitors assoc mref [other-pid object]))
+      (trace pid [:monitor mref other-pid object])
+      (dosync
+        (alter monitors assoc mref [other-pid object])))
     :noproc
     (! pid (monitor-message mref object :noproc))
     nil))
@@ -395,8 +405,9 @@
     :phase-one
     (let [[pid object] (@monitors mref)]
       (when (= pid other-pid)
-        (trace/trace pid [:demonitor mref other-pid object])
-        (swap! monitors dissoc mref)))
+        (trace pid [:demonitor mref other-pid object])
+        (dosync
+          (alter monitors dissoc mref))))
     nil))
 
 (defn demonitor
@@ -429,7 +440,7 @@
 (defn- dispatch-control [{:keys [flags pid linked] :as process} message]
   {:pre [(instance? ProcessRecord process)]
    :post []}
-  (trace/trace pid [:control message])
+  (trace pid [:control message])
     (let [trap-exit (:trap-exit @flags)]
       (match message
         [:exit xpid :kill] (do
@@ -472,7 +483,7 @@
       (let [[value _] (async/alts! [stop inbox] :priority true)]
         (if (some? value)
           (do
-            (trace/trace pid [:deliver value])
+            (trace pid [:deliver value])
             (>! outbox value)
             (recur))
           (async/close! outbox))))
@@ -502,6 +513,22 @@
     (fn? form) form
     (symbol? form) (some-> form resolve var-get)))
 
+(defn- sync-register [pid process register]
+  (dosync
+    (when (some? register)
+      (when (@*registered register)
+        (throw (Exception. (str "already registered: " register))))
+      (alter *registered assoc register pid)
+      (alter *registered-reverse assoc pid register))
+    (alter *processes assoc pid process)))
+
+(defn- sync-unregister [pid]
+  (dosync
+    (alter *processes dissoc pid)
+    (when-let [register (@*registered-reverse pid)]
+      (alter *registered dissoc register)
+      (alter *registered-reverse dissoc pid))))
+
 (defn spawn
   "Returns the process identifier of a new process started by the
   application of proc-fun to args.
@@ -527,20 +554,15 @@
         inbox     (async/chan (or inbox-size 1024))
         pid       (Pid. id (or name (str "proc" id)))
         control   (async/chan 128)
-        linked    (atom #{})
-        monitors  (atom {})
-        flags     (atom (or flags {}))]
+        linked    (ref #{})
+        monitors  (ref {})
+        flags     (ref (or flags {}))]
     (locking *processes
       (let [outbox  (outbox pid inbox)
             process (new-process
                       pid inbox control monitors exit outbox linked flags)]
-        (dosync
-          (when (some? register)
-            (when (@*registered register)
-              (throw (Exception. (str "already registered: " register))))
-            (swap! *registered assoc register pid))
-          (swap! *processes assoc pid process))
-        (trace/trace pid [:start (str proc-func) args options])
+        (sync-register pid process register)
+        (trace pid [:start (str proc-func) args options])
         ; FIXME bindings from folded binding blocks are stacked, so no values
         ; bound between bottom and top folded binding blocks are garbage
         ; collected; see "ring" benchmark example
@@ -550,10 +572,7 @@
                          (start-process proc-func outbox args)
                          (catch Throwable e
                            (close! outbox)
-                           (dosync
-                             (swap! *processes dissoc pid)
-                             (when register
-                               (swap! *registered dissoc register)))
+                           (sync-unregister pid)
                            (throw e)))]
             (go
               (when link-to
@@ -569,7 +588,7 @@
 
                                   [val return]
                                   (do
-                                    (trace/trace pid [:return (or val :nil)])
+                                    (trace pid [:return (or val :nil)])
                                     [::break (if (some? val) val :nil)])
 
                                   (:or [nil control] [nil return])
@@ -580,15 +599,13 @@
 
                       [::break reason]
                       (do
-                        (trace/trace pid [:terminate reason])
+                        (trace pid [:terminate reason])
                         (close! outbox)
                         (dosync
-                          (swap! *processes dissoc pid)
-                          (when register
-                            (swap! *registered dissoc register))
+                          (sync-unregister pid)
                           (doseq [p @linked]
                             (when-let [p (@*processes p)]
-                              (swap! (:linked p) disj process))))
+                              (alter (:linked p) disj process))))
                         (doseq [p @linked]
                           (!control p [:exit pid reason]))
 
