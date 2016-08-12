@@ -74,4 +74,4 @@ Distributed under the Eclipse Public License, the same as Clojure.
 [1]: http://search.maven.org/#search%7Cgav%7C1%7Cg%3A%22com.suprematic%22%20AND%20a%3A%22otplike%22
 [2]: https://github.com/technomancy/leiningen
 [3]: http://maven.apache.org/
-[4]: http://suprematic.github.io/otplike/
+[4]: https://suprematic.github.io/otplike/index.html
