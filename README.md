@@ -67,14 +67,13 @@ More examples are available under the /examples directory.
 
 # Releases and Dependency Information
 
-Latest release: 0.1.0-alpha
+[![Clojars Project](https://img.shields.io/clojars/v/otplike.svg)](https://clojars.org/otplike)
 
-* [All Released Versions][1]
+[All Released Versions](https://clojars.org/otplike)
 
 _Leiningen_ dependency information:
 
-    [org.clojure/clojure "1.7.0"]
-    [net.suprematic/otplike "0.1.0-alpha"]
+    [otplike "0.1.0-SNAPSHOT"]
 
 # Documentation
 
@@ -109,4 +108,4 @@ the same as Clojure. License file is available under the project root.
 
 ## Changelog
 
-* Release 0.1.0-alpha on 15.08.2016
+* Release 0.1.0-SNAPSHOT on 15.08.2016
