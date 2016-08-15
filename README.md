@@ -30,6 +30,8 @@ alternative.
 
 ## Echo Server
 ```clojure
+(:require [otplike.process :as process :refer [!]])
+
 (process/defproc server [inbox]
   (println "server: waiting for messages...")
   ; wait for messages
