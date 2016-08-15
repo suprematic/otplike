@@ -1,5 +1,7 @@
 # otplike
 
+[![Build Status](https://travis-ci.org/suprematic/otplike.svg?branch=master)](https://travis-ci.org/suprematic/otplike)
+
 _otplike_ is a framework built on top of [_core.async_](https://github.com/clojure/core.async). It
 emulates basic [_Erlang/OTP_](http://www.erlang.org/) concepts, such as processes, process 
 linking, monitoring, standard behaviours.
