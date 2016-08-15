@@ -1,6 +1,6 @@
-(defproject suprematic/otplike "0.0.2-SNAPSHOT"
-  :description "Erlang/OTP like processes and behaviours based on core.async"
-  :license {:name "Eclipse Public License - v 1.0"
+(defproject otplike/otplike "0.1.0-SNAPSHOT"
+  :description "Erlang/OTP like processes and behaviours on top of core.async"
+  :license {:name "Eclipse Public License - v1.0"
             :url  "https://www.eclipse.org/legal/epl-v10.html"}
 
   :dependencies [[org.clojure/clojure "1.7.0"]
