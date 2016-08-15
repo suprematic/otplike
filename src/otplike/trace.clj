@@ -13,17 +13,19 @@
   ([xform]
    (trace (async/buffer 1024) xform))
   ([buf-or-n xform]
-    (let [chan (async/chan buf-or-n xform)]
+   (let [chan (async/chan buf-or-n xform)]
       (async/tap *trace-mult chan)
       chan)))
 
 (defn console-trace [& params]
-  (go
-    (loop [ch (apply trace params)]
-      (when-let [[pid event] (<! ch)]
-        (println (str "pid: " pid " "
-                      (clojure.pprint/write event :stream nil)))
-        (recur ch)))))
+  (let [ch (apply trace params)]
+    (go
+      (loop []
+        (when-let [[pid event] (<! ch)]
+          (println "pid:" pid
+            (clojure.pprint/write event :stream nil))
+          (recur))))
+    ch))
 
 (defn untrace [chan]
   (async/untap *trace-mult chan))
@@ -49,4 +51,3 @@
     (not (#{:normal :shutdown} reason))
     _
     false))
-

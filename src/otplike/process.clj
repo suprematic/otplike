@@ -204,8 +204,8 @@
 (defn registered
  "Returns a set of names of the processes that have been registered."
  []
-  {:post [(set? %)]}
-  (set (keys @*registered)))
+ {:post [(set? %)]}
+ (set (keys @*registered)))
 
 (defn- two-phase-start [pid1 pid2 cfn]
   {:pre [(pid? pid1)
