@@ -79,7 +79,7 @@ _Leiningen_ dependency information:
 # Documentation
 
 * [API docs](https://suprematic.github.io/otplike/index.html)
-* [Examples](examples/)
+* [Examples](example/)
 
 # Known issues
 
