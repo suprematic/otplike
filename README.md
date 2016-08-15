@@ -78,7 +78,7 @@ _Leiningen_ dependency information:
 # Documentation
 
 * [API docs](https://suprematic.github.io/otplike/index.html)
-* [Examples](example/)
+* [Examples](https://github.com/suprematic/otplike/tree/master/examples/otplike/example)
 
 # Known issues
 
@@ -101,7 +101,7 @@ contributors.
 
 ## License
 
-Copyright © 2016 Suprematic UG.
+Copyright © 2016 Suprematic UG and contributors.
 
 Distributed under the Eclipse Public License v1.0, 
 the same as Clojure. License file is available under the project root.
