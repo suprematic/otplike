@@ -202,8 +202,8 @@
 (defn registered
  "Returns a set of names of the processes that have been registered."
  []
-  {:post [(set? %)]}
-  (set (keys @*registered)))
+ {:post [(set? %)]}
+ (set (keys @*registered)))
 
 (defn- two-phase-start [pid1 pid2 cfn]
   {:pre [(pid? pid1)
@@ -439,30 +439,30 @@
   {:pre [(instance? ProcessRecord process)]
    :post []}
   (trace pid [:control message])
-    (let [trap-exit (:trap-exit @flags)]
-      (match message
-        [:exit xpid :kill] [::break :killed]
-        [:exit xpid :normal] (do
-                               (when trap-exit
-                                 (! pid [:EXIT xpid :normal]))
-                               ::continue)
+  (let [trap-exit (:trap-exit @flags)]
+    (match message
+      [:exit xpid :kill] [::break :killed]
+      [:exit xpid :normal] (do
+                             (when trap-exit
+                               (! pid [:EXIT xpid :normal]))
+                             ::continue)
 
-        [:exit xpid reason] (if trap-exit
-                              (do
-                                (! pid [:EXIT xpid reason])
-                                ::continue)
-                              [::break reason])
-        [:two-phase
-         complete other cfn] (go
-                               (let [p1result (two-phase process other pid cfn)]
-                                 (<! p1result)
-                                 (async/close! complete)
-                                 ::continue))
-        [:two-phase-p1
-         result other-pid cfn] (go
-                                 (cfn :phase-one process other-pid)
-                                 (async/close! result)
-                                 ::continue))))
+      [:exit xpid reason] (if trap-exit
+                            (do
+                              (! pid [:EXIT xpid reason])
+                              ::continue)
+                            [::break reason])
+      [:two-phase
+       complete other cfn] (go
+                             (let [p1result (two-phase process other pid cfn)]
+                               (<! p1result)
+                               (async/close! complete)
+                               ::continue))
+      [:two-phase-p1
+       result other-pid cfn] (go
+                               (cfn :phase-one process other-pid)
+                               (async/close! result)
+                               ::continue))))
 
 (defprotocol IClose
   (close! [_]))
