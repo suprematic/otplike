@@ -1,7 +1,7 @@
 # otplike
 
-_otplike_ is a framework built on top of _core.async_. It
-emulates basic Erlang/OTP concepts, such as processes, process 
+_otplike_ is a framework built on top of [_core.async_](https://github.com/clojure/core.async). It
+emulates basic [_Erlang/OTP_](http://www.erlang.org/) concepts, such as processes, process 
 linking, monitoring, standard behaviours.
 
 # Rationale
@@ -71,25 +71,15 @@ Latest release: 0.1.0-alpha
 
 * [All Released Versions][1]
 
-[Leiningen][2] dependency information:
+_Leiningen_ dependency information:
 
     [org.clojure/clojure "1.7.0"]
     [net.suprematic/otplike "0.1.0-alpha"]
 
-[Maven][3] dependency information:
-
-    <dependency>
-      <groupId>net.suprematic</groupId>
-      <artifactId>otplike</artifactId>
-      <version>0.1.0-alpha</version>
-    </dependency>
-
-
 # Documentation
 
-[API docs][4]
-
-Look for examples in `examples` directory of a project.
+[API docs](https://suprematic.github.io/otplike/index.html)
+[Examples](examples/)
 
 # Known issues
 
@@ -98,6 +88,11 @@ created by the previous one, holds amount of memory
 proportional to N _until last process exits_.
 * supervisors are not yet implemented
 
+# Plans
+* supersvisor behaviour
+* ClojureScript compatibility
+* More advanced examples/tutorial
+
 # Contributing
 
 Please use the project's GitHub issues page for all 
@@ -105,20 +100,13 @@ questions, ideas, etc. Pull requests welcome. See the
 project's GitHub contributors page for a list of
 contributors.
 
-
 ## License
 
 Copyright © 2016 Suprematic UG.
 
 Distributed under the Eclipse Public License v1.0, 
-the same as Clojure.
-
+the same as Clojure. License file is available under the project root.
 
 ## Changelog
 
 * Release 0.1.0-alpha on 15.08.2016
-
-[1]: http://search.maven.org/#search%7Cgav%7C1%7Cg%3A%22com.suprematic%22%20AND%20a%3A%22otplike%22
-[2]: https://github.com/technomancy/leiningen
-[3]: http://maven.apache.org/
-[4]: https://suprematic.github.io/otplike/index.html
