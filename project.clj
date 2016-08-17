@@ -9,4 +9,6 @@
 
   :source-paths  ["src" "examples"]
 
+  :codox {:source-paths ["src"]}
+
   :plugins [[lein-ancient "0.6.10"]])
