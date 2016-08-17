@@ -25,13 +25,13 @@
 
 (def ^:private ^:dynamic *self* nil)
 
-(def ^:private ^:dynamic *inbox* nil)
+(def ^:no-doc ^:dynamic *inbox* nil)
 
 (defn- ->nil [x])
 
 (declare pid->str)
 
-(defn trace [pid message]
+(defn- trace [pid message]
   (otplike.trace/send-trace [pid (@*registered-reverse pid)] message))
 
 (defrecord Pid [id name]
@@ -625,11 +625,9 @@
   (let [opts (update-in opts [:link-to] conj (self))]
     (spawn proc-func args opts)))
 
-(defn inbox* [] *inbox*)
-
-(defmacro receive* [park? clauses]
+(defmacro ^:private receive* [park? clauses]
   (if (even? (count clauses))
-    `(match (~(if park? `<! `<!!) (inbox*)) ~@clauses)
+    `(match (~(if park? `<! `<!!) *inbox*) ~@clauses)
     (match (last clauses)
       (['after (ms :guard #(and (integer? %) (not (neg? %)))) & body] :seq)
       `(let [inbox# (inbox*)

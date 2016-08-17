@@ -8,10 +8,10 @@
   Object
   (toString [_this] (str "timer_" id)))
 
-(def *tcount
+(def ^:no-doc *tcount
   (atom 0))
 
-(def *timers
+(def ^:no-doc *timers
   (atom {}))
 
 (defn- new-tref []
@@ -93,7 +93,7 @@
 
 
 ;******* tests
-(defn test-1 []
+(defn ^:no-doc test-1 []
   (let [process (process/spawn
                   (fn [inbox]
                     ;(send-after 5000 self :timer-message)

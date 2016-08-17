@@ -1,4 +1,4 @@
-(ns otplike.util)
+(ns ^:no-doc otplike.util)
 
 (defmacro check-args [exprs]
   (assert (sequential? exprs))
