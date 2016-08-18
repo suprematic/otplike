@@ -11,13 +11,11 @@
             [clojure.core.async :as async :refer [<! <!!]]))
 
 (process/defproc proc [inbox n pid]
-  #_(println "ready" n)
   (if (= 0 n)
     (! pid :ok)
     (let [npid (process/spawn proc [(dec n) pid] {})]
       (! npid :ok)
-      (process/receive! :ok :ok)))
-  #_(println "done" n))
+      (process/receive! :ok :ok))))
 
 (defn start [n]
   (let [done (async/chan)]
