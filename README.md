@@ -2,30 +2,31 @@
 
 [![Build Status](https://travis-ci.org/suprematic/otplike.svg?branch=master)](https://travis-ci.org/suprematic/otplike)
 
-_otplike_ is a framework built on top of [_core.async_](https://github.com/clojure/core.async). It
-emulates basic [_Erlang/OTP_](http://www.erlang.org/) concepts, such as processes, process 
-linking, monitoring, standard behaviours.
+_otplike_ is a framework built on top of
+[_core.async_](https://github.com/clojure/core.async). It emulates basic
+[_Erlang/OTP_](http://www.erlang.org/) concepts, such as
+processes, process linking, monitoring, standard behaviours.
 
 # Rationale
 
-Although _core.async_ provides a solid foundation for 
-asynchronous applications, our experience shows that 
+Although _core.async_ provides a solid foundation for
+asynchronous applications, our experience shows that
 there is a need in higher level system building blocks.
 
 It appears that certain ideas can be taken from Erlang/OTP and
-implemented on top of _core.async_. 
+implemented on top of _core.async_.
 
-The `gen_server` equivalent is used to serialize sync/async 
-access to state and ensure that possibly inconsistent state 
-data will be discarded in case of a crash. 
+The `gen_server` equivalent is used to serialize sync/async
+access to state and ensure that possibly inconsistent state
+data will be discarded in case of a crash.
 
 Process linking/monitoring improves crash/error propagation
-and supervision covers recovery. In addition process 
-tracing facility helps a lot with application debugging and 
-profiling. 
+and supervision covers recovery. In addition process
+tracing facility helps a lot with application debugging and
+profiling.
 
-It is obvious that due to JVM limitations otplike cannot replace 
-Erlang/OTP and otplike will `NEVER` be seen as Erlang/OTP 
+It is obvious that due to JVM limitations otplike cannot replace
+Erlang/OTP and otplike will `NEVER` be seen as Erlang/OTP
 alternative.
 
 # Example
@@ -53,17 +54,16 @@ alternative.
   (let [pid (process/spawn server [] {})]
     ; send message to it
     (! pid [(process/self) :hello])
-    
+
     ;wait for response
     (process/receive!
-      [pid msg] 
+      [pid msg]
       (println "client: got" msg))
-    
-    ; ask spawned process to stop  
+
+    ; ask spawned process to stop
     (! pid :stop)))
-    
-(process/spawn client [] {})    
-    
+
+(process/spawn client [] {})
 ```
 
 More examples are available under the /examples directory.
@@ -85,8 +85,8 @@ _Leiningen_ dependency information:
 
 # Known issues
 
-* A chain of N processes, when each next process is 
-created by the previous one, holds amount of memory 
+* A chain of N processes, when each next process is
+created by the previous one, holds amount of memory
 proportional to N _until last process exits_.
 * supervisors are not yet implemented
 
@@ -97,8 +97,8 @@ proportional to N _until last process exits_.
 
 # Contributing
 
-Please use the project's GitHub issues page for all 
-questions, ideas, etc. Pull requests welcome. See the 
+Please use the project's GitHub issues page for all
+questions, ideas, etc. Pull requests welcome. See the
 project's GitHub contributors page for a list of
 contributors.
 
@@ -106,7 +106,7 @@ contributors.
 
 Copyright © 2016 Suprematic UG and contributors.
 
-Distributed under the Eclipse Public License v1.0, 
+Distributed under the Eclipse Public License v1.0,
 the same as Clojure. License file is available under the project root.
 
 ## Changelog
