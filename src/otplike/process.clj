@@ -634,7 +634,7 @@
   (let [opts (update-in opts [:link-to] conj (self))]
     (spawn proc-func args opts)))
 
-(defmacro ^:private receive* [park? clauses]
+(defmacro receive* [park? clauses]
   (if (even? (count clauses))
     `(match (~(if park? `<! `<!!) *inbox*) ~@clauses)
     (match (last clauses)
@@ -648,6 +648,8 @@
            [nil timeout#] (do ~@body)
            [nil inbox#] (throw (Exception. "stopped"))
            [msg# inbox#] (match msg# ~@(butlast clauses)))))))
+
+(alter-meta! #'receive* assoc :no-doc true)
 
 (defmacro receive! [& clauses]
   `(receive* true ~clauses))
