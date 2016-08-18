@@ -34,7 +34,7 @@ alternative.
 ```clojure
 (:require [otplike.process :as process :refer [!]])
 
-(process/defproc server [inbox]
+(process/defproc server []
   (println "server: waiting for messages...")
   ; wait for messages
   (loop []
@@ -49,7 +49,7 @@ alternative.
       ; do nothing, and exit message loop
       (println "server: stopped"))))
 
-(process/defproc client [inbox]
+(process/defproc client []
   ; spawn process
   (let [pid (process/spawn server [] {})]
     ; send message to it

@@ -10,7 +10,7 @@
   (:require [otplike.process :as process :refer [!]]
             [clojure.core.async :as async :refer [<! <!!]]))
 
-(process/defproc proc [inbox n pid]
+(process/defproc proc [n pid]
   (if (= 0 n)
     (! pid :ok)
     (let [npid (process/spawn proc [(dec n) pid] {})]
@@ -19,7 +19,7 @@
 
 (defn start [n]
   (let [done (async/chan)]
-    (process/spawn (process/proc-fn [inbox]
+    (process/spawn (process/proc-fn []
                      (let [pid (process/spawn proc [n (process/self)] {})]
                        (! pid :ok)
                        (process/receive! :ok :ok)

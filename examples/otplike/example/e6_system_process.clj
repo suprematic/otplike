@@ -3,8 +3,8 @@
             [clojure.core.match :refer [match]]))
 
 ; TODO tell about (process/flags [flag value])
-(process/defn-proc run-exit-abnormal [inbox]
-  (let [pfn (process/proc-fn [inbox]
+(process/defn-proc run-exit-abnormal []
+  (let [pfn (process/proc-fn []
               (process/receive!
                 sig (println "receive" sig)))
         pid (process/spawn pfn [] {:register :p, :flags {:trap-exit true}})]
@@ -13,8 +13,8 @@
     (process/exit pid :abnormal)
     (match (process/whereis :p) pid :ok)))
 
-(process/defn-proc run-exit-normal [inbox]
-  (let [pfn (process/proc-fn [inbox]
+(process/defn-proc run-exit-normal []
+  (let [pfn (process/proc-fn []
               (process/receive!
                 sig (println "receive" sig)))
         pid (process/spawn pfn [] {:register :p, :flags {:trap-exit true}})]
@@ -23,9 +23,9 @@
     (process/exit pid :normal)
     (match (process/whereis :p) pid :ok)))
 
-(process/defn-proc run-exit-kill [inbox]
+(process/defn-proc run-exit-kill []
   (process/flag :trap-exit true)
-  (let [pfn (process/proc-fn [inbox]
+  (let [pfn (process/proc-fn []
               (process/receive!
                 _ (assert false "must never reach this place")))
         pid (process/spawn pfn [] {:register :p, :flags {:trap-exit true}})]

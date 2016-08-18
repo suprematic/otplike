@@ -5,7 +5,7 @@
 ;; Example
 ; => (require '[otplike.example.e7-bike-rent :as e7] :reload)
 ; => (e7/start [1 2 3]))
-; => (process/defn-proc p [inbox]
+; => (process/defn-proc p []
 ;      (let [[_ bike] (e7/rent)]
 ;        (e7/return bike)
 ;        (e7/rent)
@@ -32,7 +32,7 @@
 
 ; Loop
 
-(process/defproc bike-rent [inbox bikes]
+(process/defproc bike-rent [bikes]
   (println "server starting with bikes" bikes)
   (process/flag :trap-exit true)
   (println "server trapping exits")

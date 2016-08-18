@@ -26,17 +26,15 @@
   (let [tref (new-tref)]
     (swap! *timers assoc tref
            (process/spawn
-             (fn [inbox]
+             (process/proc-fn []
                (process/monitor pid)
-               (go
-                 (let [[_ port] (async/alts! [inbox (async/timeout msecs)])]
-                   (when (not= port inbox)
-                     (f)))
-                 (swap! *timers dissoc tref)
-                 :normal))
+               (process/receive!
+                 [:DOWN _ _ _ _] :down
+                 (after msecs
+                   (f)))
+               (swap! *timers dissoc tref))
              []
-             {:flags {:trap-exit true}
-              :name (str tref)}))
+             {:name (str tref)}))
     tref))
 
 (defn send-after
@@ -68,23 +66,16 @@
   (let [tref (new-tref)]
     (swap! *timers assoc tref
            (process/spawn
-             (fn [inbox]
+             (process/proc-fn []
                (process/monitor pid)
-               (go
-                 (loop []
-                   (let [timeout (async/timeout msecs)]
-                     (match (async/alts! [inbox timeout])
-                            [nil timeout]
-                            (do
-                              (async/put! pid message)
-                              (recur))
-                            [_ inbox]
-                            (do
-                              (swap! *timers dissoc tref)
-                              :normal))))))
+               (loop []
+                 (process/receive!
+                   [:DOWN _ _ _ _] (swap! *timers dissoc tref)
+                   (after msecs
+                     (async/put! pid message)
+                     (recur)))))
              []
-             {:flags {:trap-exit true}
-              :name (str tref)}))
+             {:name (str tref)}))
     tref))
 
 (defn cancel
@@ -98,18 +89,15 @@
 ;******* tests
 (defn ^:no-doc test-1 []
   (let [process (process/spawn
-                  (fn [inbox]
+                  (process/proc-fn []
                     ;(send-after 5000 self :timer-message)
-                    (go
-                      (loop []
-                        (let [message (<! inbox)]
-                          #_(process/trace "user" (str "message: " message))
-                          (when (not= message :stop)
-                            (recur))))
-                      :normal))
+                    (loop []
+                      ;(process/trace "user" (str "message: " message))
+                      (process/receive!
+                        :stop :ok
+                        _ (recur))))
                   []
-                  {:name "user"
-                   :flags {:trap-exit false}})]
+                  {:name "user"})]
     (let [tref (send-after 1000 process :cancelled)]
       (cancel tref))
     (let [tref (send-interval 1000 process :interval)]

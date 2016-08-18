@@ -112,19 +112,19 @@
   (init impl args))
 
 
-(defproc gen-server-proc [inbox impl init-args response]
+(defproc gen-server-proc [impl init-args response]
   (match (call-init impl init-args) ;TODO handle wrong return from init
     [:ok initial-state]
     (do
       (put!* response :ok)
       (loop [state initial-state]
-        (if-let [message (<! inbox)]
-          (match (dispatch impl state message)
-            [:recur new-state]
-            (recur new-state)
+        (process/receive!
+          message (match (dispatch impl state message)
+                    [:recur new-state]
+                    (recur new-state)
 
-            [:terminate reason]
-            reason))))
+                    [:terminate reason]
+                    reason))))
 
     [:stop reason]
     (put!* response [:error reason])))

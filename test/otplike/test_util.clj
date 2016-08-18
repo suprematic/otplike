@@ -1,19 +1,22 @@
 (ns otplike.test-util
-  (:require [clojure.core.async :as async]
+  (:require [otplike.process :as process]
+            [clojure.core.async :as async]
             [clojure.core.match :refer [match]]))
 
 (defn uuid-keyword []
   (keyword (str (java.util.UUID/randomUUID))))
 
-(defn await-message [inbox timeout-ms]
+(defn await-message [timeout-ms]
   (async/go
-    (let [timeout (async/timeout timeout-ms)]
-      (match (async/alts! [inbox timeout])
-        [[:EXIT pid reason] inbox] [:exit [pid reason]]
-        [[:DOWN ref :process object reason] inbox] [:down [ref object reason]]
-        [nil inbox] :inbox-closed
-        [msg inbox] [:message msg]
-        [nil timeout] :timeout))))
+    (try
+      (process/receive!
+        [:EXIT pid reason] [:exit [pid reason]]
+        [:DOWN ref :process object reason] [:down [ref object reason]]
+        msg [:message msg]
+        (after timeout-ms
+          :timeout))
+      (catch Exception _e
+        nil))))
 
 (defn await-completion [chan timeout-ms]
   (let [timeout (async/timeout timeout-ms)]

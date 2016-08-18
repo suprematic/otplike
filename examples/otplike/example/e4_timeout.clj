@@ -1,7 +1,7 @@
 (ns otplike.example.e4-timeout
   (:require [otplike.process :as process :refer [!]]))
 
-(process/defn-proc run [inbox]
+(process/defn-proc run []
   (process/receive!
     msg :ok
     (after 1000

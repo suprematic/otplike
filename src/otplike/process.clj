@@ -508,12 +508,11 @@
         (async/close! stop)))))
 
 ; TODO check exception thrown from proc-func
-(defn- start-process [proc-func inbox args]
+(defn- start-process [proc-func args]
   {:pre [(fn? proc-func)
-         (satisfies? ap/ReadPort inbox)
          (sequential? args)]
    :post [(satisfies? ap/ReadPort %)]}
-  (match (apply proc-func inbox args)
+  (match (apply proc-func args)
     (chan :guard #(satisfies? ap/ReadPort %)) chan))
 
 (defn- resolve-proc-func [form]
@@ -579,7 +578,7 @@
         (binding [*self* pid
                   *inbox* outbox] ; workaround for ASYNC-170. once fixed, binding should move to (start-process...)
           (let [return (try
-                         (start-process proc-func outbox args)
+                         (start-process proc-func args)
                          (catch Throwable e
                            (close! outbox)
                            (sync-unregister pid)
