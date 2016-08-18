@@ -81,7 +81,7 @@
     other
     (bad-return impl state other :call)))
 
-(defn put!* [chan value]
+(defn- put!* [chan value]
   (async/put! chan value)
   (async/close! chan))
 
@@ -108,7 +108,7 @@
 
 
 ; TODO take care of exception
-(defn call-init [impl args]
+(defn- call-init [impl args]
   (init impl args))
 
 
