@@ -665,7 +665,7 @@
   `(fn ~args
      (go
        (try
-         ~@body
+         (loop ~(vec (interleave args args)) ~@body)
          :normal
          (catch Throwable t#
            [:exception (u/stack-trace t#)])))))

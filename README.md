@@ -37,17 +37,16 @@ alternative.
 (process/defproc server []
   (println "server: waiting for messages...")
   ; wait for messages
-  (loop []
-    (process/receive!
-      [from msg] 
-      (do
-        (println "server: got" msg)
-        ; send back response
-        (! from [(process/self) msg])
-        (recur))
-      :stop 
-      ; do nothing, and exit message loop
-      (println "server: stopped"))))
+  (process/receive!
+    [from msg]
+    (do
+      (println "server: got" msg)
+      ; send back response
+      (! from [(process/self) msg])
+      (recur))
+    :stop
+    ; do nothing, and exit message loop
+    (println "server: stopped")))
 
 (process/defproc client []
   ; spawn process

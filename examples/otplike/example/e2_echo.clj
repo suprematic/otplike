@@ -3,13 +3,12 @@
 
 (process/defproc server []
   (println "server: waiting for messages...")
-  (loop []
-    (process/receive!
-      [from msg] (do
-                   (println "server: got" msg)
-                   (! from [(process/self) msg])
-                   (recur))
-      :stop (println "server: stopped"))))
+  (process/receive!
+    [from msg] (do
+                 (println "server: got" msg)
+                 (! from [(process/self) msg])
+                 (recur))
+    :stop (println "server: stopped")))
 
 (process/defn-proc run []
   (let [pid (process/spawn server [] {})]
