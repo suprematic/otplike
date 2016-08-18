@@ -639,8 +639,11 @@
   (if (even? (count clauses))
     `(match (~(if park? `<! `<!!) *inbox*) ~@clauses)
     (match (last clauses)
-      (['after (ms :guard #(and (integer? %) (not (neg? %)))) & body] :seq)
-      `(let [inbox# (inbox*)
+      (['after
+        (ms :guard #(or (symbol? %) (and (integer? %) (not (neg? %)))))
+        & body]
+       :seq)
+      `(let [inbox# *inbox*
              timeout# (async/timeout ~ms)]
          (match (~(if park? `async/alts! `async/alts!!) [inbox# timeout#])
            [nil timeout#] (do ~@body)
