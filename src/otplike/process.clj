@@ -105,7 +105,7 @@
   Throws when called not in process context."
   []
   {:post [(pid? %)]}
-  (or *self* (throw (Exception. "not in process"))))
+  (or *self* (throw (Exception. "noproc"))))
 
 (defn whereis
   "Returns the process identifier with the registered name reg-name,
@@ -201,7 +201,7 @@
           :trap-exit (do
                        (alter flags assoc flag (boolean value))
                        (boolean old-value)))))
-    (throw (Exception. "stopped"))))
+    (throw (Exception. "noproc"))))
 
 (defn- monitor* [func pid1 pid2]
   (if-let [{:keys [monitors] :as process} (find-process pid2)]
@@ -277,7 +277,7 @@
       true
       (if (two-phase-start s pid link-fn)
         true
-        (throw (Exception. "stopped"))))))
+        (throw (Exception. "noproc"))))))
 
 (defn- unlink-fn [phase {:keys [linked pid] :as process} other-pid]
   {:pre [(instance? ProcessRecord process)
@@ -316,7 +316,7 @@
       true
       (if-let [complete (two-phase-start s pid unlink-fn)]
         (do (<!! complete) true)
-        (throw (Exception. "stopped"))))))
+        (throw (Exception. "noproc"))))))
 
 (defn- monitor-message [mref object reason]
   {:pre [(monitor-ref? mref)]}
@@ -646,7 +646,7 @@
              timeout# (async/timeout ~ms)]
          (match (~(if park? `async/alts! `async/alts!!) [inbox# timeout#])
            [nil timeout#] (do ~@body)
-           [nil inbox#] (throw (Exception. "stopped"))
+           [nil inbox#] (throw (Exception. "noproc"))
            [msg# inbox#] (match msg# ~@(butlast clauses)))))))
 
 (alter-meta! #'receive* assoc :no-doc true)
