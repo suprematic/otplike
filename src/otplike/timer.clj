@@ -8,6 +8,9 @@
   Object
   (toString [_this] (str "timer_" id)))
 
+(alter-meta! #'->TRef assoc :no-doc true)
+(alter-meta! #'map->TRef assoc :no-doc true)
+
 (def ^:no-doc *tcount
   (atom 0))
 

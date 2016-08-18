@@ -45,7 +45,13 @@
       (trace this [:inbound val])
       (ap/put! inbox val handler))))
 
+(alter-meta! #'->Pid assoc :no-doc true)
+(alter-meta! #'map->Pid assoc :no-doc true)
+
 (defrecord MonitorRef [id other-pid])
+
+(alter-meta! #'->MonitorRef assoc :no-doc true)
+(alter-meta! #'map->MonitorRef assoc :no-doc true)
 
 (defn monitor-ref?
   "Returns true if term is a monitor reference, false otherwise."
@@ -79,13 +85,15 @@
   (print-simple (pid->str o) w))
 
 (defrecord ProcessRecord [pid inbox control monitors exit outbox linked flags])
+(alter-meta! #'->ProcessRecord assoc :no-doc true)
+(alter-meta! #'map->ProcessRecord assoc :no-doc true)
 
 (defn- new-process [pid inbox control monitors exit outbox linked flags]
   {:pre [(pid? pid)
          (satisfies? ap/ReadPort inbox) (satisfies? ap/WritePort inbox)
          (satisfies? ap/ReadPort control) (satisfies? ap/WritePort control)
-         (map? @monitors) (every? vector? @monitors) (every? (fn [[pid _]]
-                                                              (pid? pid)) @monitors)
+         (map? @monitors) (every? vector? @monitors)
+         (every? (fn [[pid _]] (pid? pid)) @monitors)
          (satisfies? ap/ReadPort outbox)
          (set? @linked) (every? pid? @linked)
          (map? @flags)]
@@ -472,6 +480,8 @@
 
 (defprotocol IClose
   (close! [_]))
+
+(alter-meta! #'IClose assoc :no-doc true)
 
 (defn- outbox [pid inbox]
   {:pre [(pid? pid)
