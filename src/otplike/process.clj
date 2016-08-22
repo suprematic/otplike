@@ -172,7 +172,6 @@
   - future messages do not arrive to the process' inbox
   - all linked/monitoring processes receive exit signal/message
   - process no longer registered"
-
   [pid reason]
   {:post [(or (true? %) (false? %))]}
   (u/check-args [(pid? pid)

@@ -1197,7 +1197,7 @@
 
 ; TODO:
 ;(deftest spawned-process-available-from-within-process-by-reg-name)
-;(deftest there-are-no-residue-of-process-after-proc-fun-throwed)
+;(deftest there-are-no-residue-of-process-after-proc-fun-threw)
 
 ;; ====================================================================
 ;; (spawn-link [proc-fun args options])
@@ -1208,9 +1208,8 @@
         pfn1 (proc-fn []
                (process/spawn-link pfn [] {})
                (is (nil? (<! (await-message 200)))
-                   (str "process trapping exits and spawned with option"
-                        " :link-to must receive exit message when linked"
-                        " process exited"))
+                   (str "process #1 not trapping exits and spawned process #2"
+                        " with spawn-link must exit after process #2 exited"))
                (async/close! done))]
     (process/spawn pfn1 [] {})
     (await-completion done 300))
@@ -1219,9 +1218,9 @@
         pfn1 (proc-fn []
                (let [pid (process/spawn-link pfn [] {})]
                  (is (=  [:exit [pid :abnormal]] (<! (await-message 200)))
-                     (str "process trapping exits and spawned with option"
-                          " :link-to must receive exit message when linked"
-                          " process exited")))
+                     (str "process #1 trapping exits and spawned process #2"
+                          " with spawn-link must receive exit message after"
+                          " process #2 exited")))
                (async/close! done))]
     (process/spawn pfn1 [] {:flags {:trap-exit true}})
     (await-completion done 300)))
