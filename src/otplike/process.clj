@@ -165,7 +165,7 @@
   which unconditionally exits with reason :killed.
   Returns true if exit signal was sent (process was alive), false
   otherwise.
-  Throws if pid is not a pid, or message is nil.
+  Throws if pid is not a pid, or reason is nil.
 
   Process exit means:
   - process' inbox becomes closed

@@ -23,4 +23,3 @@
     (match (async/alts!! [chan timeout])
       [nil chan] :ok
       [nil timeout] (throw (Exception. (str "timeout " timeout-ms))))))
-
