@@ -416,9 +416,37 @@
     (process/spawn pfn2 [] {:link-to pid1 :flags {:trap-exit true}})
     (await-completion done 1000)))
 
+(deftest ^:parallel exit-kill-reason-is-killed
+  (let [done (async/chan)
+        done1 (async/chan)
+        pfn (proc-fn []
+              (await-completion done1 50))
+        pid (process/spawn pfn [] {})
+        pfn1 (proc-fn[]
+               (process/exit pid :kill)
+               (async/close! done1)
+               (is (= [:exit [pid :killed]] (<! (await-message 50)))
+                   (str "process exit reason must be :killed when exit is"
+                        " called with reason :kill"))
+               (async/close! done))]
+    (process/spawn pfn1 [] {:link-to pid :flags {:trap-exit true}})
+    (await-completion done 100))
+  (let [done (async/chan)
+        done1 (async/chan)
+        pfn (proc-fn []
+              (await-completion done1 50)
+              (process/exit (process/self) :kill))
+        pid (process/spawn pfn [] {})
+        pfn1 (proc-fn[]
+               (async/close! done1)
+               (is (= [:exit [pid :killed]] (<! (await-message 50)))
+                   (str "process exit reason must be :killed when exit is"
+                        " called with reason :kill"))
+               (async/close! done))]
+    (process/spawn pfn1 [] {:link-to pid :flags {:trap-exit true}})
+    (await-completion done 100)))
 
 ; TODO
-(deftest ^:parallel exit-kill-reason-killed) ; use link or monitor to test the reason
 (deftest ^:parallel exit-kill-does-not-propagate)
 
 (deftest ^:parallel
