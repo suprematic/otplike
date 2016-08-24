@@ -1127,19 +1127,20 @@
   (is (thrown? Exception (process/spawn (proc-fn []) [] {:inbox-size []}))
       "spawn must throw if :inbox-size option is not a non-negative integer"))
 
-(defn- process-exits-abnormally-when-pfn-throws* [throwing-fn]
+(defn- process-exits-abnormally-when-pfn-throws* [ex]
   (let [done (async/chan)
         done1 (async/chan)
+        ex-class-name (.getName (class ex))
         pfn (fn []
               (is (await-completion done1 50))
-              (throwing-fn))
+              (throw ex))
         pid (process/spawn pfn [] {})
         pfn1 (proc-fn[]
                (async/close! done1)
-               (is (= [:exit [pid [:exception :stack-trace]]]
+               (is (= [:exit [pid [:exception {:class ex-class-name}]]]
                       (match (<! (await-message 50))
-                        [:exit [pid [:exception _]]]
-                        [:exit [pid [:exception :stack-trace]]]
+                        [:exit [pid [:exception {:class ex-class-name}]]]
+                        [:exit [pid [:exception {:class ex-class-name}]]]
                         msg msg))
                    (str "process should be exited abnormally when its proc-fn"
                         " throws any exception"))
@@ -1148,9 +1149,9 @@
     (await-completion done 100)))
 
 (deftest ^:parallel process-exits-abnormally-when-pfn-throws
-  (process-exits-abnormally-when-pfn-throws* #(throw (InterruptedException.)))
-  (process-exits-abnormally-when-pfn-throws* #(throw (RuntimeException.)))
-  (process-exits-abnormally-when-pfn-throws* #(throw (Error.))))
+  (process-exits-abnormally-when-pfn-throws* (InterruptedException.))
+  (process-exits-abnormally-when-pfn-throws* (RuntimeException.))
+  (process-exits-abnormally-when-pfn-throws* (Error.)))
 
 (defn- process-exits-abnormally-when-pfn-arity-doesnt-match-args* [pfn args]
   (let [done (async/chan)

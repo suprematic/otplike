@@ -512,23 +512,21 @@
          (pid? pid)
          (sequential? args)]
    :post [(satisfies? ap/ReadPort %)]}
-  (try
-    (let [ret (apply proc-func args)]
-      (match ret
+  (go
+    (try
+      (match (apply proc-func args)
         (chan :guard #(satisfies? ap/ReadPort %))
-        (go
-          (let [reason (<! chan)]
-            (!control pid [:stop reason])
-            reason))
-        reason
-        (go
-          (!control pid [:stop reason])
-          reason)))
-    (catch Throwable t
-      (go
-        (let [reason [:exception (u/stack-trace t)]]
-          (!control pid [:stop reason])
-          reason)))))
+        (let [exit-reason (<! chan)]
+          (!control pid [:stop exit-reason])
+          exit-reason)
+        exit-reason
+        (do
+          (!control pid [:stop exit-reason])
+          exit-reason))
+      (catch Throwable t
+        (let [exit-reason [:exception (u/stack-trace t)]]
+          (!control pid [:stop exit-reason])
+          exit-reason)))))
 
 (defn- resolve-proc-func [form]
   {:pre [(or (fn? form) (symbol? form))]
