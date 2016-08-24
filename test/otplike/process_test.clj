@@ -78,7 +78,7 @@
               (proc-fn []
                 (is (= (process/self) (process/whereis reg-name))
                     "whereis must return process pid on registered name")
-                (await-completion done 100))
+                (is (await-completion done 100)))
               []
               {:register reg-name})]
     (is (= pid (process/whereis reg-name))
@@ -110,14 +110,14 @@
 
 (deftest ^:parallel !-returns-true-sending-to-alive-process-by-pid
   (let [done (async/chan)
-        pid (process/spawn (proc-fn [] (await-completion done 100)) [] {})]
+        pid (process/spawn (proc-fn [] (is (await-completion done 100))) [] {})]
     (is (= true (! pid :msg)) "! must return true sending to alive process")
     (async/close! done)))
 
 (deftest ^:parallel !-returns-true-sending-to-alive-process-by-reg-name
   (let [done (async/chan)
         reg-name (uuid-keyword)]
-    (process/spawn (proc-fn [] (await-completion done 100))
+    (process/spawn (proc-fn [] (is (await-completion done 100)))
                    []
                    {:register reg-name})
     (is (= true (! reg-name :msg)) "! must return true sending to alive process")
@@ -177,8 +177,7 @@
 
 (deftest ^:parallel exit-throws-on-nil-reason
   (let [done (async/chan)
-        pid (process/spawn
-              (proc-fn [] (await-completion done 50)) [] {})]
+        pid (process/spawn (proc-fn [] (is (await-completion done 50))) [] {})]
     (is (thrown? Exception (process/exit pid nil))
         "exit must throw when reason argument is nil")
     (async/close! done)))
@@ -224,7 +223,7 @@
 (deftest ^:parallel exit-normal-registered-process
   (let [done (async/chan)
         reg-name (uuid-keyword)
-        pid (process/spawn (proc-fn [] (await-completion done 50))
+        pid (process/spawn (proc-fn [] (is (await-completion done 50)))
                            []
                            {:register reg-name})]
     (is ((into #{} (process/registered)) reg-name)
@@ -388,7 +387,7 @@
   (let [done (async/chan)
         done1 (async/chan)
         pfn (proc-fn []
-              (await-completion done1 50)
+              (is (await-completion done1 50))
               (process/exit (process/self) :abnormal))
         pid (process/spawn pfn [] {})
         pfn1 (proc-fn []
@@ -402,9 +401,9 @@
 (deftest ^:parallel process-killed-when-control-inbox-is-overflowed
   (let [done (async/chan)
         done1 (async/chan)
-        pid (process/spawn (proc-fn [] (await-completion done 1000)) [] {})
+        pid (process/spawn (proc-fn [] (is (await-completion done 1000))) [] {})
         pfn1 (proc-fn []
-               (await-completion done1 50)
+               (is (await-completion done1 50))
                (dotimes [_ 200] (process/link pid)))
         pid1 (process/spawn pfn1 [] {})
         pfn2 (proc-fn []
@@ -420,8 +419,7 @@
 (deftest ^:parallel exit-kill-reason-is-killed
   (let [done (async/chan)
         done1 (async/chan)
-        pfn (proc-fn []
-              (await-completion done1 50))
+        pfn (proc-fn [] (is (await-completion done1 50)))
         pid (process/spawn pfn [] {})
         pfn1 (proc-fn[]
                (process/exit pid :kill)
@@ -435,7 +433,7 @@
   (let [done (async/chan)
         done1 (async/chan)
         pfn (proc-fn []
-              (await-completion done1 50)
+              (is (await-completion done1 50))
               (process/exit (process/self) :kill))
         pid (process/spawn pfn [] {})
         pfn1 (proc-fn[]
@@ -575,7 +573,7 @@
         n3 (uuid-keyword)
         registered #{n1 n2 n3}
         done (async/chan)
-        pfn (proc-fn [] (await-completion done 50))]
+        pfn (proc-fn [] (is (await-completion done 50)))]
     (process/spawn pfn [] {:register n1})
     (process/spawn pfn [] {:register n2})
     (process/spawn pfn [] {:register n3})
@@ -607,7 +605,7 @@
     (process/spawn pfn [] {})
     (await-completion done 50))
   (let [done1 (async/chan)
-        pid (process/spawn (proc-fn [] (await-completion done1 50)) [] {})
+        pid (process/spawn (proc-fn [] (is (await-completion done1 50))) [] {})
         done2 (async/chan)
         pfn (proc-fn []
               (is (= true (process/link pid))
@@ -617,7 +615,7 @@
     (process/spawn pfn [] {})
     (await-completion done2 50))
   (let [done1 (async/chan)
-        pid (process/spawn (proc-fn [] (await-completion done1 50)) [] {})
+        pid (process/spawn (proc-fn [] (is (await-completion done1 50))) [] {})
         done2 (async/chan)
         pfn (proc-fn []
               (is (= true (process/link pid))
@@ -1133,7 +1131,7 @@
   (let [done (async/chan)
         done1 (async/chan)
         pfn (fn []
-              (await-completion done1 50)
+              (is (await-completion done1 50))
               (throwing-fn))
         pid (process/spawn pfn [] {})
         pfn1 (proc-fn[]
@@ -1182,7 +1180,7 @@
 (deftest ^:parallel porcess-is-link-when-proc-fn-starts
   (let  [done (async/chan)
          done1 (async/chan)
-         pfn (proc-fn [] (await-completion done1 50))
+         pfn (proc-fn [] (is (await-completion done1 50)))
          pid (process/spawn pfn [] {})
          pfn1 (proc-fn []
                  (async/close! done1)
@@ -1352,7 +1350,7 @@
     (await-completion done 150))
   (let [done (async/chan)
         done1 (async/chan)
-        pfn1 (proc-fn [] (await-completion done1 100))
+        pfn1 (proc-fn [] (is (await-completion done1 100)))
         pid1 (process/spawn pfn1 [] {})
         pfn2 (proc-fn []
                (let [mref (process/monitor pid1)]
@@ -1408,7 +1406,7 @@
     (process/spawn pfn [] {})
     (await-completion done 50))
   (let [done (async/chan)
-        pfn1 (proc-fn [] (await-completion done 50))
+        pfn1 (proc-fn [] (is (await-completion done 50)))
         pid1 (process/spawn pfn1 [] {})
         pfn (proc-fn []
               (is (process/monitor-ref? (process/monitor pid1))
@@ -1419,7 +1417,7 @@
     (await-completion done 50))
   (let [reg-name (uuid-keyword)
         done (async/chan)
-        pfn1 (proc-fn [] (await-completion done 50))
+        pfn1 (proc-fn [] (is (await-completion done 50)))
         pid1 (process/spawn pfn1 [] {:register reg-name})
         pfn (proc-fn []
               (is (process/monitor-ref? (process/monitor reg-name))
@@ -1475,7 +1473,7 @@
         (str "monitor must throw when called not in process context with"
              " terminated process reg-name")))
   (let [done (async/chan)
-        pfn (proc-fn [] (await-completion done 50))
+        pfn (proc-fn [] (is (await-completion done 50)))
         pid (process/spawn pfn [] {})]
     (is (thrown? Exception (process/monitor pid))
         (str "monitor must throw when called not in process context with"
@@ -1483,7 +1481,7 @@
     (async/close! done))
   (let [done (async/chan)
         reg-name (uuid-keyword)
-        pfn (proc-fn [] (await-completion done 50))
+        pfn (proc-fn [] (is (await-completion done 50)))
         pid (process/spawn pfn [] {:register reg-name})]
     (is (thrown? Exception (process/monitor reg-name))
         (str "monitor must throw when called not in process context with"
@@ -1538,7 +1536,7 @@
 (deftest ^:parallel monitor-called-multiple-times-creates-as-many-monitors
   (let [done (async/chan)
         done1 (async/chan)
-        pfn1 (proc-fn [] (await-completion done1 100))
+        pfn1 (proc-fn [] (is (await-completion done1 100)))
         pid (process/spawn pfn1 [] {})
         pfn (proc-fn []
               (let [mrefs (doall (take 3 (repeatedly #(process/monitor pid))))
@@ -1560,7 +1558,7 @@
         pfn1 (proc-fn []
                (is (= [:exit [(process/self) :abnormal]]
                       (<! (await-message 100))))
-               (await-completion done 200))
+               (is (await-completion done 200)))
         pid1 (process/spawn pfn1 [] {:flags {:trap-exit true}})
         pfn (proc-fn []
               (process/monitor pid1)
@@ -1576,7 +1574,7 @@
 
 (deftest ^:parallel monitor-refs-are-not-equal
   (let [done (async/chan)
-        pfn1 (proc-fn [] (await-completion done 50))
+        pfn1 (proc-fn [] (is (await-completion done 50)))
         pid (process/spawn pfn1 [] {})
         pfn (proc-fn []
               (is
@@ -1625,7 +1623,7 @@
 (deftest ^:parallel demonitor-stops-monitoring
   (let [done (async/chan)
         done1 (async/chan)
-        pid (process/spawn (proc-fn [] (await-completion done1 150)) [] {})
+        pid (process/spawn (proc-fn [] (is (await-completion done1 150))) [] {})
         pfn (proc-fn []
                (let [mref (process/monitor pid)]
                  (<! (async/timeout 50))
@@ -1643,7 +1641,7 @@
   demonitor-called-after-monitored-process-exited-does-nothing
   (let [done (async/chan)
         done1 (async/chan)
-        pid (process/spawn (proc-fn [] (await-completion done1 100)) [] {})
+        pid (process/spawn (proc-fn [] (is (await-completion done1 100))) [] {})
         pfn (proc-fn []
                (let [mref (process/monitor pid)]
                  (<! (async/timeout 50))
@@ -1686,7 +1684,7 @@
 
 (deftest ^:parallel demonitor-returns-true
   (let [done (async/chan)
-        pid (process/spawn (proc-fn [] (await-completion done 50)) [] {})
+        pid (process/spawn (proc-fn [] (is (await-completion done 50))) [] {})
         pfn (proc-fn []
               (let [mref (process/monitor pid)]
                 (is (= true (process/demonitor mref))
@@ -1725,7 +1723,7 @@
               (let [mref (process/monitor pid1)]
                 (<! (async/timeout 50))
                 (! pid2 mref)
-                (await-completion done 100)))]
+                (is (await-completion done 100))))]
     (process/spawn pfn3 [] {})
     (await-completion done 200)))
 
@@ -1754,10 +1752,10 @@
 (deftest ^:parallel demonitor-throws-when-called-not-in-process-context
   (let [done (async/chan)
         mref-chan (async/chan 1)
-        pid (process/spawn (proc-fn [] (await-completion done 100)) [] {})
+        pid (process/spawn (proc-fn [] (is (await-completion done 100))) [] {})
         pfn (proc-fn []
               (>! mref-chan (process/monitor pid))
-              (await-completion done 100))]
+              (is (await-completion done 100)))]
     (process/spawn pfn [] {})
     (match (async/alts!! [mref-chan (async/timeout 100)])
       [(mref :guard #(process/monitor-ref? %)) mref-chan]
@@ -1771,7 +1769,7 @@
         pid (process/spawn (proc-fn []) [] {})
         pfn (proc-fn []
               (>! mref-chan (process/monitor pid))
-              (await-completion done 100))]
+              (is (await-completion done 100)))]
     (process/spawn pfn [] {})
     (match (async/alts!! [mref-chan (async/timeout 100)])
       [(mref :guard #(process/monitor-ref? %)) mref-chan]
@@ -1782,7 +1780,7 @@
     (async/close! done))
   (let [done (async/chan 1)
         mref-chan (async/chan)
-        pid (process/spawn (proc-fn [] (await-completion done 100)) [] {})]
+        pid (process/spawn (proc-fn [] (is (await-completion done 100))) [] {})]
     (process/spawn (proc-fn [] (>! mref-chan (process/monitor pid))) [] {})
     (<!! (async/timeout 50))
     (match (async/alts!! [mref-chan (async/timeout 100)])
