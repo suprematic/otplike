@@ -84,21 +84,23 @@
 (defmethod print-method Pid [o w]
   (print-simple (pid->str o) w))
 
-(defrecord ProcessRecord [pid inbox control monitors exit outbox linked flags])
+(defrecord ProcessRecord
+  [pid inbox control kill monitors exit outbox linked flags])
 (alter-meta! #'->ProcessRecord assoc :no-doc true)
 (alter-meta! #'map->ProcessRecord assoc :no-doc true)
 
-(defn- new-process [pid inbox control monitors exit outbox linked flags]
+(defn- new-process [pid inbox control kill monitors exit outbox linked flags]
   {:pre [(pid? pid)
          (satisfies? ap/ReadPort inbox) (satisfies? ap/WritePort inbox)
          (satisfies? ap/ReadPort control) (satisfies? ap/WritePort control)
+         (satisfies? ap/ReadPort kill) (satisfies? ap/WritePort kill)
          (map? @monitors) (every? vector? @monitors)
          (every? (fn [[pid _]] (pid? pid)) @monitors)
          (satisfies? ap/ReadPort outbox)
          (set? @linked) (every? pid? @linked)
          (map? @flags)]
    :post [(instance? ProcessRecord %)]}
-  (->ProcessRecord pid inbox control monitors exit outbox linked flags))
+  (->ProcessRecord pid inbox control kill monitors exit outbox linked flags))
 
 (defn self
   "Returns the process identifier of the calling process.
@@ -134,19 +136,16 @@
   (u/check-args [(some? dest)
                  (some? message)])
   (if-let [{:keys [inbox]} (find-process dest)]
-    (do
-      (async/put! inbox message)
-      true)
+    (async/put! inbox message)
     false))
 
 (defn- !control [pid message]
   {:pre [(pid? pid)
          (vector? message) (keyword? (first message))]
    :post [(or (true? %) (false? %))]}
-  (if-let [{:keys [control]} (@*processes pid)]
-    (do
-      (async/put! control message)
-      true)
+  (if-let [{:keys [control kill]} (@*processes pid)]
+    (or (async/offer! control message)
+        (async/put! kill :control-overflow))
     false))
 
 (defn exit
@@ -255,8 +254,8 @@
                  (dosync
                    (alter linked conj other-pid)))
     :noproc (do
-               (trace pid [:link-timeout other-pid])
-               (!control pid [:exit other-pid :noproc])))) ; TODO crash :noproc vs. exit :noproc
+              (trace pid [:link-timeout other-pid])
+              (!control pid [:exit other-pid :noproc])))) ; TODO crash :noproc vs. exit :noproc
 
 (defn link
   "Creates a link between the calling process and another process
@@ -450,6 +449,7 @@
   (trace pid [:control message])
     (let [trap-exit (:trap-exit @flags)]
       (match message
+        [:stop reason] [::break reason]
         [:exit xpid :kill] (do
                              (assert (pid? xpid))
                              [::break :killed])
@@ -507,12 +507,16 @@
         (async/close! stop)))))
 
 ; TODO check exception thrown from proc-func
-(defn- start-process [proc-func args]
+(defn- start-process [pid proc-func args]
   {:pre [(fn? proc-func)
+         (pid? pid)
          (sequential? args)]
    :post [(satisfies? ap/ReadPort %)]}
   (match (apply proc-func args)
-    (chan :guard #(satisfies? ap/ReadPort %)) chan))
+    (chan :guard #(satisfies? ap/ReadPort %))
+    (go
+      (let [reason (<! chan)]
+        (!control pid [:stop reason])))))
 
 (defn- resolve-proc-func [form]
   {:pre [(or (fn? form) (symbol? form))]
@@ -562,13 +566,14 @@
         inbox     (async/chan (or inbox-size 1024))
         pid       (Pid. id (or name (str "proc" id)))
         control   (async/chan 128)
+        kill      (async/chan)
         linked    (ref #{})
         monitors  (ref {})
         flags     (ref (or flags {}))]
     (locking *processes
       (let [outbox  (outbox pid inbox)
             process (new-process
-                      pid inbox control monitors exit outbox linked flags)]
+                      pid inbox control kill monitors exit outbox linked flags)]
         (sync-register pid process register)
         (trace pid [:start (str proc-func) args options])
         ; FIXME bindings from folded binding blocks are stacked, so no values
@@ -576,49 +581,49 @@
         ; collected; see "ring" benchmark example
         (binding [*self* pid
                   *inbox* outbox] ; workaround for ASYNC-170. once fixed, binding should move to (start-process...)
-          (let [return (try
-                         (start-process proc-func args)
-                         (catch Throwable e
-                           (close! outbox)
-                           (sync-unregister pid)
-                           (throw e)))]
-            (go
-              (when link-to
-                (doseq [link-to (apply hash-set (flatten [link-to]))] ; ??? probably optimize by sending link requests concurently
-                  (<! (two-phase process link-to pid link-fn)))) ; wait for protocol to complete
-              (let [process (assoc process :return return)]
-                (loop []
-                  (let [proceed (match (async/alts! [control return])
-                                  [val control]
-                                  (let [proceed (dispatch-control process val)]
-                                    (if (satisfies? ap/ReadPort proceed)
-                                      (<! proceed) proceed))
+          (try
+            (start-process pid proc-func args)
+            (catch Throwable e
+              (close! outbox)
+              (sync-unregister pid)
+              (throw e)))
+          (go
+            (when link-to
+              (doseq [link-to (apply hash-set (flatten [link-to]))] ; ??? probably optimize by sending link requests concurently
+                (<! (two-phase process link-to pid link-fn)))) ; wait for protocol to complete
+            (loop []
+              (let [proceed (match (async/alts! [kill control] :priority true)
+                              [val control]
+                              (let [proceed (dispatch-control process val)]
+                                (if (satisfies? ap/ReadPort proceed)
+                                  (<! proceed)
+                                  proceed))
 
-                                  [val return]
-                                  (do
-                                    (trace pid [:return (or val :nil)])
-                                    [::break (if (some? val) val :nil)])
+                              [val kill]
+                              (do
+                                (trace pid [:kill (or val :nil)])
+                                [::break (if (some? val) val :nil)])
 
-                                  (:or [nil control] [nil return])
-                                  nil)]
-                    (match proceed
-                      ::continue
-                      (recur)
+                              (:or [nil control] [nil kill])
+                              nil)]
+                (match proceed
+                  ::continue
+                  (recur)
 
-                      [::break reason]
-                      (do
-                        (trace pid [:terminate reason])
-                        (close! outbox)
-                        (dosync
-                          (sync-unregister pid)
-                          (doseq [p @linked]
-                            (when-let [p (@*processes p)]
-                              (alter (:linked p) disj process))))
-                        (doseq [p @linked]
-                          (!control p [:exit pid reason]))
+                  [::break reason]
+                  (do
+                    (trace pid [:terminate reason])
+                    (close! outbox)
+                    (dosync
+                      (sync-unregister pid)
+                      (doseq [p @linked]
+                        (when-let [p (@*processes p)]
+                          (alter (:linked p) disj process))))
+                    (doseq [p @linked]
+                      (!control p [:exit pid reason]))
 
-                        (doseq [[mref [pid object]] @monitors]
-                          (! pid (monitor-message mref object reason)))))))))))))
+                    (doseq [[mref [pid object]] @monitors]
+                      (! pid (monitor-message mref object reason)))))))))))
     pid))
 
 (defn spawn-link
