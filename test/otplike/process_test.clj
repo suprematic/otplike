@@ -3,7 +3,8 @@
             [otplike.process :as process :refer [! proc-fn]]
             [otplike.trace :as trace]
             [otplike.test-util :refer :all]
-            [clojure.core.async :as async :refer [<!! <! >!]]
+            [clojure.core.async :as async :refer [<!! <! >! >!!]]
+            [clojure.core.async.impl.protocols :as ap]
             [clojure.core.match :refer [match]]))
 
 ;; ====================================================================
@@ -275,7 +276,7 @@
     (await-completion done 100)))
 
 (deftest ^:parallel exit-returns-true-on-alive-process
-  (let [pfn (proc-fn [] (<! (async/timeout 100)))]
+  (let [pfn (proc-fn [] (<! (async/timeout 50)))]
     (let [pid (process/spawn pfn [] {})]
       (is (= true (process/exit pid :normal))
           "exit must return true on alive process"))
@@ -447,7 +448,7 @@
     (await-completion done 100)))
 
 ; TODO
-(deftest ^:parallel exit-kill-does-not-propagate)
+;(deftest ^:parallel exit-kill-does-not-propagate)
 
 (deftest ^:parallel
   exit-sends-exit-message-containing-pid-of-the-target-process
@@ -629,7 +630,7 @@
 (deftest ^:parallel link-throws-when-called-not-in-process-context
   (is (thrown? Exception (process/link (process/spawn (proc-fn []) [] {})))
       "link must throw when called not in process context")
-  (let [pfn (proc-fn [] (<! (async/timeout 100)))]
+  (let [pfn (proc-fn [] (<! (async/timeout 50)))]
     (is (thrown? Exception (process/link (process/spawn pfn [] {})))
         "link must throw when called not in process context")))
 
@@ -680,8 +681,7 @@
                           (<! (await-message 50)))
                        (str "process trapping exits must get exit message"
                             " when linked process exits with reason"
-                            " other than :normal")))
-                 "test failed")
+                            " other than :normal"))))
                (async/close! done2))
         pid2 (process/spawn pfn2 [] {:flags {:trap-exit true}})
         pfn1 (proc-fn []
@@ -727,8 +727,7 @@
                           (<! (await-message 100)))
                        (str "process trapping exits must get exit message"
                             " when linked process exits with reason"
-                            " other than :normal")))
-                 "test failed")
+                            " other than :normal"))))
                (async/close! done2))
         pid2 (process/spawn pfn2 [] {:flags {:trap-exit true}})
         pfn1 (proc-fn []
@@ -782,8 +781,7 @@
 
 (deftest ^:parallel linking-to-terminated-process-sends-exit-message
   (let [done (async/chan)
-        pfn2 (proc-fn [])
-        pid2 (process/spawn pfn2 [] {})
+        pid2 (process/spawn (proc-fn []) [] {})
         _ (<!! (async/timeout 50))
         pfn1 (proc-fn []
                (try
@@ -827,7 +825,7 @@
 (deftest linked-process-receives-exited-process-pid
   (let [done (async/chan)
         done1 (async/chan)
-        pfn1 (proc-fn [] (is (await-completion done1 100) "test failed"))
+        pfn1 (proc-fn [] (is (await-completion done1 100)))
         pid1 (process/spawn pfn1 [] {})
         pfn2 (proc-fn []
                (process/link pid1)
@@ -860,7 +858,7 @@
 (deftest ^:parallel unlink-removes-link-to-alive-process
   (let [done (async/chan)
         done1 (async/chan)
-        pfn1 (proc-fn [] (is (await-completion done1 200) "test failed")
+        pfn1 (proc-fn [] (is (await-completion done1 200))
                (throw (Exception.
                         (str "TEST: terminating abnormally to test"
                              " unlink removes link to alive process"))))
@@ -881,7 +879,7 @@
 (deftest ^:parallel unlink-returns-true-if-link-exists
   (let [done (async/chan)
         done1 (async/chan)
-        pfn1 (proc-fn [] (is (await-completion done1 100) "test failed"))
+        pfn1 (proc-fn [] (is (await-completion done1 100)))
         pid (process/spawn pfn1 [] {})
         pfn2 (proc-fn []
                (process/link pid)
@@ -895,7 +893,7 @@
 (deftest ^:parallel unlink-returns-true-there-is-no-link
   (let [done (async/chan)
         done1 (async/chan)
-        pfn1 (proc-fn [] (is (await-completion done1 50) "test failed"))
+        pfn1 (proc-fn [] (is (await-completion done1 50)))
         pid (process/spawn pfn1 [] {})
         pfn2 (proc-fn []
                (is (= true (process/unlink pid)) "unlink must return true")
@@ -924,7 +922,7 @@
     (await-completion done 100))
   (let [done (async/chan)
         done1 (async/chan)
-        pfn1 (proc-fn [] (is (await-completion done1 50) "test failed"))
+        pfn1 (proc-fn [] (is (await-completion done1 50)))
         pid (process/spawn pfn1 [] {})
         pfn2 (proc-fn []
                (process/link pid)
@@ -965,7 +963,7 @@
   (let [done (async/chan)
         done1 (async/chan)
         pfn1 (proc-fn []
-               (is (await-completion done1 100) "test failed")
+               (is (await-completion done1 100))
                (throw (Exception.
                         (str "TEST: terminating abnormally to test unlink"
                              " prevents exit message when previously linked"
@@ -991,7 +989,7 @@
   (let [done (async/chan)
         done1 (async/chan)
         pfn1 (proc-fn []
-               (is (await-completion done1 100) "test failed")
+               (is (await-completion done1 100))
                (process/exit (process/self) :abnormal))
         pid (process/spawn pfn1 [] {})
         pfn2 (proc-fn []
@@ -1014,8 +1012,8 @@
   (let [done (async/chan)
         done1 (async/chan)
         pfn1 (proc-fn []
-               (is (= :timeout (<! (await-message 100))) "test failed")
-               (is (await-completion done1 100) "test failed")
+               (is (= :timeout (<! (await-message 100))))
+               (is (await-completion done1 100))
                (throw (Exception.
                         (str "TEST: terminating abnormally to test unlink"
                              " doesn't affect process when called multiple"
@@ -1082,12 +1080,6 @@
       "spawn must throw if proc-fun is not a function")
   (is (thrown? Exception (process/spawn '() [] {}))
       "spawn must throw if proc-fun is not a function")
-  (is (thrown? Exception (process/spawn (fn [a b]) [1] {}))
-      "spawn must throw if proc-fun's arity doesn't match args")
-  (is (thrown? Exception (process/spawn (fn []) [1 :a] {}))
-      "spawn must throw if proc-fun's arity doesn't match args")
-  (is (thrown? Exception (process/spawn (fn []) [] {}))
-      "spawn must throw if proc-fun doesn't return ReadPort")
   (is (thrown? Exception (process/spawn (proc-fn []) 1 {}))
       "spawn must throw if args is not sequential")
   (is (thrown? Exception (process/spawn (proc-fn []) #{} {}))
@@ -1137,15 +1129,69 @@
   (is (thrown? Exception (process/spawn (proc-fn []) [] {:inbox-size []}))
       "spawn must throw if :inbox-size option is not a non-negative integer"))
 
-(deftest ^:parallel spawn-throws-if-pfn-throws
-  (is (thrown? InterruptedException
-               (process/spawn (fn [] (throw (InterruptedException.))) [] {}))
-      "spawn must throw when proc-fun throws")
-  (is (thrown? RuntimeException
-               (process/spawn (fn [] (throw (RuntimeException.))) [] {}))
-      "spawn must throw when proc-fun throws")
-  (is (thrown? Error (process/spawn (fn [] (throw (Error.))) [] {}))
-      "spawn must throw when proc-fun throws"))
+(defn- process-exits-abnormally-when-pfn-throws* [throwing-fn]
+  (let [done (async/chan)
+        done1 (async/chan)
+        pfn (fn []
+              (await-completion done1 50)
+              (throwing-fn))
+        pid (process/spawn pfn [] {})
+        pfn1 (proc-fn[]
+               (async/close! done1)
+               (is (= [:exit [pid [:exception :stack-trace]]]
+                      (match (<! (await-message 50))
+                        [:exit [pid [:exception _]]]
+                        [:exit [pid [:exception :stack-trace]]]
+                        msg msg))
+                   (str "process should be exited abnormally when its proc-fn"
+                        " throws any exception"))
+               (async/close! done))]
+    (process/spawn pfn1 [] {:link-to pid :flags {:trap-exit true}})
+    (await-completion done 100)))
+
+(deftest ^:parallel process-exits-abnormally-when-pfn-throws
+  (process-exits-abnormally-when-pfn-throws* #(throw (InterruptedException.)))
+  (process-exits-abnormally-when-pfn-throws* #(throw (RuntimeException.)))
+  (process-exits-abnormally-when-pfn-throws* #(throw (Error.))))
+
+(defn- process-exits-abnormally-when-pfn-arity-doesnt-match-args* [pfn args]
+  (let [done (async/chan)
+        ch (async/chan)
+        pfn1 (proc-fn[]
+               (is
+                 (match (async/alts! [ch (async/timeout 50)])
+                   [(pid :guard #(process/pid? %)) ch]
+                   (is (= [:exit [pid [:exception :stack-trace]]]
+                          (match (<! (await-message 50))
+                                 [:exit [pid [:exception _]]]
+                                 [:exit [pid [:exception :stack-trace]]]
+                                 msg msg))
+                       (str "process should be exited abnormally when its proc-fn"
+                            " throws any exception"))))
+               (async/close! done))
+        pid1 (process/spawn pfn1 [] {:flags {:trap-exit true}})
+        pid (process/spawn pfn args {:link-to pid1})]
+    (>!! ch pid)
+    (await-completion done 100)))
+
+(deftest ^:parallel process-exits-abnormally-when-pfn-arity-doesnt-match-args
+  (process-exits-abnormally-when-pfn-arity-doesnt-match-args* (fn []) [:a 1])
+  (process-exits-abnormally-when-pfn-arity-doesnt-match-args* (fn [a b]) [])
+  (process-exits-abnormally-when-pfn-arity-doesnt-match-args* (fn [b]) [:a :b]))
+
+(deftest ^:parallel porcess-is-link-when-proc-fn-starts
+  (let  [done (async/chan)
+         done1 (async/chan)
+         pfn (proc-fn [] (await-completion done1 50))
+         pid (process/spawn pfn [] {})
+         pfn1 (proc-fn []
+                 (async/close! done1)
+                 (is (= [:exit [pid :normal]] (<! (await-message 50)))
+                     (str "process spawned with :link-to option must be linked"
+                          " before its proc-fn starts"))
+                 (async/close! done))]
+    (process/spawn pfn1 [] {:link-to pid :flags {:trap-exit true}})
+    (await-completion done 100)))
 
 (deftest ^:parallel spawn-passes-opened-read-port-to-pfn-as-inbox
   (let [done (async/chan)
@@ -1189,11 +1235,11 @@
     (process/exit pid :abnormal)
     (await-completion done 50)))
 
-(deftest ^:parallel spawned-process-linked-according-options
+(deftest ^:parallel spawned-process-is-linked-according-options
   (let [done (async/chan)
         done1 (async/chan)
         pfn (proc-fn []
-              (is (await-completion done1 50) "test failed")
+              (is (await-completion done1 50))
               (throw (Exception. "TEST")))
         pid (process/spawn pfn [] {})
         pfn1 (proc-fn []
@@ -1205,24 +1251,26 @@
     (process/spawn pfn1 [] {:link-to pid})
     (await-completion done 100))
   (let [done (async/chan)
-        pfn (proc-fn [] (is (nil? (<! (await-message 100))) "test failed"))
+        done1 (async/chan)
+        pfn (proc-fn [] (is (nil? (<! (await-message 100)))))
         pid (process/spawn pfn [] {})
         pfn1 (proc-fn []
+                      (async/close! done1)
                (is (= [:exit [pid :abnormal]] (<! (await-message 100)))
                    (str "process trapping exits and spawned with option"
                         " :link-to must receive exit message when linked"
                         " process exited"))
                (async/close! done))]
     (process/spawn pfn1 [] {:link-to pid :flags {:trap-exit true}})
-    (<!! (async/timeout 50))
+    (await-completion done1 50)
     (process/exit pid :abnormal)
     (await-completion done 50)))
 
 (deftest ^:parallel spawned-process-registered-according-options
   (let [reg-name (uuid-keyword)
         done (async/chan)
-        pfn (proc-fn [] (is (await-completion done 50) "test failed"))]
-    (is (not ((process/registered) reg-name)) "test failed")
+        pfn (proc-fn [] (is (await-completion done 50)))]
+    (is (not ((process/registered) reg-name)))
     (process/spawn pfn [] {:register reg-name})
     (is ((process/registered) reg-name)
         "spawn must register proces when called with :register option")
@@ -1231,7 +1279,7 @@
 (deftest ^:parallel spawn-throws-when-reg-name-already-registered
   (let [reg-name (uuid-keyword)
         done (async/chan)
-        pfn (proc-fn [] (is (await-completion done 50) "test failed"))]
+        pfn (proc-fn [] (is (await-completion done 50)))]
     (process/spawn pfn [] {:register reg-name})
     (is (thrown? Exception
                  (process/spawn (proc-fn []) [] {:register reg-name}))
@@ -1251,8 +1299,9 @@
     (await-completion done 50)))
 
 ; TODO:
-;(deftest spawned-process-available-from-within-process-by-reg-name)
-;(deftest there-are-no-residue-of-process-after-proc-fun-threw)
+;(deftest ^:parallel process-exit-reason-is-proc-fn-return-value)
+;(deftest ^:parallel spawned-process-available-from-within-process-by-reg-name)
+;(deftest ^:parallel there-are-no-residue-of-process-after-proc-fun-threw)
 
 ;; ====================================================================
 ;; (spawn-link [proc-fun args options])
@@ -1287,7 +1336,7 @@
 
 (deftest ^:parallel down-message-is-sent-when-monitored-process-exits
   (let [done (async/chan)
-        pfn1 (proc-fn [] (is (nil? (<! (await-message 100))) "test failed"))
+        pfn1 (proc-fn [] (is (nil? (<! (await-message 100)))))
         pid1 (process/spawn pfn1 [] {})
         pfn2 (proc-fn []
                (let [mref (process/monitor pid1)]
@@ -1318,7 +1367,7 @@
     (await-completion done 150))
   (let [reg-name (uuid-keyword)
         done (async/chan)
-        pfn1 (proc-fn [] (is (nil? (<! (await-message 100))) "test failed"))
+        pfn1 (proc-fn [] (is (nil? (<! (await-message 100)))))
         pid1 (process/spawn pfn1 [] {:register reg-name})
         pfn2 (proc-fn []
                (let [mref (process/monitor reg-name)]
@@ -1334,7 +1383,7 @@
     (await-completion done 150))
   (let [reg-name (uuid-keyword)
         done (async/chan)
-        pfn1 (proc-fn [] (is (nil? (<! (await-message 100))) "test failed"))
+        pfn1 (proc-fn [] (is (nil? (<! (await-message 100)))))
         pid1 (process/spawn pfn1 [] {:register reg-name})
         pfn2 (proc-fn []
                (let [mref (process/monitor reg-name)]
@@ -1510,8 +1559,7 @@
   (let [done (async/chan)
         pfn1 (proc-fn []
                (is (= [:exit [(process/self) :abnormal]]
-                      (<! (await-message 100)))
-                   "test failed")
+                      (<! (await-message 100))))
                (await-completion done 200))
         pid1 (process/spawn pfn1 [] {:flags {:trap-exit true}})
         pfn (proc-fn []
@@ -1622,7 +1670,7 @@
         pid (process/spawn pfn [] {})
         pfn1 (proc-fn []
                (let [mref (process/monitor pid)]
-                 (is (process/demonitor mref) "test failed")
+                 (is (process/demonitor mref))
                  (is (process/demonitor mref)
                      (str "demonitor called multiple times must not affect"
                           " calling process"))
@@ -1663,11 +1711,11 @@
     (process/spawn pfn [] {})
     (await-completion done 150))
   (let [done (async/chan)
-        pfn1 (proc-fn [] (is (await-completion done 150) "test failed"))
+        pfn1 (proc-fn [] (is (await-completion done 150)))
         pid1 (process/spawn pfn1 [] {})
         pfn2 (proc-fn []
                (let [[_ mref] (<! (await-message 100))]
-                 (is (process/monitor-ref? mref) "test failed")
+                 (is (process/monitor-ref? mref))
                  (is (= true (process/demonitor mref))
                      (str "demonitor must return true when called byj"
                           " process other than process called monitor"))
@@ -1758,7 +1806,7 @@
                  (<! (async/timeout 50))
                  (async/close! done1)))
         pid1 (process/spawn pfn1 [] {})
-        pfn2 (proc-fn [] (is (await-completion done1 200) "test failed"))
+        pfn2 (proc-fn [] (is (await-completion done1 200)))
         pid2 (process/spawn pfn2 [] {})
         pfn3 (proc-fn []
               (let [mref (process/monitor pid2)]

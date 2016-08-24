@@ -512,11 +512,23 @@
          (pid? pid)
          (sequential? args)]
    :post [(satisfies? ap/ReadPort %)]}
-  (match (apply proc-func args)
-    (chan :guard #(satisfies? ap/ReadPort %))
-    (go
-      (let [reason (<! chan)]
-        (!control pid [:stop reason])))))
+  (try
+    (let [ret (apply proc-func args)]
+      (match ret
+        (chan :guard #(satisfies? ap/ReadPort %))
+        (go
+          (let [reason (<! chan)]
+            (!control pid [:stop reason])
+            reason))
+        reason
+        (go
+          (!control pid [:stop reason])
+          reason)))
+    (catch Throwable t
+      (go
+        (let [reason [:exception (u/stack-trace t)]]
+          (!control pid [:stop reason])
+          reason)))))
 
 (defn- resolve-proc-func [form]
   {:pre [(or (fn? form) (symbol? form))]
@@ -581,16 +593,11 @@
         ; collected; see "ring" benchmark example
         (binding [*self* pid
                   *inbox* outbox] ; workaround for ASYNC-170. once fixed, binding should move to (start-process...)
-          (try
-            (start-process pid proc-func args)
-            (catch Throwable e
-              (close! outbox)
-              (sync-unregister pid)
-              (throw e)))
           (go
             (when link-to
               (doseq [link-to (apply hash-set (flatten [link-to]))] ; ??? probably optimize by sending link requests concurently
                 (<! (two-phase process link-to pid link-fn)))) ; wait for protocol to complete
+            (start-process pid proc-func args)
             (loop []
               (let [proceed (match (async/alts! [kill control] :priority true)
                               [val control]
@@ -621,7 +628,6 @@
                           (alter (:linked p) disj process))))
                     (doseq [p @linked]
                       (!control p [:exit pid reason]))
-
                     (doseq [[mref [pid object]] @monitors]
                       (! pid (monitor-message mref object reason)))))))))))
     pid))
