@@ -398,6 +398,23 @@
     (process/spawn pfn1 [] {:link-to pid :flags {:trap-exit true}})
     (await-completion done 100)))
 
+; See issue #12 on github
+(deftest ^:parallel link-call-does-not-increase-exit-message-delivery-time
+  (let [done (async/chan)
+        done1 (async/chan)
+        pfn (proc-fn []
+              (is (await-completion done1 50))
+              (process/exit (process/self) :abnormal))
+        pid (process/spawn pfn [] {})
+        pfn1 (proc-fn []
+               (process/link pid)
+               (async/close! done1)
+               (is (= [:exit [pid :abnormal]] (<! (await-message 50)))
+                   "process exit reason must be the one passed to exit call")
+               (async/close! done))]
+    (process/spawn pfn1 [] {:link-to pid :flags {:trap-exit true}})
+    (await-completion done 100)))
+
 (deftest ^:parallel process-killed-when-control-inbox-is-overflowed
   (let [done (async/chan)
         done1 (async/chan)
@@ -1178,7 +1195,7 @@
   (process-exits-abnormally-when-pfn-arity-doesnt-match-args* (fn [a b]) [])
   (process-exits-abnormally-when-pfn-arity-doesnt-match-args* (fn [b]) [:a :b]))
 
-(deftest ^:parallel porcess-is-link-when-proc-fn-starts
+(deftest ^:parallel process-is-linked-when-proc-fn-starts
   (let  [done (async/chan)
          done1 (async/chan)
          pfn (proc-fn [] (is (await-completion done1 50)))
@@ -1296,6 +1313,19 @@
         pid (process/spawn pfn [] {})]
     (process/exit pid :abnormal)
     (await-completion done 50)))
+
+(deftest ^:parallel processes-linked-on-spawn-receive-exit-message
+  (let [done (async/chan)
+        exit-reason (uuid-keyword)
+        pfn (proc-fn[]
+              (is (match (<! (await-message 50))
+                    [:exit [_ exit-reason]] :ok))
+              (async/close! done))
+        pid (process/spawn pfn [] {:flags {:trap-exit true}})
+        pfn1 (proc-fn[] (process/exit (process/self) exit-reason))
+        pid1 (process/spawn pfn1 [] {:link-to pid})]
+    (process/exit pid1 exit-reason)
+    (await-completion done 100)))
 
 ; TODO:
 ;(deftest ^:parallel process-exit-reason-is-proc-fn-return-value)

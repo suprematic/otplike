@@ -230,13 +230,14 @@
          (not= pid other-pid)
          (fn? cfn)]
    :post [(satisfies? ap/ReadPort %)]}
+  (cfn :phase-one process other-pid)
   (go
     (let [other-result (async/chan)
           noproc #(->nil (cfn :noproc process other-pid))]
-      (if (!control other-pid [:two-phase-p1 other-result pid cfn])
+      (if (!control other-pid [:two-phase-p2 other-result pid cfn])
         (let [timeout (async/timeout *control-timeout)]
           (match (async/alts! [other-result timeout])
-            [nil other-result] (->nil (cfn :phase-two process other-pid))
+            [nil other-result] nil
             [nil timeout] (noproc)))
         (noproc)))))
 
@@ -254,6 +255,8 @@
                  (dosync
                    (alter linked conj other-pid)))
     :noproc (do
+              (dosync
+                (alter linked disj other-pid))
               (trace pid [:link-timeout other-pid])
               (!control pid [:exit other-pid :noproc])))) ; TODO crash :noproc vs. exit :noproc
 
@@ -328,7 +331,7 @@
          (instance? ProcessRecord process)
          (pid? other-pid)]}
   (case phase
-    :phase-one
+    :phase-two
     (do
       (trace pid [:monitor mref other-pid object])
       (dosync
@@ -408,7 +411,7 @@
          (instance? ProcessRecord process)
          (pid? other-pid)]}
   (case phase
-    :phase-one
+    :phase-two
     (let [[pid object] (@monitors mref)]
       (when (= pid other-pid)
         (trace pid [:demonitor mref other-pid object])
@@ -466,14 +469,15 @@
                                 ::continue)
                               [::break reason]))
       [:two-phase
-       complete other cfn] (go
+       complete other cfn] (do
                              (let [p1result (two-phase process other cfn)]
-                               (<! p1result)
-                               (async/close! complete)
-                               ::continue))
-      [:two-phase-p1
-       result other-pid cfn] (go
-                               (cfn :phase-one process other-pid)
+                               (go
+                                 (<! p1result)
+                                 (async/close! complete)))
+                             ::continue)
+      [:two-phase-p2
+       result other-pid cfn] (do
+                               (cfn :phase-two process other-pid)
                                (async/close! result)
                                ::continue))))
 
@@ -593,8 +597,8 @@
                   *inbox* outbox] ; workaround for ASYNC-170. once fixed, binding should move to (start-process...)
           (go
             (when link-to
-              (doseq [link-to (apply hash-set (flatten [link-to]))] ; ??? probably optimize by sending link requests concurently
-                (<! (two-phase process link-to link-fn)))) ; wait for protocol to complete
+              (doseq [link-to (set (flatten [link-to]))]
+                (<! (two-phase process link-to link-fn))))
             (start-process pid proc-func args)
             (loop []
               (let [proceed (match (async/alts! [kill control] :priority true)
@@ -607,10 +611,7 @@
                               [val kill]
                               (do
                                 (trace pid [:kill (or val :nil)])
-                                [::break (if (some? val) val :nil)])
-
-                              (:or [nil control] [nil kill])
-                              nil)]
+                                [::break (if (some? val) val :nil)]))]
                 (match proceed
                   ::continue
                   (recur)
