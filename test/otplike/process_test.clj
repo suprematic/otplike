@@ -1544,9 +1544,9 @@
                     _ (<! (async/timeout 50))
                     _ (async/close! done1)
                     msgs (doall (take 3 (repeatedly #(<!! (await-message 50)))))]
-                (is (= (map (fn [mref] [:down [mref pid :normal]])
-                            mrefs)
-                       msgs)
+                (is (= (set (map (fn [mref] [:down [mref pid :normal]])
+                                 mrefs))
+                       (set msgs))
                     (str "monitoring process must receive one :DOWN message"
                          " per one monitor call")))
               (async/close! done))]
