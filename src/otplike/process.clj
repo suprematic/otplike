@@ -143,10 +143,10 @@
   {:pre [(pid? pid)
          (vector? message) (keyword? (first message))]
    :post [(or (true? %) (false? %))]}
-  (if-let [{:keys [control kill]} (@*processes pid)]
-    (or (async/offer! control message)
-        (async/put! kill :control-overflow))
-    false))
+  (match (@*processes pid)
+    {:control control :kill kill} (or (async/offer! control message)
+                                      (async/put! kill :control-overflow))
+    nil false))
 
 (defn exit
   "Sends an exit signal with exit reason to the process identified
