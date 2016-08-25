@@ -21,7 +21,7 @@
 (def ^:private *registered-reverse
   (ref {}))
 
-(def ^:private *control-timout 100)
+(def ^:private *control-timeout 100)
 
 (def ^:private ^:dynamic *self* nil)
 
@@ -234,7 +234,7 @@
     (let [p1result-chan (async/chan)
           noproc #(->nil (cfn :noproc process p1pid))]
       (if (!control p1pid [:two-phase-p1 p1result-chan p2pid cfn])
-        (let [timeout (async/timeout *control-timout)]
+        (let [timeout (async/timeout *control-timeout)]
           (match (async/alts! [p1result-chan timeout])
             [nil p1result-chan] (->nil (cfn :phase-two process p1pid))
             [nil timeout] (noproc)))
