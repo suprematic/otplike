@@ -447,35 +447,35 @@
   {:pre [(instance? ProcessRecord process)]
    :post []}
   (trace pid [:control message])
-    (let [trap-exit (:trap-exit @flags)]
-      (match message
-        [:stop reason] [::break reason]
-        [:exit xpid :kill] (do
+  (let [trap-exit (:trap-exit @flags)]
+    (match message
+      [:stop reason] [::break reason]
+      [:exit xpid :kill] (do
+                           (assert (pid? xpid))
+                           [::break :killed])
+      [:exit xpid :normal] (do
                              (assert (pid? xpid))
-                             [::break :killed])
-        [:exit xpid :normal] (do
-                               (assert (pid? xpid))
-                               (when trap-exit
-                                 (! pid [:EXIT xpid :normal]))
-                               ::continue)
-        [:exit xpid reason] (do
-                              (assert (pid? xpid))
-                              (if trap-exit
-                                (do
-                                  (! pid [:EXIT xpid reason])
-                                  ::continue)
-                                [::break reason]))
-        [:two-phase
-         complete other cfn] (go
-                               (let [p1result (two-phase process other pid cfn)]
-                                 (<! p1result)
-                                 (async/close! complete)
-                                 ::continue))
-        [:two-phase-p1
-         result other-pid cfn] (go
-                                 (cfn :phase-one process other-pid)
-                                 (async/close! result)
-                                 ::continue))))
+                             (when trap-exit
+                               (! pid [:EXIT xpid :normal]))
+                             ::continue)
+      [:exit xpid reason] (do
+                            (assert (pid? xpid))
+                            (if trap-exit
+                              (do
+                                (! pid [:EXIT xpid reason])
+                                ::continue)
+                              [::break reason]))
+      [:two-phase
+       complete other cfn] (go
+                             (let [p1result (two-phase process other pid cfn)]
+                               (<! p1result)
+                               (async/close! complete)
+                               ::continue))
+      [:two-phase-p1
+       result other-pid cfn] (go
+                               (cfn :phase-one process other-pid)
+                               (async/close! result)
+                               ::continue))))
 
 (defprotocol IClose
   (close! [_]))
