@@ -223,20 +223,20 @@
     (when (!control pid1 [:two-phase complete pid2 cfn])
       complete)))
 
-(defn- two-phase [process p1pid p2pid cfn]
+(defn- two-phase [{:keys [pid] :as process} other-pid cfn]
   {:pre [(instance? ProcessRecord process)
-         (pid? p1pid)
-         (pid? p2pid)
-         (not= p1pid p2pid)
+         (pid? pid)
+         (pid? other-pid)
+         (not= pid other-pid)
          (fn? cfn)]
    :post [(satisfies? ap/ReadPort %)]}
   (go
-    (let [p1result-chan (async/chan)
-          noproc #(->nil (cfn :noproc process p1pid))]
-      (if (!control p1pid [:two-phase-p1 p1result-chan p2pid cfn])
+    (let [other-result (async/chan)
+          noproc #(->nil (cfn :noproc process other-pid))]
+      (if (!control other-pid [:two-phase-p1 other-result pid cfn])
         (let [timeout (async/timeout *control-timeout)]
-          (match (async/alts! [p1result-chan timeout])
-            [nil p1result-chan] (->nil (cfn :phase-two process p1pid))
+          (match (async/alts! [other-result timeout])
+            [nil other-result] (->nil (cfn :phase-two process other-pid))
             [nil timeout] (noproc)))
         (noproc)))))
 
@@ -467,7 +467,7 @@
                               [::break reason]))
       [:two-phase
        complete other cfn] (go
-                             (let [p1result (two-phase process other pid cfn)]
+                             (let [p1result (two-phase process other cfn)]
                                (<! p1result)
                                (async/close! complete)
                                ::continue))
@@ -594,7 +594,7 @@
           (go
             (when link-to
               (doseq [link-to (apply hash-set (flatten [link-to]))] ; ??? probably optimize by sending link requests concurently
-                (<! (two-phase process link-to pid link-fn)))) ; wait for protocol to complete
+                (<! (two-phase process link-to link-fn)))) ; wait for protocol to complete
             (start-process pid proc-func args)
             (loop []
               (let [proceed (match (async/alts! [kill control] :priority true)
