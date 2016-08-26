@@ -540,6 +540,9 @@
     (symbol? form) (some-> form resolve var-get)))
 
 (defn- sync-register [pid process register]
+  {:pre [(pid? pid)
+         (instance? ProcessRecord process)]
+   :post []}
   (dosync
     (when (some? register)
       (when (@*registered register)
@@ -549,6 +552,8 @@
     (alter *processes assoc pid process)))
 
 (defn- sync-unregister [pid]
+  {:pre [(pid? pid)]
+   :post []}
   (dosync
     (alter *processes dissoc pid)
     (when-let [register (@*registered-reverse pid)]
