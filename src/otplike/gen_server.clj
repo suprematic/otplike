@@ -29,7 +29,9 @@
   (terminate [_ reason state]))
 
 (defn- bad-return [impl state return from]
-  ;(process/trace (:name impl) (str "invalid return: " return " from " from ", state: " state))
+  #_(process/trace
+      (:name impl)
+      (str "invalid return: " return " from " from ", state: " state))
   (let [reason [:bad-return return from]]
     (terminate impl reason state) [:terminate reason]))
 
@@ -133,7 +135,8 @@
 (defn start [impl args options]
   (let [response (async/chan)
         pid (process/spawn gen-server-proc [impl args response] options)]
-    (match (async/alts!! [response (async/timeout 1000)]) ; TODO allow to override timeout passing it as argument
+    ; TODO allow to override timeout passing it as argument
+    (match (async/alts!! [response (async/timeout 1000)])
       [:ok response]
       [:ok pid]
 
@@ -149,7 +152,9 @@
 
   ([server message timeout]
     (let [from (async/chan)
-          timeout (if (= :infinity timeout) (async/chan) (async/timeout timeout))]
+          timeout (if (= :infinity timeout)
+                    (async/chan)
+                    (async/timeout timeout))]
       (! server [:call from message])
       (match (async/alts!! [from timeout])
         [value port] value

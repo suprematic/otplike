@@ -258,7 +258,8 @@
               (dosync
                 (alter linked disj other-pid))
               (trace pid [:link-timeout other-pid])
-              (!control pid [:exit other-pid :noproc])))) ; TODO crash :noproc vs. exit :noproc
+              ; TODO crash :noproc vs. exit :noproc
+              (!control pid [:exit other-pid :noproc]))))
 
 (defn link
   "Creates a link between the calling process and another process
@@ -598,8 +599,10 @@
         ; FIXME bindings from folded binding blocks are stacked, so no values
         ; bound between bottom and top folded binding blocks are garbage
         ; collected; see "ring" benchmark example
+        ; FIXME workaround for ASYNC-170. once fixed, binding should move to
+        ; (start-process...)
         (binding [*self* pid
-                  *inbox* outbox] ; workaround for ASYNC-170. once fixed, binding should move to (start-process...)
+                  *inbox* outbox]
           (go
             (when link-to
               (doseq [link-to (set (flatten [link-to]))]

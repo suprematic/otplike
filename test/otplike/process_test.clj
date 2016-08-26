@@ -16,7 +16,8 @@
               (is (process/pid? (process/self))
                   "self must return pid when called in process context")
               (is (= (process/self) (process/self))
-                  "self must return the same pid when called by the same process")
+                  (str "self must return the same pid when called by the same"
+                       " process"))
               (! (process/self) :msg)
               (is (= [:message :msg] (<! (await-message 50)))
                   "message sent to self must appear in inbox")
@@ -120,7 +121,8 @@
     (process/spawn (proc-fn [] (is (await-completion done 100)))
                    []
                    {:register reg-name})
-    (is (= true (! reg-name :msg)) "! must return true sending to alive process")
+    (is (= true (! reg-name :msg))
+        "! must return true sending to alive process")
     (async/close! done)))
 
 (deftest ^:parallel !-returns-false-sending-to-terminated-process-by-reg-name
@@ -1182,8 +1184,8 @@
                                  [:exit [pid [:exception _]]]
                                  [:exit [pid [:exception :stack-trace]]]
                                  msg msg))
-                       (str "process should be exited abnormally when its proc-fn"
-                            " throws any exception"))))
+                       (str "process should be exited abnormally when its"
+                            " proc-fn throws any exception"))))
                (async/close! done))
         pid1 (process/spawn pfn1 [] {:flags {:trap-exit true}})
         pid (process/spawn pfn args {:link-to pid1})]
@@ -1573,7 +1575,8 @@
               (let [mrefs (doall (take 3 (repeatedly #(process/monitor pid))))
                     _ (<! (async/timeout 50))
                     _ (async/close! done1)
-                    msgs (doall (take 3 (repeatedly #(<!! (await-message 50)))))]
+                    msgs (doall
+                           (take 3 (repeatedly #(<!! (await-message 50)))))]
                 (is (= (set (map (fn [mref] [:down [mref pid :normal]])
                                  mrefs))
                        (set msgs))

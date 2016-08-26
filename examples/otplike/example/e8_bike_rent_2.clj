@@ -25,11 +25,13 @@
   (process/flag :trap-exit true)
   (println "server trapping exits")
   (loop [rented #{} available bikes]
-    (println (str "waiting for rent request, rented " rented ", available " available))
+    (println (str "waiting for rent request, rented " rented
+                  ", available " available))
     (process/receive!
       [:request pid :rent]
       (do
-        (println (str "rent request from " pid ", rented " rented ", available " available))
+        (println (str "rent request from " pid ", rented " rented
+                      ", available " available))
         (match available
           ([] :seq)
           (do
@@ -44,7 +46,8 @@
             (recur (conj rented [pid bike]) bikes-left))))
       [:request pid [:return record]]
       (do
-        (println (str "return request from " pid ", record " record ", rented " rented ", available " available))
+        (println (str "return request from " pid ", record " record
+                      ", rented " rented ", available " available))
         (match (get rented record)
           [pid bike]
           (do
@@ -53,7 +56,8 @@
             (recur (disj rented record) (conj available bike)))))
       [:EXIT pid reason]
       (do
-        (println (str "client exit, pid " pid ", reason " reason ", rented " rented ", available " available))
+        (println (str "client exit, pid " pid ", reason " reason
+                      ", rented " rented ", available " available))
         (let [{rented-by-pid true other false} (group-by
                                                  #(= (first %) pid) rented)]
           (println (str "rented by pid " rented-by-pid ", other " other))
