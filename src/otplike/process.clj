@@ -267,7 +267,7 @@
   If pid does not exist and the calling process
   1. is trapping exits - an exit signal with reason :noproc is sent
   to the calling process.
-  2. is not trapping exits - link closes process' inbox and may throw.
+  2. is not trapping exits - process exits with reason :noproc.
   Returns true.
   Throws when called not in process context, or pid is not a pid."
   [pid]
