@@ -55,9 +55,10 @@
   [msecs pid message]
   (action-after msecs pid #(gs/cast pid message)))
 
-(defn kill-after [msecs pid]
+(defn kill-after
   "Kills process with pid after msecs. Returns the timer reference."
-  (exit-after msecs pid :kill))
+   [msecs pid]
+   (exit-after msecs pid :kill))
 
 (defn send-interval
   "Sends message to process with pid repeatedly at intervals of msecs.
