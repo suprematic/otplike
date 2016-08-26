@@ -37,9 +37,9 @@
   (fn [[[pid1 _] _]]
     (= pid pid1)))
 
-(defn filter-name [name]
-  (fn [[[_ name1] _]]
-    (and name1 (= name name1))))
+(defn filter-name [pname]
+  (fn [[[_ pname1] _]]
+    (and pname1 (= pname pname1))))
 
 (defn filter-event [efn]
   (fn [[_ event]]

@@ -34,7 +34,7 @@
 (defn- trace [pid message]
   (otplike.trace/send-trace [pid (@*registered-reverse pid)] message))
 
-(defrecord Pid [id name]
+(defrecord Pid [id pname]
   Object
   (toString [self]
     (pid->str self))
@@ -76,10 +76,10 @@
 
   Warning: this function is intended for debugging and is not to be
   used in application programs."
-  [^Pid {:keys [id name] :as pid}]
+  [^Pid {:keys [id pname] :as pid}]
   {:post [(string? %)]}
   (u/check-args [(pid? pid)])
-  (str "<" (if name (str name "@" id) id) ">"))
+  (str "<" (if pname (str pname "@" id) id) ">"))
 
 (defmethod print-method Pid [o w]
   (print-simple (pid->str o) w))
@@ -572,7 +572,8 @@
   :link-to - pid or sequence of pids to link process to
   :inbox-size -
   :name - "
-  [proc-func args {:keys [link-to inbox-size flags name register] :as options}]
+  [proc-func args
+   {:keys [link-to inbox-size flags register] pname :name :as options}]
   {:post [(pid? %)]}
   (u/check-args [(or (fn? proc-func) (symbol? proc-func))
                  (sequential? args)
@@ -584,7 +585,7 @@
   (let [proc-func (resolve-proc-func proc-func)
         id        (swap! *pids inc)
         inbox     (async/chan (or inbox-size 1024))
-        pid       (Pid. id (or name (str "proc" id)))
+        pid       (Pid. id (or pname (str "proc" id)))
         control   (async/chan 128)
         kill      (async/chan)
         linked    (ref #{})
@@ -687,11 +688,11 @@
          (catch Throwable t#
            [:exception (u/stack-trace t#)])))))
 
-(defmacro defproc [name & args-body]
-  `(def ~name (proc-fn ~@args-body)))
+(defmacro defproc [fname & args-body]
+  `(def ~fname (proc-fn ~@args-body)))
 
-(defmacro defn-proc [name args & body]
-  `(defn ~name []
+(defmacro defn-proc [fname args & body]
+  `(defn ~fname []
      (let [done# (async/chan)]
        (spawn
          (proc-fn
