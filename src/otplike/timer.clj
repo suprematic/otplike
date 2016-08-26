@@ -84,25 +84,3 @@
   [tref]
   (when-let [pid (@*timers tref)]
     (process/exit pid :normal)))
-
-
-;******* tests
-(defn ^:no-doc test-1 []
-  (let [process (process/spawn
-                  (process/proc-fn []
-                    ;(send-after 5000 self :timer-message)
-                    (loop []
-                      ;(process/trace "user" (str "message: " message))
-                      (process/receive!
-                        :stop :ok
-                        _ (recur))))
-                  []
-                  {:name "user"})]
-    (let [tref (send-after 1000 process :cancelled)]
-      (cancel tref))
-    (let [tref (send-interval 1000 process :interval)]
-      #_(cancel tref))
-    (send-after 5000 process :stop)
-    ;(async/put! process :msg)
-    )
-  :ok)
