@@ -98,13 +98,13 @@ proportional to N _until last process exits_.
 # Contributing
 
 Please use the project's GitHub issues page for all
-questions, ideas, etc. Pull requests welcome. See the
+questions, ideas, etc. Pull requests are welcome. See the
 project's GitHub contributors page for a list of
 contributors.
 
 ## License
 
-Copyright © 2016 Suprematic UG and contributors.
+Copyright © 2016 [SUPREMATIC](http://suprematic.net/) and contributors.
 
 Distributed under the Eclipse Public License v1.0,
 the same as Clojure. License file is available under the project root.
