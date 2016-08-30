@@ -264,7 +264,8 @@
   to the calling process.
   2. is not trapping exits - process exits with reason :noproc.
   Returns true.
-  Throws when called not in process context, or pid is not a pid."
+  Throws when called not in process context, or by exited process,
+  or pid is not a pid."
   [pid]
   {:post [(true? %)]}
   (u/check-args [(pid? pid)])
