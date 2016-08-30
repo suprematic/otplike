@@ -11,4 +11,7 @@
 
   :codox {:source-paths ["src"]}
 
+  :test-selectors {:parallel :parallel
+                   :serial :serial}
+
   :plugins [[lein-ancient "0.6.10"]])
