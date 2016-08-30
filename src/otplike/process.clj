@@ -570,8 +570,7 @@
   :flags - a map of process' flags (e.g. {:trap-exit true})
   :register - any valid name to register process
   :link-to - pid or sequence of pids to link process to
-  :inbox-size -
-  :name - "
+  :inbox-size - "
   [proc-func args
    {:keys [link-to inbox-size flags register] pname :name :as options}]
   {:post [(pid? %)]}
