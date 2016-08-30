@@ -675,9 +675,6 @@
 (defmacro receive!! [& clauses]
   `(receive* false ~clauses))
 
-#_(defmacro receive [& clauses]
-  `(go (receive! ~clauses)))
-
 (defmacro proc-fn [args & body]
   (assert (vector? args))
   `(fn ~args

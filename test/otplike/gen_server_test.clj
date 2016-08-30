@@ -5,8 +5,6 @@
             [otplike.gen-server :as gen-server])
   (:import [otplike.gen_server IGenServer]))
 
-;;--------------
-
 (def server
   (reify IGenServer
     (init [_ n]
