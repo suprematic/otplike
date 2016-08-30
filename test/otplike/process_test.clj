@@ -1360,6 +1360,20 @@
     (process/spawn pfn1 [] {:flags {:trap-exit true}})
     (await-completion done 100)))
 
+(deftest ^:parallel
+  spawn-link-called-from-exited-proc-fn-cause-spawned-process-exit
+  (let [done (async/chan)
+        pfn (proc-fn []
+              (is (nil? (<! (await-message 50))))
+              (async/close! done))
+        pfn1 (proc-fn []
+              (process/exit (process/self) :abnormal)
+              (<! (async/timeout 50))
+              (is (process/spawn-link pfn [] {}))
+              (is (await-completion done 100)))]
+    (process/spawn pfn1 [] {})
+    (await-completion done 200)))
+
 ; TODO check if spawn-link works like spawn
 
 ;; ====================================================================
