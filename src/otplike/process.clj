@@ -37,13 +37,7 @@
 (defrecord Pid [id pname]
   Object
   (toString [self]
-    (pid->str self))
-
-  ap/WritePort
-  (put! [this val handler]
-    (when-let [{:keys [inbox]} (@*processes this)]
-      (trace this [:inbound val])
-      (ap/put! inbox val handler))))
+    (pid->str self)))
 
 (alter-meta! #'->Pid assoc :no-doc true)
 (alter-meta! #'map->Pid assoc :no-doc true)
