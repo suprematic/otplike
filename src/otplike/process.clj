@@ -561,6 +561,9 @@
   application of proc-fun to args.
   options argument is a map of option names (keyword) to its values.
 
+  When :link-to contains pid(s) of already exited processes, spawned
+  process exits with reason :noproc just after the start.
+
   The following options are allowed:
   :flags - a map of process' flags (e.g. {:trap-exit true})
   :register - any valid name to register process
@@ -638,6 +641,10 @@
   application of proc-fun to args. A link is created between the
   calling process and the new process, atomically. Otherwise works
   like spawn.
+
+  When called by exited process, spawned process exits with reason
+  :noproc just after the start.
+
   Throws when called not in process context."
   [proc-func args opts]
   {:post [(pid? %)]}
