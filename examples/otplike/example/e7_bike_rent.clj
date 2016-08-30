@@ -2,16 +2,19 @@
   (:require [otplike.process :as process :refer [!]]
             [clojure.core.match :refer [match]]))
 
-;; Example
-; => (require '[otplike.example.e7-bike-rent :as e7] :reload)
-; => (e7/start [1 2 3]))
+;; Try it:
+; > lein repl
+; => (require '[otplike.example.e7-bike-rent :as e7])
+; => (require '[otplike.process :as process])
+; => (e7/start [1 2 3])
 ; => (process/defn-proc p []
 ;      (let [[_ bike] (e7/rent)]
 ;        (e7/return bike)
 ;        (e7/rent)
 ;        (e7/rent)
 ;        (e7/rent)
-;        (e7/rent))))
+;        (e7/rent)
+;        (e7/stop)))
 ; => (p)
 
 (declare bike-rent reply call)
