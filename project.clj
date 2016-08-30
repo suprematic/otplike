@@ -9,10 +9,13 @@
                  [org.clojure/core.async ~core-async-version]
                  [org.clojure/core.match "0.3.0-alpha4"]]
 
-  :source-paths  ["src" "examples"]
+  :source-paths  ["src"]
 
   :profiles {:parallel-test
-             {:dependencies [[org.clojure/core.async ~core-async-version]]}}
+             {:dependencies [[org.clojure/core.async ~core-async-version]]}
+
+             :repl
+             {:source-paths  ["src" "examples"]}}
 
   :codox {:source-paths ["src"]}
 
