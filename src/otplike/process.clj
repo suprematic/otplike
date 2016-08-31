@@ -157,15 +157,20 @@
 (defn !
   "Sends a message to dest. dest can be a process identifier, or a
   registered name.
+  If sending results in dest's inbox overflow, dest exits with reason
+  :inbox-overflow.
   Returns true if message was sent (process was alive), false otherwise.
   Throws if any of arguments is nil."
   [dest message]
   {:post [(or (true? %) (false? %))]}
   (u/check-args [(some? dest)
                  (some? message)])
-  (if-let [{:keys [inbox]} (find-process dest)]
-    (async/put! inbox message)
-    false))
+  (match (find-process dest)
+    {:inbox inbox :kill kill} (or (async/offer! inbox message)
+                                  (do
+                                    (async/put! kill :inbox-overflow)
+                                    false))
+    nil false))
 
 (defn- !control [pid message]
   {:pre [(pid? pid)

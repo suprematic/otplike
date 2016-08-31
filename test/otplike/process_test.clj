@@ -174,6 +174,22 @@
     (! reg-name :msg)
     (await-completion done 100)))
 
+(deftest ^:parallel process-killed-when-inbox-is-overflowed
+  (let [done (async/chan)
+        done1 (async/chan)
+        pfn (proc-fn[] (is (await-completion done1 1000)))
+        pid (process/spawn pfn [] {})
+        pfn1 (proc-fn []
+               (dotimes [_ 1200] (! pid :msg))
+               (async/close! done1)
+               (is (= [:exit [pid :inbox-overflow]]
+                      (<! (await-message 1000)))
+                   (str "process must be killed when its control inbox"
+                        " is overflowed"))
+               (async/close! done))]
+    (process/spawn pfn1 [] {:link-to pid :flags {:trap-exit true}})
+    (await-completion done 1000)))
+
 ;; ====================================================================
 ;; (exit [pid reason])
 
@@ -423,7 +439,7 @@
         pid (process/spawn (proc-fn [] (is (await-completion done 1000))) [] {})
         pfn1 (proc-fn []
                (is (await-completion done1 50))
-               (dotimes [_ 200] (process/link pid)))
+               (dotimes [_ 300] (process/link pid)))
         pid1 (process/spawn pfn1 [] {})
         pfn2 (proc-fn []
                (async/close! done1)
