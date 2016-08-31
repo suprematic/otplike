@@ -589,7 +589,7 @@
   application of proc-fun to args.
   options argument is a map of option names (keyword) to its values.
 
-  When :link-to contains pid(s) of already exited processes, spawned
+  When :link-to contains pid(s) of already exited process(es), spawned
   process exits with reason :noproc just after the start.
 
   The following options are allowed:
@@ -606,7 +606,8 @@
                  (or (nil? link-to) (pid? link-to) (every? pid? link-to))
                  (or (nil? inbox-size)
                      (and (integer? inbox-size) (not (neg? inbox-size))))
-                 (or (nil? flags) (map? flags))]) ;FIXME check for unknown flags
+                 (or (nil? flags) (map? flags)) ;FIXME check for unknown flags
+                 (not (pid? register))])
   (let [proc-func (resolve-proc-func proc-func)
         id        (swap! *pids inc)
         inbox     (async/chan (or inbox-size 1024))

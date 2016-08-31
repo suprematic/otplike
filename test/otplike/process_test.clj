@@ -1144,7 +1144,10 @@
   (is (thrown? Exception (process/spawn (proc-fn []) [] {:inbox-size 1.1}))
       "spawn must throw if :inbox-size option is not a non-negative integer")
   (is (thrown? Exception (process/spawn (proc-fn []) [] {:inbox-size []}))
-      "spawn must throw if :inbox-size option is not a non-negative integer"))
+      "spawn must throw if :inbox-size option is not a non-negative integer")
+  (let [pid (process/spawn (proc-fn []) [] {})]
+    (is (thrown? Exception (process/spawn (proc-fn []) [] {:register pid}))
+        "spawn must throw if :register name is a pid")))
 
 (defn- process-exits-abnormally-when-pfn-throws* [ex]
   (let [done (async/chan)
