@@ -173,7 +173,9 @@
    :post [(or (true? %) (false? %))]}
   (match (@*processes pid)
     {:control control :kill kill} (or (async/offer! control message)
-                                      (async/put! kill :control-overflow))
+                                      (do
+                                        (async/put! kill :control-overflow)
+                                        false))
     nil false))
 
 (defn exit
