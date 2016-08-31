@@ -1,4 +1,9 @@
 (ns otplike.trace
+  "Examples:
+  1. Print all events about processes exited abnormally:
+  (console-trace (filter (filter-event crashed?)))
+
+  See console-trace code for trace function usage example."
   (:require
     [clojure.core.match :refer [match]]
     [clojure.core.async :as async :refer [<!! <! >! >!! go go-loop]]))
@@ -30,7 +35,7 @@
 (defn untrace [chan]
   (async/untap *trace-mult chan))
 
-(defn send-trace [{:keys [id] :as pid} [type :as event]]
+(defn send-trace [pid event]
   (>!! *trace-chan [pid event]))
 
 (defn filter-pid [pid]
