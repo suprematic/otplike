@@ -1,4 +1,21 @@
 (ns otplike.process
+  "This namespace implements core process concepts like spawning,
+  linking, monitoring, message passing, exiting, and other.
+
+  Process context:
+
+  All calls made from process function directly or indirectly after
+  it has been spawned are made in process context.
+  Note: for now process context exists until process function finishes
+  its execution and isn't bound to process exit.
+
+  Exited processes:
+
+  As there is no way to force process function to stop execution after
+  its process has exited, there can be cases when exited process tries
+  to communicate with other processes. If in such cases function
+  behaves different, it should be described individually for each
+  function of this namespace."
   (:require [clojure.core.async :as async :refer [<!! <! >! put! go go-loop]]
             [clojure.core.async.impl.protocols :as ap]
             [clojure.core.match :refer [match]]
