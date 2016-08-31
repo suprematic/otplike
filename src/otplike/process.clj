@@ -2,14 +2,20 @@
   "This namespace implements core process concepts like spawning,
   linking, monitoring, message passing, exiting, and other.
 
-  Process context:
+  Process context
 
   All calls made from process function directly or indirectly after
   it has been spawned are made in process context.
   Note: for now process context exists until process function finishes
   its execution and isn't bound to process exit.
 
-  Exited processes:
+  Process exit
+
+  - process' inbox becomes closed, so no future messages appear in it
+    (but those alredy in inbox can be received)
+  - all linked/monitoring processes receive exit/down signal
+  - process can not be reached by its pid
+  - process is no longer registered
 
   As there is no way to force process function to stop execution after
   its process has exited, there can be cases when exited process tries
@@ -175,13 +181,7 @@
   which unconditionally exits with reason :killed.
   Returns true if exit signal was sent (process was alive), false
   otherwise.
-  Throws if pid is not a pid, or reason is nil.
-
-  Process exit means:
-  - process' inbox becomes closed
-  - future messages do not arrive to the process' inbox
-  - all linked/monitoring processes receive exit signal/message
-  - process no longer registered"
+  Throws if pid is not a pid, or reason is nil."
   [pid reason]
   {:post [(or (true? %) (false? %))]}
   (u/check-args [(pid? pid)
