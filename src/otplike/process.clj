@@ -599,25 +599,29 @@
   When :link-to contains pid(s) of already exited process(es), spawned
   process exits with reason :noproc just after the start.
 
+  The default process' inbox is blocking buffered channel of size 1024.
+  The :inbox option allows providing a custom channel.
+
   The following options are allowed:
   :flags - a map of process' flags (e.g. {:trap-exit true})
-  :register - any valid name to register process
-  :link-to - pid or sequence of pids to link process to
-  :inbox-size - "
+  :register - any valid name to register the process
+  :link-to - a pid or a sequence of pids to link process to
+  :inbox - the channel to be used as a process' inbox"
   [proc-func args
-   {:keys [link-to inbox-size flags register] pname :name :as options}]
+   {:keys [link-to inbox flags register] pname :name :as options}]
   {:post [(pid? %)]}
   (u/check-args [(or (fn? proc-func) (symbol? proc-func))
                  (sequential? args)
                  (map? options) ;FIXME check for unknown options
                  (or (nil? link-to) (pid? link-to) (every? pid? link-to))
-                 (or (nil? inbox-size)
-                     (and (integer? inbox-size) (not (neg? inbox-size))))
+                 (or (nil? inbox)
+                     (and (satisfies? ap/ReadPort inbox)
+                          (satisfies? ap/WritePort inbox)))
                  (or (nil? flags) (map? flags)) ;FIXME check for unknown flags
                  (not (pid? register))])
   (let [proc-func (resolve-proc-func proc-func)
         id        (swap! *pids inc)
-        inbox     (async/chan (or inbox-size 1024))
+        inbox     (or inbox (async/chan 1024))
         pid       (Pid. id (or pname (str "proc" id)))
         control   (async/chan 128)
         kill      (async/chan)

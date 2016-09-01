@@ -177,7 +177,7 @@
 (deftest ^:parallel process-killed-when-inbox-is-overflowed
   (let [done (async/chan)
         done1 (async/chan)
-        pfn (proc-fn[] (is (await-completion done1 1000)))
+        pfn (proc-fn [] (is (await-completion done1 1000)))
         pid (process/spawn pfn [] {})
         pfn1 (proc-fn []
                (dotimes [_ 1200] (! pid :msg))
@@ -456,7 +456,7 @@
         done1 (async/chan)
         pfn (proc-fn [] (is (await-completion done1 50)))
         pid (process/spawn pfn [] {})
-        pfn1 (proc-fn[]
+        pfn1 (proc-fn []
                (process/exit pid :kill)
                (async/close! done1)
                (is (= [:exit [pid :killed]] (<! (await-message 50)))
@@ -471,7 +471,7 @@
               (is (await-completion done1 50))
               (process/exit (process/self) :kill))
         pid (process/spawn pfn [] {})
-        pfn1 (proc-fn[]
+        pfn1 (proc-fn []
                (async/close! done1)
                (is (= [:exit [pid :killed]] (<! (await-message 50)))
                    (str "process exit reason must be :killed when exit is"
@@ -1155,12 +1155,20 @@
   (is (thrown? Exception
                (process/spawn (proc-fn []) [] {:link-to [1]}))
       "spawn must throw if :link-to option is not a pid or collection of pids")
-  (is (thrown? Exception (process/spawn (proc-fn []) [] {:inbox-size -1}))
-      "spawn must throw if :inbox-size option is not a non-negative integer")
-  (is (thrown? Exception (process/spawn (proc-fn []) [] {:inbox-size 1.1}))
-      "spawn must throw if :inbox-size option is not a non-negative integer")
-  (is (thrown? Exception (process/spawn (proc-fn []) [] {:inbox-size []}))
-      "spawn must throw if :inbox-size option is not a non-negative integer")
+  (is (thrown? Exception (process/spawn (proc-fn []) [] {:inbox 1}))
+      "spawn must throw if :inbox-size option is not a channel")
+  (is (thrown? Exception (process/spawn (proc-fn []) [] {:inbox true}))
+      "spawn must throw if :inbox-size option is not a channel")
+  (is (thrown? Exception (process/spawn (proc-fn []) [] {:inbox "str"}))
+      "spawn must throw if :inbox-size option is not a channel")
+  (is (thrown? Exception (process/spawn (proc-fn []) [] {:inbox []}))
+      "spawn must throw if :inbox-size option is not a channel")
+  (is (thrown? Exception (process/spawn (proc-fn []) [] {:inbox #{}}))
+      "spawn must throw if :inbox-size option is not a channel")
+  (is (thrown? Exception (process/spawn (proc-fn []) [] {:inbox '()}))
+      "spawn must throw if :inbox-size option is not a channel")
+  (is (thrown? Exception (process/spawn (proc-fn []) [] {:inbox {}}))
+      "spawn must throw if :inbox-size option is not a channel")
   (let [pid (process/spawn (proc-fn []) [] {})]
     (is (thrown? Exception (process/spawn (proc-fn []) [] {:register pid}))
         "spawn must throw if :register name is a pid")))
@@ -1173,7 +1181,7 @@
               (is (await-completion done1 50))
               (throw ex))
         pid (process/spawn pfn [] {})
-        pfn1 (proc-fn[]
+        pfn1 (proc-fn []
                (async/close! done1)
                (is (= [:exit [pid [:exception {:class ex-class-name}]]]
                       (match (<! (await-message 50))
@@ -1194,7 +1202,7 @@
 (defn- process-exits-abnormally-when-pfn-arity-doesnt-match-args* [pfn args]
   (let [done (async/chan)
         ch (async/chan)
-        pfn1 (proc-fn[]
+        pfn1 (proc-fn []
                (is
                  (match (async/alts! [ch (async/timeout 50)])
                    [(pid :guard #(process/pid? %)) ch]
@@ -1338,15 +1346,27 @@
 (deftest ^:parallel processes-linked-on-spawn-receive-exit-message
   (let [done (async/chan)
         exit-reason (uuid-keyword)
-        pfn (proc-fn[]
+        pfn (proc-fn []
               (is (match (<! (await-message 50))
                     [:exit [_ exit-reason]] :ok))
               (async/close! done))
         pid (process/spawn pfn [] {:flags {:trap-exit true}})
-        pfn1 (proc-fn[] (process/exit (process/self) exit-reason))
+        pfn1 (proc-fn [] (process/exit (process/self) exit-reason))
         pid1 (process/spawn pfn1 [] {:link-to pid})]
     (process/exit pid1 exit-reason)
     (await-completion done 100)))
+
+(deftest ^:parallel inbox-provided-to-spawn-is-spawned-process-inbox
+  (let [done (async/chan)
+        inbox (async/chan)
+        msg (uuid-keyword)
+        pfn (proc-fn []
+              (is (= [:message msg]
+                     (<! (await-message 50))))
+              (async/close! done))]
+    (process/spawn pfn [] {:inbox inbox})
+    (>!! inbox msg)
+    (await-completion done 50)))
 
 ; TODO:
 ;(deftest ^:parallel process-exit-reason-is-proc-fn-return-value)
