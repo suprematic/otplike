@@ -132,6 +132,8 @@
     [:stop reason]
     (put!* response [:error reason])))
 
+(alter-meta! #'gen-server-proc assoc :no-doc true)
+
 ; API functions
 (defn start [impl args options]
   (let [response (async/chan)
