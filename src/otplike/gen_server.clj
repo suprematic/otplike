@@ -1,4 +1,5 @@
 (ns otplike.gen-server
+  "gen-server behaviour and related functions."
   (:refer-clojure :exclude [cast get])
   (:require
     [clojure.core.async :as async :refer [<! >! put! go go-loop]]
