@@ -337,7 +337,8 @@
   link, but can also be the result of pid calling exit. Therefore,
   it can be appropriate to clean up the message queue when trapping
   exits after the call to unlink.
-  Throws when called not in process context, or pid is not a pid."
+  Throws when called not in process context, or called by exited
+  process, or pid is not a pid."
   [pid]
   {:post [(true? %)]}
   (u/check-args [(pid? pid)])
