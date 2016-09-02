@@ -16,18 +16,16 @@
     #_[:stop Reason Reply NewState]
     #_[:stop Reason NewState])
 
-
   (handle-cast [_ request state]
     #_[:noreply NewState]
     #_[:stop Reason NewState])
-
 
   (handle-info [_ request state]
     #_[:noreply NewState]
     #_[:stop Reason NewState])
 
-
   (terminate [_ reason state]))
+
 
 (defn- bad-return [impl state return from]
   #_(process/trace
@@ -35,7 +33,6 @@
       (str "invalid return: " return " from " from ", state: " state))
   (let [reason [:bad-return return from]]
     (terminate impl reason state) [:terminate reason]))
-
 
 (defn- cast-or-info [rqtype impl message state]
   (let [rqfn (case rqtype :cast handle-cast :info handle-info)]
@@ -59,9 +56,7 @@
       (if (some? reply)
         (async/put! from reply)
         (async/close! from))
-
       [:recur new-state])
-
 
     [:noreply new-state]
       [:recur new-state]
@@ -83,6 +78,7 @@
 
     other
     (bad-return impl state other :call)))
+
 
 (defn- put!* [chan value]
   (async/put! chan value)
@@ -114,7 +110,6 @@
 (defn- call-init [impl args]
   (init impl args))
 
-
 (defproc gen-server-proc [impl init-args response]
   (match (call-init impl init-args) ;TODO handle wrong return from init
     [:ok initial-state]
@@ -132,12 +127,25 @@
     [:stop reason]
     (put!* response [:error reason])))
 
+
 (alter-meta! #'gen-server-proc assoc :no-doc true)
 
 ; API functions
-(defn start [impl args options]
+
+(defn start
+  "Starts the server, passing args to server's init function.
+  server-impl must be an implementation of IGenServer protocol.
+  args can be any form.
+  options are passed as process/spawn options when starting the server
+  process.
+  Throws if server-impl doesn't implement IGenServer, or doesn't
+  implement init functions of IGenServer, or options are not valid
+  process/spawn options.
+  Returns [:ok pid] if server started successfully, or [:error reason]
+  otherwise."
+  [server-impl args options]
   (let [response (async/chan)
-        pid (process/spawn gen-server-proc [impl args response] options)]
+        pid (process/spawn gen-server-proc [server-impl args response] options)]
     ; TODO allow to override timeout passing it as argument
     (match (async/alts!! [response (async/timeout 1000)])
       [:ok response]
@@ -145,6 +153,7 @@
 
       [[:error reason] response]
       [:error reason]))) ; TODO timeout on response!
+
 
 (defn cast [server message]
   (! server [:cast message]))
@@ -232,6 +241,7 @@
     (terminate [_ reason state] ; terminate is optional
       (if-let [terminate (ns-function impl-ns 'terminate)]
         (terminate reason state)))))
+
 
 (def coerce-ns coerce-ns-dynamic)
 
