@@ -139,11 +139,9 @@
 
 (defn whereis
   "Returns the process identifier with the registered name reg-name,
-  or nil if the name is not registered.
-  Throws on nil argument."
+  or nil if the name is not registered."
   [reg-name]
   {:post [(or (nil? %) (pid? %))]}
-  (u/check-args [(some? reg-name)])
   (@*registered reg-name))
 
 (defn- find-process [id]

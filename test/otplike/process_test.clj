@@ -87,6 +87,11 @@
     (async/close! done)))
 
 (deftest ^:parallel whereis-returns-nil-on-not-registered-name
+  (let [pid (process/spawn (proc-fn []) [] {})]
+    (is (nil? (process/whereis pid))
+        "whereis must return nil on not registered name"))
+  (is (nil? (process/whereis nil))
+      "whereis must return nil on not registered name")
   (is (nil? (process/whereis "name"))
       "whereis must return nil on not registered name")
   (is (nil? (process/whereis :name))
@@ -101,10 +106,6 @@
       "whereis must return nil on not registered name")
   (is (nil? (process/whereis #{:b}))
       "whereis must return nil on not registered name"))
-
-(deftest ^:parallel whereis-throws-on-nil-argument
-  (is (thrown? Exception (process/whereis nil))
-      "whereis must throw on nil argument"))
 
 ;; ====================================================================
 ;; (! [dest message])
