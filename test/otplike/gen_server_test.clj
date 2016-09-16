@@ -105,7 +105,10 @@
     (is (match (gs/start server [] {})
           [:error {:message _m :class "java.lang.Exception"}] :ok))))
 
-;(deftest ^:parallel start-...when-init-returns-illegal-value)
+(deftest ^:parallel start-returns-bad-value-when-init-returns-bad-value
+  (let [server {:init (fn [_] :bad-return)}]
+    (is (match (gs/start server [] {})
+          [:error [:bad-return-value :bad-return]] :ok))))
 
 ;; ====================================================================
 ;; (handle-call [request from state])

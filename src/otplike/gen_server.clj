@@ -129,7 +129,10 @@
                     reason))))
 
     [:stop reason]
-    (put!* response [:error reason])))
+    (put!* response [:error reason])
+
+    other
+    (put!* response [:error [:bad-return-value other]])))
 
 
 (alter-meta! #'gen-server-proc assoc :no-doc true)
