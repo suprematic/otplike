@@ -4,6 +4,7 @@
   (:require
     [clojure.core.async :as async :refer [<! >! put! go go-loop]]
     [clojure.core.match :refer [match]]
+    [otplike.util :as util]
     [otplike.process :as process :refer [! defproc]]))
 
 (defprotocol IGenServer
@@ -111,7 +112,10 @@
   (init impl args))
 
 (defproc gen-server-proc [impl init-args response]
-  (match (call-init impl init-args) ;TODO handle wrong return from init
+  (match (try
+           (call-init impl init-args)
+           (catch Exception e
+             [:stop (util/stack-trace e)])) ;TODO handle wrong return from init
     [:ok initial-state]
     (do
       (put!* response :ok)
@@ -214,9 +218,9 @@
 
   Arguments:
   server-impl - IGenServer implementation, or map, or namespace. Must
-  provide at least `init` function.
-  args - any form that is passed as the argument to `init` function.
-  options - `options` argument of process/spawn passed when starting
+  provide at least init function.
+  args - any form that is passed as the argument to init function.
+  options - options argument of process/spawn passed when starting
   a server process.
 
   Returns [:ok pid] if server started successfully, or [:error reason]

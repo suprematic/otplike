@@ -100,7 +100,10 @@
     (is (match (gs/start server [] {})
           [:ok (_pid :guard process/pid?)] :ok))))
 
-;(deftest ^:parallel start-...when-init-throws)
+(deftest ^:parallel start-returns-error-with-exception-when-init-throws
+  (let [server {:init (fn [_] (throw (Exception.)))}]
+    (is (match (gs/start server [] {})
+          [:error {:message _m :class "java.lang.Exception"}] :ok))))
 
 ;(deftest ^:parallel start-...when-init-returns-illegal-value)
 
