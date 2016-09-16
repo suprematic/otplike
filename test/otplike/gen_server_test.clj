@@ -8,7 +8,7 @@
   (:import [otplike.gen_server IGenServer]))
 
 ;; ====================================================================
-;; (start [])
+;; (start [server-impl args options])
 
 (deftest ^:parallel start-starts-the-process
   (let [done (async/chan)
@@ -152,7 +152,7 @@
       (println "handle-call: " request ", state: " state)
       (match request
         :get-async (do
-                     (gen-server/reply from state)
+                     (gs/reply from state)
                      [:noreply state])
         :get-sync [:reply state state]
         :stop [:stop :normal state]))
@@ -169,44 +169,43 @@
 
 
 #_(def server1
-  (gen-server/coerce-map
-    {:init
-     (fn [n]
-       (println "init: " n)
-       (! (process/self) :init-message)
-       [:ok n])
+  {:init
+   (fn [n]
+     (println "init: " n)
+     (! (process/self) :init-message)
+     [:ok n])
 
-     :terminate
-     (fn [reason state]
-       (println "terminate: " reason ", state: " state))
+   :terminate
+   (fn [reason state]
+     (println "terminate: " reason ", state: " state))
 
-     :handle-call
-     (fn [request from state]
-       (println "handle-call: " request ", state: " state)
-       (match request
-         :get-async (do
-                      (gen-server/reply from state)
-                      [:noreply state])
-         :get-sync [:reply state state]
-         :stop [:stop :normal state]))
+   :handle-call
+   (fn [request from state]
+     (println "handle-call: " request ", state: " state)
+     (match request
+            :get-async (do
+                         (gs/reply from state)
+                         [:noreply state])
+            :get-sync [:reply state state]
+            :stop [:stop :normal state]))
 
-     :handle-cast
-     (fn [message state]
-       (println "handle-cast: " message ", state: " state)
-       (match message
-         :dec [:noreply (dec state)]
-         :inc [:noreply (inc state)]))
+   :handle-cast
+   (fn [message state]
+     (println "handle-cast: " message ", state: " state)
+     (match message
+            :dec [:noreply (dec state)]
+            :inc [:noreply (inc state)]))
 
-     :handle-info
-     (fn [message state]
-       (println "handle-info: " message ", state: " state)
-       [:noreply state])}))
+   :handle-info
+   (fn [message state]
+     (println "handle-info: " message ", state: " state)
+     [:noreply state])})
 
 #_(deftest test-1
-  (match (gen-server/start server1 10 {})
+  (match (gs/start server1 0 {})
     [:ok pid] (do
-                (gen-server/cast pid :inc)
-                (gen-server/cast pid :dec)
-                (println "state-async: " (gen-server/call pid :get-async))
-                (println "state-sync: " (gen-server/call pid :get-sync))
-                (gen-server/call pid :stop))))
+                (gs/cast pid :inc)
+                (gs/cast pid :dec)
+                (println "state-async: " (gs/call pid :get-async))
+                (println "state-sync: " (gs/call pid :get-sync))
+                (gs/call pid :stop))))

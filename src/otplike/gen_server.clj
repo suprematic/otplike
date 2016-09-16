@@ -130,54 +130,7 @@
 
 (alter-meta! #'gen-server-proc assoc :no-doc true)
 
-; API functions
-
-(defn start
-  "Starts the server, passing args to server's init function.
-  server-impl must be an implementation of IGenServer protocol.
-  args can be any form.
-  options are passed as process/spawn options when starting the server
-  process.
-  Throws if server-impl doesn't implement IGenServer, or doesn't
-  implement init functions of IGenServer, or options are not valid
-  process/spawn options.
-  Returns [:ok pid] if server started successfully, or [:error reason]
-  otherwise."
-  [server-impl args options]
-  (let [response (async/chan)
-        pid (process/spawn gen-server-proc [server-impl args response] options)]
-    ; TODO allow to override timeout passing it as argument
-    (match (async/alts!! [response (async/timeout 1000)])
-      [:ok response]
-      [:ok pid]
-
-      [[:error reason] response]
-      [:error reason]))) ; TODO timeout on response!
-
-
-(defn cast [server message]
-  (! server [:cast message]))
-
-(defn call
-  ([server message]
-   (call server message 5000))
-
-  ([server message timeout]
-    (let [from (async/chan)
-          timeout (if (= :infinity timeout)
-                    (async/chan)
-                    (async/timeout timeout))]
-      (! server [:call from message])
-      (match (async/alts!! [from timeout])
-        [value port] value
-        [nil timeout] (throw (Exception. "timeout"))))))
-
-(def reply async/put!)
-
-(defn get [server]
-  (call server [:internal :get-state]))
-
-(defn coerce-map [{:keys [init handle-call handle-cast handle-info terminate]}]
+(defn- coerce-map [{:keys [init handle-call handle-cast handle-info terminate]}]
   (reify IGenServer
     (init [_ args]
       (if init
@@ -208,7 +161,7 @@
   (if-let [fun-var (ns-resolve fun-ns fun-name)]
     (var-get fun-var)))
 
-(defn coerce-ns-static [impl-ns]
+(defn- coerce-ns-static [impl-ns]
   (coerce-map
     {:init (ns-function impl-ns 'init)
      :handle-call (ns-function impl-ns 'handle-call)
@@ -216,7 +169,7 @@
      :handle-info (ns-function impl-ns 'handle-info)
      :terminate (ns-function impl-ns 'handle-call)}))
 
-(defn coerce-ns-dynamic [impl-ns]
+(defn- coerce-ns-dynamic [impl-ns]
   (reify IGenServer
     (init [_ args]
       (if-let [init (ns-function impl-ns 'init)]
@@ -243,7 +196,60 @@
         (terminate reason state)))))
 
 
-(def coerce-ns coerce-ns-dynamic)
+(def ^:private coerce-ns coerce-ns-dynamic)
 
-(defmacro coerce-current-ns []
-  `(coerce-ns ~*ns*))
+(defn- ->gen-server [server-impl]
+  (match server-impl
+    (impl :guard #(satisfies? IGenServer %)) impl
+
+    ({:init _} :as impl-map) (coerce-map impl-map)
+
+    (impl-ns :guard #(instance? clojure.lang.Namespace %))
+    (coerce-ns impl-ns)))
+
+; API functions
+
+(defn start
+  "Starts the server, passing args to server's init function.
+
+  Arguments:
+  server-impl - IGenServer implementation, or map, or namespace. Must
+  provide at least `init` function.
+  args - any form that is passed as the argument to `init` function.
+  options - `options` argument of process/spawn passed when starting
+  a server process.
+
+  Returns [:ok pid] if server started successfully, or [:error reason]
+  otherwise.
+  Throws on illegal arguments."
+  [server-impl args options]
+  (let [gs (->gen-server server-impl)
+        response (async/chan)
+        pid (process/spawn gen-server-proc [gs args response] options)]
+    ; TODO allow to override timeout passing it as argument
+    ; FIXME handle timeout
+    (match (async/alts!! [response (async/timeout 1000)])
+      [:ok response] [:ok pid]
+      [[:error reason] response] [:error reason])))
+
+(defn cast [server message]
+  (! server [:cast message]))
+
+(defn call
+  ([server message]
+   (call server message 5000))
+
+  ([server message timeout]
+    (let [from (async/chan)
+          timeout (if (= :infinity timeout)
+                    (async/chan)
+                    (async/timeout timeout))]
+      (! server [:call from message])
+      (match (async/alts!! [from timeout])
+        [value port] value
+        [nil timeout] (throw (Exception. "timeout"))))))
+
+(def reply async/put!)
+
+(defn get [server]
+  (call server [:internal :get-state]))
