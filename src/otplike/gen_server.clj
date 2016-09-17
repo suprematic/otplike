@@ -4,8 +4,9 @@
   (:require
     [clojure.core.async :as async :refer [<! >! put! go go-loop]]
     [clojure.core.match :refer [match]]
-    [otplike.util :as util]
+    [otplike.util :as u]
     [otplike.process :as process :refer [! defproc]]))
+
 
 (defprotocol IGenServer
   (init [_ args]
@@ -34,6 +35,7 @@
       (str "invalid return: " return " from " from ", state: " state))
   (let [reason [:bad-return return from]]
     (terminate impl reason state) [:terminate reason]))
+
 
 (defn- cast-or-info [rqtype impl message state]
   (let [rqfn (case rqtype :cast handle-cast :info handle-info)]
@@ -85,6 +87,7 @@
   (async/put! chan value)
   (async/close! chan))
 
+
 (defn- dispatch [impl state message]
   (match message
     [:call from [:internal :get-state]]
@@ -107,15 +110,15 @@
     (cast-or-info :info impl message state)))
 
 
-; TODO take care of exception
 (defn- call-init [impl args]
-  (init impl args))
+  (try
+    (init impl args)
+    (catch Exception e
+      [:stop (u/stack-trace e)])))
+
 
 (defproc gen-server-proc [impl init-args response]
-  (match (try
-           (call-init impl init-args)
-           (catch Exception e
-             [:stop (util/stack-trace e)])) ;TODO handle wrong return from init
+  (match (call-init impl init-args)
     [:ok initial-state]
     (do
       (put!* response :ok)
@@ -136,6 +139,7 @@
 
 
 (alter-meta! #'gen-server-proc assoc :no-doc true)
+
 
 (defn- coerce-map [{:keys [init handle-call handle-cast handle-info terminate]}]
   (reify IGenServer
@@ -176,6 +180,7 @@
      :handle-info (ns-function impl-ns 'handle-info)
      :terminate (ns-function impl-ns 'handle-call)}))
 
+
 (defn- coerce-ns-dynamic [impl-ns]
   (reify IGenServer
     (init [_ args]
@@ -205,14 +210,16 @@
 
 (def ^:private coerce-ns coerce-ns-dynamic)
 
+
 (defn- ->gen-server [server-impl]
   (match server-impl
     (impl :guard #(satisfies? IGenServer %)) impl
 
-    ({:init _} :as impl-map) (coerce-map impl-map)
+    (impl-map :guard map?) (coerce-map impl-map)
 
     (impl-ns :guard #(instance? clojure.lang.Namespace %))
     (coerce-ns impl-ns)))
+
 
 ; API functions
 
@@ -220,14 +227,18 @@
   "Starts the server, passing args to server's init function.
 
   Arguments:
-  server-impl - IGenServer implementation, or map, or namespace. Must
-  provide at least init function.
+  server-impl - IGenServer implementation, or map, or namespace.
   args - any form that is passed as the argument to init function.
   options - options argument of process/spawn passed when starting
   a server process.
 
-  Returns [:ok pid] if server started successfully, or [:error reason]
-  otherwise.
+  Returns:
+  [:ok pid] if server started successfully,
+  [:error :no-init] if server implementation doesn't provide init
+  function,
+  [:error [:bad-return-value value]] if init returns a bad value,
+  [:error reason] otherwise.
+
   Throws on illegal arguments."
   [server-impl args options]
   (let [gs (->gen-server server-impl)
@@ -250,7 +261,6 @@
 (defn call
   ([server message]
    (call server message 5000))
-
   ([server message timeout]
     (let [from (async/chan)
           timeout (if (= :infinity timeout)

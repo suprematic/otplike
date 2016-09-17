@@ -68,7 +68,7 @@
   (is (thrown? Exception (gs/start 1 [] {})))
   (is (thrown? Exception (gs/start "server" [] {})))
   (is (thrown? Exception (gs/start [] [] {})))
-  (is (thrown? Exception (gs/start {} [] {})))
+  (is (thrown? Exception (gs/start #{} [] {})))
   (let [server (reify IGenServer
                  (init [_ args]
                    [:ok args])
@@ -82,8 +82,10 @@
                    [:stop :handle-info-must-not-be-called state]))]
     (is (thrown? Exception (gs/start server [] {:inbox "inbox"})))))
 
-(deftest ^:parallel start-throws-if-server-does-not-implement-init
-  (is (thrown? Exception (gs/start (reify IGenServer) [] {}))))
+(deftest ^:parallel start-returns-error-if-server-does-not-implement-init
+  #_(is (match (gs/start (reify IGenServer) [] {}) [:error :no-init] :ok)) ;FIXME
+  (is (match (gs/start {} [] {}) [:error :no-init] :ok))
+  (is (match (gs/start (in-ns 'test-ns) [] {}) [:error :no-init] :ok)))
 
 (deftest ^:parallel start-returns-pid-on-successful-start
   (let [server (reify IGenServer
