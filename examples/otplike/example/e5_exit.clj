@@ -2,14 +2,15 @@
   (:require [otplike.process :as process :refer [!]]
             [clojure.core.match :refer [match]]))
 
-; FIXME process/exit with self pid and reason other than normal must throw
 (process/defn-proc run-exit-self []
   (process/exit (process/self) :abnormal)
-  (assert false "must never reach this place"))
+  (if true ;TODO check if process exited
+    (println "exited")))
 
 (process/defn-proc run-exit-self-normal []
   (process/exit (process/self) :normal)
-  (println "feels good"))
+  (if true ; TODO check if process exited
+    (println "feels good")))
 
 ; Tell that any attempt to use process fns throws after process got exit signal
 ; as it happens with process/receive! in example.
