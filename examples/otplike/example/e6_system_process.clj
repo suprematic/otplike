@@ -3,21 +3,28 @@
             [clojure.core.match :refer [match]]))
 
 ; TODO tell about (process/flags [flag value])
+; TODO check if process is still alive using special fn
 (process/defn-proc run-exit-abnormal []
   (let [pfn (process/proc-fn []
-              (process/receive!
-                sig (println "receive" sig)))
+              (loop []
+                (process/receive!
+                  [:EXIT (self) :abnormal]
+                  (do
+                    (println "receive" sig)
+                    (recur))
+                  :stop
+                  (println "stopped"))))
         pid (process/spawn pfn [] {:register :p, :flags {:trap-exit true}})]
     (match (process/whereis :p) pid :ok)
-    (process/link pid)
     (process/exit pid :abnormal)
-    (match (process/whereis :p) pid :ok)))
+    (match (process/whereis :p) pid :ok)
+    (! :p :stop)))
 
 (process/defn-proc run-exit-normal []
   (let [pfn (process/proc-fn []
               (process/receive!
                 sig (println "receive" sig)))
-        pid (process/spawn pfn [] {:register :p, :flags {:trap-exit true}})]
+        pid (process/spawn pfn [] {:register :p})]
     (match (process/whereis :p) pid :ok)
     (process/link pid)
     (process/exit pid :normal)
