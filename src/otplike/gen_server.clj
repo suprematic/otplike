@@ -239,6 +239,11 @@
       [:ok response] [:ok pid]
       [[:error reason] response] [:error reason])))
 
+(defmacro start-ns [params options]
+  "Starts the server, taking current ns as a implementation source. 
+  for more info see start"
+  `(gs/start ~*ns* ~params ~options))
+
 (defn cast [server message]
   (! server [:cast message]))
 
