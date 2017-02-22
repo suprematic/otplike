@@ -1,7 +1,7 @@
 (ns otplike.timer
   "This namespace contains helper functions to perform process-related
   actions (like sending a message, or exit signal) with a delay."
-  (:require [otplike.process :as process]
+  (:require [otplike.process :as process :refer [!]]
             [clojure.core.match :refer [match]]
             [clojure.core.async :as async :refer [<! >! put! go go-loop]]
             [otplike.gen-server :as gs]))
@@ -43,7 +43,7 @@
   "Sends message to process with pid after msecs. Returns the timer
   reference."
   [msecs pid message]
-  (action-after msecs pid #(async/put! pid message)))
+  (action-after msecs pid #(! pid message)))
 
 (defn exit-after
   "Exits process with pid with reason after msecs. Returns the timer
@@ -75,7 +75,7 @@
                  (process/receive!
                    [:DOWN _ _ _ _] (swap! *timers dissoc tref)
                    (after msecs
-                     (async/put! pid message)
+                     (! pid message)
                      (recur)))))
              []
              {:name (str tref)}))
