@@ -693,7 +693,9 @@
 
 (defmacro receive* [park? clauses]
   (if (even? (count clauses))
-    `(match (~(if park? `<! `<!!) *inbox*) ~@clauses)
+    `(if-let [msg# (~(if park? `<! `<!!) *inbox*)]
+       (match msg# ~@clauses)
+       (throw (Exception. "noproc")))
     (match (last clauses)
       (['after
         (ms :guard #(or (symbol? %) (and (integer? %) (not (neg? %)))))
