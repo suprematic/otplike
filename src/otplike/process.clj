@@ -606,74 +606,80 @@
   :register - any valid name to register the process
   :link-to - a pid or a sequence of pids to link process to
   :inbox - the channel to be used as a process' inbox"
-  [proc-func args
-   {:keys [link-to inbox flags register] pname :name :as options}]
-  {:post [(pid? %)]}
-  (u/check-args [(or (fn? proc-func) (symbol? proc-func))
-                 (sequential? args)
-                 (map? options) ;FIXME check for unknown options
-                 (or (nil? link-to) (pid? link-to) (every? pid? link-to))
-                 (or (nil? inbox)
-                     (and (satisfies? ap/ReadPort inbox)
-                          (satisfies? ap/WritePort inbox)))
-                 (or (nil? flags) (map? flags)) ;FIXME check for unknown flags
-                 (not (pid? register))])
-  (let [proc-func (resolve-proc-func proc-func)
-        id        (swap! *pids inc)
-        inbox     (or inbox (async/chan 1024))
-        pid       (Pid. id (or pname (str "proc" id)))
-        control   (async/chan 128)
-        kill      (async/chan)
-        linked    (ref #{})
-        monitors  (ref {})
-        flags     (ref (or flags {}))
-        outbox    (outbox pid inbox)
-        process (new-process
-                  pid inbox control kill monitors exit outbox linked flags)]
-    (sync-register pid process register)
-    (trace pid [:start (str proc-func) args options])
-    ; FIXME bindings from folded binding blocks are stacked, so no values
-    ; bound between bottom and top folded binding blocks are garbage
-    ; collected; see "ring" benchmark example
-    ; FIXME workaround for ASYNC-170. once fixed, binding should move to
-    ; (start-process...)
-    (binding [*self* pid
-              *inbox* outbox]
-      (go
-        (when link-to
-          (doseq [link-to (set (flatten [link-to]))]
-            (<! (two-phase process link-to link-fn))))
-        (start-process pid proc-func args)
-        (loop []
-          (let [proceed (match (async/alts! [kill control] :priority true)
-                          [val control]
-                          (let [proceed (dispatch-control process val)]
-                            (if (satisfies? ap/ReadPort proceed)
-                              (<! proceed)
-                              proceed))
+  ([proc-func]
+   (spawn proc-func [] {}))
+  ([proc-func args-or-opts]
+   (if (map? args-or-opts)
+     (spawn proc-func [] args-or-opts)
+     (spawn proc-func args-or-opts {})))
+  ([proc-func args
+    {:keys [link-to inbox flags register] pname :name :as options}]
+   {:post [(pid? %)]}
+   (u/check-args [(or (fn? proc-func) (symbol? proc-func))
+                  (sequential? args)
+                  (map? options) ;FIXME check for unknown options
+                  (or (nil? link-to) (pid? link-to) (every? pid? link-to))
+                  (or (nil? inbox)
+                      (and (satisfies? ap/ReadPort inbox)
+                           (satisfies? ap/WritePort inbox)))
+                  (or (nil? flags) (map? flags)) ;FIXME check for unknown flags
+                  (not (pid? register))])
+   (let [proc-func (resolve-proc-func proc-func)
+         id        (swap! *pids inc)
+         inbox     (or inbox (async/chan 1024))
+         pid       (Pid. id (or pname (str "proc" id)))
+         control   (async/chan 128)
+         kill      (async/chan)
+         linked    (ref #{})
+         monitors  (ref {})
+         flags     (ref (or flags {}))
+         outbox    (outbox pid inbox)
+         process (new-process
+                   pid inbox control kill monitors exit outbox linked flags)]
+     (sync-register pid process register)
+     (trace pid [:start (str proc-func) args options])
+     ; FIXME bindings from folded binding blocks are stacked, so no values
+     ; bound between bottom and top folded binding blocks are garbage
+     ; collected; see "ring" benchmark example
+     ; FIXME workaround for ASYNC-170. once fixed, binding should move to
+     ; (start-process...)
+     (binding [*self* pid
+               *inbox* outbox]
+       (go
+         (when link-to
+           (doseq [link-to (set (flatten [link-to]))]
+             (<! (two-phase process link-to link-fn))))
+         (start-process pid proc-func args)
+         (loop []
+           (let [proceed (match (async/alts! [kill control] :priority true)
+                                [val control]
+                                (let [proceed (dispatch-control process val)]
+                                  (if (satisfies? ap/ReadPort proceed)
+                                    (<! proceed)
+                                    proceed))
 
-                          [val kill]
-                          (do
-                            (trace pid [:kill (or val :nil)])
-                            [::break (if (some? val) val :nil)]))]
-            (match proceed
-              ::continue
-              (recur)
+                                [val kill]
+                                (do
+                                  (trace pid [:kill (or val :nil)])
+                                  [::break (if (some? val) val :nil)]))]
+             (match proceed
+                    ::continue
+                    (recur)
 
-              [::break reason]
-              (do
-                (trace pid [:terminate reason])
-                (close! outbox)
-                (dosync
-                  (sync-unregister pid)
-                  (doseq [p @linked]
-                    (when-let [p (@*processes p)]
-                      (alter (:linked p) disj process))))
-                (doseq [p @linked]
-                  (!control p [:exit pid reason]))
-                (doseq [[mref [pid object]] @monitors]
-                  (! pid (monitor-message mref object reason)))))))))
-    pid))
+                    [::break reason]
+                    (do
+                      (trace pid [:terminate reason])
+                      (close! outbox)
+                      (dosync
+                        (sync-unregister pid)
+                        (doseq [p @linked]
+                          (when-let [p (@*processes p)]
+                            (alter (:linked p) disj process))))
+                      (doseq [p @linked]
+                        (!control p [:exit pid reason]))
+                      (doseq [[mref [pid object]] @monitors]
+                        (! pid (monitor-message mref object reason)))))))))
+     pid)))
 
 (defn spawn-link
   "Returns the process identifier of a new process started by the
