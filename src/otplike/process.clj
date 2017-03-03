@@ -19,20 +19,18 @@
 
   As there is no way to force process function to stop execution after
   its process has exited, there can be cases when exited process tries
-  to communicate with other processes. If in such cases function
-  behaves different, it should be described individually for each
-  function of this namespace.
+  to communicate with other processes. If some function behaves
+  different in such cases, it should be said in its documentation.
 
   Signals (control messages)
 
   Signals are used internally to manage processes. Exiting, monitoring,
-  linking and other operations require sending of special signals to
-  processes involved.
-  Usually, signal handling doesn't take a lot of time. But sometimes
-  many signals are sent to process simultaneously (e.g. 1000 processes
-  are linked to 2 other processes and one of them exits). In such cases
-  control message queue can overflow. When it happens, the process
-  exits immediately with the reason :control-overflow."
+  linking and some other operations require sending signals.
+  Sometimes a lot of signals must be sent to a process simultaneously
+  (e.g. a process monitors 1000 linked processes and one of them exits).
+  In such cases control message queue of a process can overflow. When
+  it happens, the process exits immediately with reason
+  :control-overflow."
   (:require [clojure.core.async :as async :refer [<!! <! >! put! go go-loop]]
             [clojure.core.async.impl.protocols :as ap]
             [clojure.core.match :refer [match]]
