@@ -178,7 +178,7 @@
      :handle-call (ns-function impl-ns 'handle-call)
      :handle-cast (ns-function impl-ns 'handle-cast)
      :handle-info (ns-function impl-ns 'handle-info)
-     :terminate (ns-function impl-ns 'handle-call)}))
+     :terminate (ns-function impl-ns 'terminate)}))
 
 
 (defn- coerce-ns-dynamic [impl-ns]
