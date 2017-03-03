@@ -262,13 +262,13 @@
   ([server message]
    (call server message 5000))
   ([server message timeout]
-    (let [from (async/chan)
+    (let [reply-to (async/chan)
           timeout (if (= :infinity timeout)
                     (async/chan)
                     (async/timeout timeout))]
-      (! server [:call from message])
-      (match (async/alts!! [from timeout])
-        [value port] value
+      (! server [:call reply-to message])
+      (match (async/alts!! [reply-to timeout])
+        [value reply-to] value
         [nil timeout] (throw (Exception. "timeout"))))))
 
 (def reply async/put!)
