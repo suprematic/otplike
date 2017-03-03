@@ -256,7 +256,8 @@
   `(gs/start ~*ns* ~params ~options))
 
 (defn cast [server message]
-  (! server [:cast message]))
+  (when-not (! server [:cast message])
+    (throw (Exception. "noproc"))))
 
 (defn call
   ([server message]
@@ -266,7 +267,8 @@
           timeout (if (= :infinity timeout)
                     (async/chan)
                     (async/timeout timeout))]
-      (! server [:call reply-to message])
+      (when-not (! server [:call reply-to message])
+        (throw (Exception. "noproc")))
       (match (async/alts!! [reply-to timeout])
         [value reply-to] value
         [nil timeout] (throw (Exception. "timeout"))))))
