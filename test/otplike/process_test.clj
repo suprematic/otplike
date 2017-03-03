@@ -1927,3 +1927,37 @@
               (async/close! done))]
     (process/spawn pfn [] {:register reg-name})
     (await-completion done 150)))
+
+;; ====================================================================
+;; (receive! [clauses])
+
+(deftest ^:parallel receive-receives-message
+  (let [done (async/chan)
+        pfn (proc-fn []
+                     (is (= :msg (process/receive! msg msg))
+                         "receive! must receive message sent to a process")
+                     (async/close! done))
+        pid (process/spawn pfn)]
+    (! pid :msg)
+    (await-completion done 150)))
+
+(deftest ^:parallel receive-throws-if-process-exited
+  (let [done (async/chan)
+        pfn (proc-fn []
+                     (process/exit (process/self) :abnormal)
+                     (is (thrown? Exception (process/receive! _ :ok)))
+                     (async/close! done))
+        pid (process/spawn pfn)]
+    (await-completion done 150)))
+
+(deftest ^:parallel receive-executes-after-clause
+  (let [done (async/chan)
+        pfn (proc-fn []
+                     (is (= :timeout (process/receive!
+                                   _ :error
+                                   (after 10
+                                          :timeout)))
+                         "receive! must execute 'after' clause on timeout")
+                     (async/close! done))
+        pid (process/spawn pfn)]
+    (await-completion done 150)))
