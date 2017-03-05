@@ -20,7 +20,7 @@
                  (gs/reply from n)
                  [:noreply state])
     :get-sync [:reply n state]
-    :stop [:stop :normal state]))
+    :stop [:stop :normal :ok state]))
 
 (defn handle-cast [message [n done]]
   (match message
@@ -41,5 +41,5 @@
                   (gs/cast pid :dec)
                   (is (= 0 (gs/call pid :get-async)))
                   (is (= 0 (gs/call pid :get-sync)))
-                  (gs/call pid :stop)
+                  (is (= :ok (gs/call pid :stop)))
                   (await-completion done 50)))))
