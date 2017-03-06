@@ -114,9 +114,9 @@
                     [:recur new-state]
                     (recur new-state)
 
-                    [:terminate reason state]
+                    [:terminate reason new-state]
                     (do
-                      (terminate impl reason state)
+                      (terminate impl reason new-state)
                       (exit reason)))))) ;FIXME here must be (process/exit reason)
 
     [:stop reason]
