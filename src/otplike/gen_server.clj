@@ -28,65 +28,54 @@
 
   (terminate [_ reason state]))
 
-
-(defn- bad-return [impl state return from]
-  #_(process/trace
-      (:name impl)
-      (str "invalid return: " return " from " from ", state: " state))
-  (let [reason [:bad-return return from]]
-    (terminate impl reason state) [:terminate reason]))
-
-
 (defn- cast-or-info [rqtype impl message state]
   (let [rqfn (case rqtype :cast handle-cast :info handle-info)]
     (match (rqfn impl message state)
       [:noreply new-state]
-        [:recur new-state]
+      [:recur new-state]
 
       [:stop reason new-state]
       (do
         (terminate impl reason new-state)
-        [:terminate reason])
+        [:terminate reason new-state])
 
       other
-      (bad-return impl state other rqtype))))
+      [:terminate [:bad-return-value other] state])))
 
+(defn- exit [reason]
+  (throw (ex-info "terminated" {::process/exit-reason reason})))
 
 (defn- call* [impl from request state]
-  (match (handle-call impl request from state)
-    [:reply reply new-state]
-    (do
-      (if (some? reply)
-        (async/put! from reply)
-        (async/close! from))
-      [:recur new-state])
+  (try
+    (match (handle-call impl request from state)
+      [:reply reply new-state]
+      (do
+        (async/put! from [::reply reply])
+        [:recur new-state])
 
-    [:noreply new-state]
+      [:noreply new-state]
       [:recur new-state]
 
-    [:stop reason reply new-state]
-    (do
-      (if (some? reply)
-        (async/put! from reply)
-        (async/close! from))
+      [:stop reason reply new-state]
+      (do
+        (async/put! from [::reply reply])
+        [:terminate reason new-state])
 
-      (terminate impl reason new-state)
-      [:terminate reason])
+      [:stop reason new-state]
+      (do
+        (async/put! from [::terminated reason])
+        [:terminate reason new-state])
 
-    [:stop reason new-state]
-    (do
-      (async/put! from :stopped)
-      (terminate impl reason new-state)
-      [:terminate reason])
-
-    other
-    (bad-return impl state other :call)))
-
+      other
+      (let [reason [:bad-return-value other]]
+        (async/put! from [::terminated reason])
+        [:terminate reason state]))
+    (catch Throwable t
+      [:terminate (process/ex->reason t) state])))
 
 (defn- put!* [chan value]
   (async/put! chan value)
   (async/close! chan))
-
 
 (defn- dispatch [impl state message]
   (match message
@@ -102,13 +91,10 @@
     (cast-or-info :cast impl request state)
 
     [:EXIT _ :shutdown]
-    (do
-      (terminate impl :shutdown state)
-      [:terminate :shutdown])
+    [:terminate :shutdown state]
 
     _
     (cast-or-info :info impl message state)))
-
 
 (defn- call-init [impl args]
   (try
@@ -128,8 +114,10 @@
                     [:recur new-state]
                     (recur new-state)
 
-                    [:terminate reason]
-                    reason))))
+                    [:terminate reason state]
+                    (do
+                      (terminate impl reason state)
+                      (exit reason)))))) ;FIXME here must be (process/exit reason)
 
     [:stop reason]
     (put!* response [:error reason])
@@ -137,9 +125,7 @@
     other
     (put!* response [:error [:bad-return-value other]])))
 
-
 (alter-meta! #'gen-server-proc assoc :no-doc true)
-
 
 (defn- coerce-map [{:keys [init handle-call handle-cast handle-info terminate]}]
   (reify IGenServer
@@ -167,7 +153,6 @@
       (if terminate
         (terminate reason state)))))
 
-
 (defn- ns-function [fun-ns fun-name]
   (if-let [fun-var (ns-resolve fun-ns fun-name)]
     (var-get fun-var)))
@@ -179,7 +164,6 @@
      :handle-cast (ns-function impl-ns 'handle-cast)
      :handle-info (ns-function impl-ns 'handle-info)
      :terminate (ns-function impl-ns 'terminate)}))
-
 
 (defn- coerce-ns-dynamic [impl-ns]
   (reify IGenServer
@@ -207,9 +191,7 @@
       (if-let [terminate (ns-function impl-ns 'terminate)]
         (terminate reason state)))))
 
-
 (def ^:private coerce-ns coerce-ns-dynamic)
-
 
 (defn- ->gen-server [server-impl]
   (match server-impl
@@ -219,7 +201,6 @@
 
     (impl-ns :guard #(instance? clojure.lang.Namespace %))
     (coerce-ns impl-ns)))
-
 
 ; API functions
 
@@ -251,8 +232,8 @@
       [[:error reason] response] [:error reason])))
 
 (defmacro start-ns [params options]
-  "Starts the server, taking current ns as a implementation source. 
-  for more info see start"
+  "Starts the server, taking current ns as a implementation source.
+  See start for more info."
   `(gs/start ~*ns* ~params ~options))
 
 (defn cast [server message]
@@ -263,17 +244,22 @@
   ([server message]
    (call server message 5000))
   ([server message timeout]
-    (let [reply-to (async/chan)
-          timeout (if (= :infinity timeout)
-                    (async/chan)
-                    (async/timeout timeout))]
-      (when-not (! server [:call reply-to message])
-        (throw (Exception. "noproc")))
-      (match (async/alts!! [reply-to timeout])
-        [value reply-to] value
-        [nil timeout] (throw (Exception. "timeout"))))))
+   (let [reply-to (async/chan)
+         timeout (if (= :infinity timeout)
+                   (async/chan)
+                   (async/timeout timeout))]
+     (when-not (! server [:call reply-to message])
+       (throw (Exception. "noproc")))
+     (match (async/alts!! [reply-to timeout])
+       [[::terminated reason] reply-to]
+       (throw (ex-info "terminated" {::process/exit-reason reason}))
 
-(def reply async/put!)
+       [[::reply value] reply-to] value
+
+       [nil timeout] (throw (Exception. "timeout"))))))
+
+(defn reply [to response]
+  (async/put! to [::reply response]))
 
 (defn get [server]
   (call server [:internal :get-state]))

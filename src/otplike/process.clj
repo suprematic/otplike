@@ -84,6 +84,20 @@
   [mref]
   (instance? MonitorRef mref))
 
+(defn ex->reason
+  "Makes exit reason from exception."
+  [^Throwable e]
+  (or (::exit-reason (ex-data e))
+      [(.getMessage e) (u/stack-trace e)]))
+
+(defmacro ex-catch
+  "Executes expr. Returns either result of execution or exit reason."
+  [expr]
+  `(try
+     ~expr
+     (catch Exception e#
+       [:EXIT (ex->reason e#)])))
+
 (defn pid?
   "Returns true if term is a process identifier, false otherwise."
   [pid]
