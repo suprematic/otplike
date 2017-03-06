@@ -42,9 +42,6 @@
       other
       [:terminate [:bad-return-value other] state])))
 
-(defn- exit [reason]
-  (throw (ex-info "terminated" {::process/exit-reason reason})))
-
 (defn- call* [impl from request state]
   (try
     (match (handle-call impl request from state)
@@ -117,7 +114,7 @@
                     [:terminate reason new-state]
                     (do
                       (terminate impl reason new-state)
-                      (exit reason)))))) ;FIXME here must be (process/exit reason)
+                      (process/exit reason))))))
 
     [:stop reason]
     (put!* response [:error reason])
@@ -252,7 +249,7 @@
        (throw (Exception. "noproc")))
      (match (async/alts!! [reply-to timeout])
        [[::terminated reason] reply-to]
-       (throw (ex-info "terminated" {::process/exit-reason reason}))
+       (process/exit reason)
 
        [[::reply value] reply-to] value
 

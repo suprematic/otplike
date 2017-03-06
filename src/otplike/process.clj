@@ -84,6 +84,9 @@
   [mref]
   (instance? MonitorRef mref))
 
+(defn exit [reason]
+  (throw (ex-info "terminated" {::exit-reason reason})))
+
 (defn ex->reason
   "Makes exit reason from exception."
   [^Throwable e]
