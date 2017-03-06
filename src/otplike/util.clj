@@ -15,7 +15,9 @@
   ([^Throwable e acc]
    (if e
      (recur (.getCause e)
-            (conj acc {:message (.getMessage e)
-                       :class (.getName (class e))
-                       :stack-trace (mapv str (.getStackTrace e))}))
+            (conj acc (merge {:message (.getMessage e)
+                              :class (.getName (class e))
+                              :stack-trace (mapv str (.getStackTrace e))}
+                             (if (instance? clojure.lang.ExceptionInfo e)
+                               {:data (ex-data e)}))))
      acc)))
