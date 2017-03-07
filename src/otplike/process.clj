@@ -88,7 +88,7 @@
   "Makes exit reason from exception."
   [^Throwable e]
   (or (::exit-reason (ex-data e))
-      [(.getMessage e) (u/stack-trace e)]))
+      [:exception (u/stack-trace e)]))
 
 (defmacro ex-catch
   "Executes expr. Returns either result of execution or exit reason."
@@ -572,7 +572,7 @@
           (!control pid [:stop exit-reason])
           exit-reason))
       (catch Throwable t
-        (let [exit-reason [:exception (u/stack-trace t)]]
+        (let [exit-reason (ex->reason t)]
           (!control pid [:stop exit-reason])
           exit-reason)))))
 
@@ -744,7 +744,7 @@
          (loop ~(vec (interleave args args)) ~@body)
          :normal
          (catch Throwable t#
-           [:exception (u/stack-trace t#)])))))
+           (ex->reason t#))))))
 
 (defmacro defproc [fname & args-body]
   `(def ~fname (proc-fn ~@args-body)))
