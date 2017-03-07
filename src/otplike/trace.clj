@@ -27,7 +27,7 @@
     (go
       (loop []
         (when-let [[pid event] (<! ch)]
-          (printf "pid:%s %s" pid (clojure.pprint/write event :stream nil))
+          (printf "pid:%s %s%n" pid (clojure.pprint/write event :stream nil))
           (recur))))
     ch))
 
