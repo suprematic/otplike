@@ -748,18 +748,3 @@
 
 (defmacro proc-defn [fname & args-body]
   `(def ~fname (proc-fn ~@args-body)))
-
-(defmacro defn-proc [fname args & body]
-  `(defn ~fname []
-     (let [done# (async/chan)]
-       (spawn
-         (proc-fn
-           ~args
-           (try
-             (let [res# (do ~@body)]
-               (when (some? res#) (>! done# res#)))
-             (finally
-               (async/close! done#))))
-         []
-         {})
-       (<!! done#))))

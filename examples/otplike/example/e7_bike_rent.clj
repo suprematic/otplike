@@ -1,13 +1,13 @@
 (ns otplike.example.e7-bike-rent
-  (:require [otplike.process :as process :refer [!]]
-            [clojure.core.match :refer [match]]))
+  (:require [clojure.core.match :refer [match]]
+            [otplike.process :as process :refer [!]]))
 
 ;; Try it:
 ; > lein repl
 ; => (require '[otplike.example.e7-bike-rent :as e7])
 ; => (require '[otplike.process :as process])
 ; => (e7/start [1 2 3])
-; => (process/defn-proc p []
+; => (util/defn-proc p []
 ;      (let [[_ bike] (e7/rent)]
 ;        (e7/return bike)
 ;        (e7/rent)

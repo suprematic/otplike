@@ -1,10 +1,11 @@
 (ns otplike.example.e6-system-process
-  (:require [otplike.process :as process :refer [!]]
-            [clojure.core.match :refer [match]]))
+  (:require [clojure.core.match :refer [match]]
+            [otplike.process :as process :refer [!]]
+            [otplike.util :as util]))
 
 ; TODO tell about (process/flags [flag value])
 ; TODO check if process is still alive using special fn
-(process/defn-proc run-exit-abnormal []
+(util/defn-proc run-exit-abnormal []
   (let [pfn (process/proc-fn []
               (loop []
                 (process/receive!
@@ -20,7 +21,7 @@
     (match (process/whereis :p) pid :ok)
     (! :p :stop)))
 
-(process/defn-proc run-exit-normal []
+(util/defn-proc run-exit-normal []
   (let [pfn (process/proc-fn []
               (process/receive!
                 sig (println "receive" sig)))
@@ -30,7 +31,7 @@
     (process/exit pid :normal)
     (match (process/whereis :p) pid :ok)))
 
-(process/defn-proc run-exit-kill []
+(util/defn-proc run-exit-kill []
   (process/flag :trap-exit true)
   (let [pfn (process/proc-fn []
               (process/receive!
