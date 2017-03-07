@@ -1,7 +1,7 @@
 (ns otplike.example.e3-echo-registered
   (:require [otplike.process :as process :refer [!]]))
 
-(process/defproc server []
+(process/proc-defn server []
   (println "server: waiting for messages...")
   (loop []
     (process/receive!

@@ -10,7 +10,7 @@
   (:require [otplike.process :as process :refer [!]]
             [clojure.core.async :as async :refer [<! <!!]]))
 
-(process/defproc proc [n pid]
+(process/proc-defn proc [n pid]
   (if (= 0 n)
     (! pid :ok)
     (let [npid (process/spawn proc [(dec n) pid] {})]

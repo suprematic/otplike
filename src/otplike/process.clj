@@ -746,7 +746,7 @@
          (catch Throwable t#
            (ex->reason t#))))))
 
-(defmacro defproc [fname & args-body]
+(defmacro proc-defn [fname & args-body]
   `(def ~fname (proc-fn ~@args-body)))
 
 (defmacro defn-proc [fname args & body]

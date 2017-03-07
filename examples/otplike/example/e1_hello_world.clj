@@ -1,7 +1,7 @@
 (ns otplike.example.e1-hello-world
   (:require [otplike.process :as process :refer [!]]))
 
-(process/defproc hello-world []
+(process/proc-defn hello-world []
   (process/receive!
     msg (println msg)))
 

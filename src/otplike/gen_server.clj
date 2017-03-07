@@ -5,7 +5,7 @@
     [clojure.core.async :as async :refer [<! >! put! go go-loop]]
     [clojure.core.match :refer [match]]
     [otplike.util :as u]
-    [otplike.process :as process :refer [! defproc]]))
+    [otplike.process :as process :refer [!]]))
 
 
 (defprotocol IGenServer
@@ -99,8 +99,7 @@
     (catch Exception e
       [:stop (u/stack-trace e)])))
 
-
-(defproc gen-server-proc [impl init-args response]
+(process/proc-defn gen-server-proc [impl init-args response]
   (match (call-init impl init-args)
     [:ok initial-state]
     (do

@@ -35,7 +35,7 @@
 
 ; Loop
 
-(process/defproc bike-rent [bikes]
+(process/proc-defn bike-rent [bikes]
   (println "server starting with bikes" bikes)
   (process/flag :trap-exit true)
   (println "server trapping exits")
