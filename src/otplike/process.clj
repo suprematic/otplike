@@ -84,9 +84,6 @@
   [mref]
   (instance? MonitorRef mref))
 
-(defn exit [reason]
-  (throw (ex-info "terminated" {::exit-reason reason})))
-
 (defn ex->reason
   "Makes exit reason from exception."
   [^Throwable e]
@@ -213,11 +210,13 @@
   Returns true if exit signal was sent (process was alive), false
   otherwise.
   Throws if pid is not a pid, or reason is nil."
-  [pid reason]
-  {:post [(or (true? %) (false? %))]}
-  (u/check-args [(pid? pid)
-                 (some? reason)])
-  (!control pid [:exit pid reason]))
+  ([reason] ;FIXME docs
+   (throw (ex-info "exit" {::exit-reason reason})))
+  ([pid reason]
+   {:post [(or (true? %) (false? %))]}
+   (u/check-args [(pid? pid)
+                  (some? reason)])
+   (!control pid [:exit pid reason])))
 
 (defn flag
   "Sets the value of a process flag. See description of each flag below.
