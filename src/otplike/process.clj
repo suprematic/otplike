@@ -554,7 +554,6 @@
       (close! [_]
         (async/close! stop)))))
 
-; TODO check exception thrown from proc-func
 (defn- start-process [pid proc-func args]
   {:pre [(fn? proc-func)
          (pid? pid)
