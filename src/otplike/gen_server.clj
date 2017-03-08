@@ -7,7 +7,6 @@
     [otplike.util :as u]
     [otplike.process :as process :refer [!]]))
 
-
 (defprotocol IGenServer
   (init [_ args]
     #_[:ok, State]
@@ -28,47 +27,58 @@
 
   (terminate [_ reason state]))
 
-(defn- cast-or-info [rqtype impl message state]
-  (let [rqfn (case rqtype :cast handle-cast :info handle-info)]
-    (match (rqfn impl message state)
-      [:noreply new-state]
-      [:recur new-state]
-
-      [:stop reason new-state]
-      (do
-        (terminate impl reason new-state)
-        [:terminate reason new-state])
-
-      other
-      [:terminate [:bad-return-value other] state])))
-
-(defn- call* [impl from request state]
+(defn- do-terminate [impl reason state]
   (try
-    (match (handle-call impl request from state)
-      [:reply reply new-state]
-      (do
-        (async/put! from [::reply reply])
-        [:recur new-state])
-
-      [:noreply new-state]
-      [:recur new-state]
-
-      [:stop reason reply new-state]
-      (do
-        (async/put! from [::reply reply])
-        [:terminate reason new-state])
-
-      [:stop reason new-state]
-      (do
-        (async/put! from [::terminated reason])
-        [:terminate reason new-state])
-
-      other
-      (let [reason [:bad-return-value other]]
-        (async/put! from [::terminated reason])
-        [:terminate reason state]))
+    (terminate impl reason state)
+    [:terminate reason state]
     (catch Throwable t
       [:terminate (process/ex->reason t) state])))
+
+(defn- cast-or-info [rqtype impl message state]
+  (let [rqfn (case rqtype :cast handle-cast :info handle-info)]
+    (match (process/ex-catch [:ok (rqfn impl message state)])
+      [:ok [:noreply new-state]]
+      [:recur new-state]
+
+      [:ok [:stop reason new-state]]
+      (do-terminate impl reason new-state)
+
+      [:ok other]
+      (do-terminate impl [:bad-return-value other] state)
+
+      [:EXIT reason]
+      (do-terminate impl reason state))))
+
+(defn- call* [impl from request state]
+  (match (process/ex-catch [:ok (handle-call impl request from state)])
+    [:ok [:reply reply new-state]]
+    (do
+      (async/put! from [::reply reply])
+      [:recur new-state])
+
+    [:ok [:noreply new-state]]
+    [:recur new-state]
+
+    [:ok [:stop reason reply new-state]]
+    (let [ret (do-terminate impl reason new-state)]
+      (async/put! from [::reply reply])
+      ret)
+
+    [:ok [:stop reason new-state]]
+    (let [[_ reason _ :as ret] (do-terminate impl reason new-state)]
+      (async/put! from [::terminated reason])
+      ret)
+
+    [:ok other]
+    (let [reason [:bad-return-value other]
+          [_ reason _ :as ret] (do-terminate impl reason state)]
+      (async/put! from [::terminated reason])
+      ret)
+
+    [:EXIT reason]
+    (let [[_ reason _ :as ret] (do-terminate impl reason state)]
+      (async/put! from [::terminated reason])
+      ret)))
 
 (defn- put!* [chan value]
   (async/put! chan value)
@@ -88,7 +98,7 @@
     (cast-or-info :cast impl request state)
 
     [:EXIT _ :shutdown]
-    [:terminate :shutdown state]
+    (do-terminate impl :shutdown state)
 
     _
     (cast-or-info :info impl message state)))
@@ -107,13 +117,8 @@
       (loop [state initial-state]
         (process/receive!
           message (match (dispatch impl state message)
-                    [:recur new-state]
-                    (recur new-state)
-
-                    [:terminate reason new-state]
-                    (do
-                      (terminate impl reason new-state)
-                      (process/exit reason))))))
+                    [:recur new-state] (recur new-state)
+                    [:terminate reason _new-state] (process/exit reason)))))
 
     [:stop reason]
     (put!* response [:error reason])
