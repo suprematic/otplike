@@ -666,10 +666,7 @@
          (loop []
            (let [proceed (match (async/alts! [kill control] :priority true)
                                 [val control]
-                                (let [proceed (dispatch-control process val)]
-                                  (if (satisfies? ap/ReadPort proceed)
-                                    (<! proceed)
-                                    proceed))
+                                (dispatch-control process val)
 
                                 [val kill]
                                 (do
