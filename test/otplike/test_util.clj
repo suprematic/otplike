@@ -35,3 +35,15 @@
     (match (async/alts!! [chan timeout])
       [nil chan] :ok
       [nil timeout] (throw (Exception. (str "timeout " timeout-ms))))))
+
+(defn await-process-exit
+  "Waits for process to exit. Returns :ok if process exited during
+  timeout-ms. otherwise throws."
+  [pid timeout-ms]
+  (let [done (async/chan)]
+    (process/spawn (process/proc-fn []
+                     (process/receive!
+                       [:EXIT pid reason] (async/close! done)
+                       (after timeout-ms :timeout)))
+                   {:link-to pid :flags {:trap-exit true}})
+    (await-completion done timeout-ms)))

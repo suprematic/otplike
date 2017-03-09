@@ -7,6 +7,8 @@
             [otplike.gen-server :as gs])
   (:import [otplike.gen_server IGenServer]))
 
+; TODO test external exit of server process (trap-exit true and false)
+
 ;; ====================================================================
 ;; (start [server-impl args options])
 
@@ -112,13 +114,478 @@
     (is (match (gs/start server [] {})
           [:error [:bad-return-value :bad-return]] :ok))))
 
+; TODO test init timeout
+
 ;; ====================================================================
 ;; (handle-call [request from state])
 
-; TODO
-;(deftest ^:parallel undefined-callback)
-;(deftest ^:parallel illegal-return-value)
-;(deftest ^:parallel callback-throws)
+(deftest ^:parallel handle-call.undefined-callback
+  (let [done (async/chan)
+        server {:init (fn [_] [:ok :state])
+                :terminate (fn [reason _]
+                             (is (match reason
+                                   [:undef ['handle-call [1 _ :state]]] :ok)
+                                 (str "reason passed to terminate must contain"
+                                      " name and arguments of handle-call"))
+                             (async/close! done))}]
+    (match (gs/start server [] {})
+      [:ok pid]
+      (do
+        (is (match (process/ex-catch [:ok (gs/call pid 1 50)])
+               [:EXIT [[:undef ['handle-call [1 _ :state]]]
+                       [`gs/call [pid 1 50]]]]
+               :ok)
+            "call must exit on bad return from handle-call")
+        (is (await-completion done 50)
+            "terminate must be called on bad return from handle-call")
+        (is (await-process-exit pid 50)
+            "gen-server must exit on bad return from handle-call")))))
+
+(deftest ^:parallel handle-call.bad-return
+  (let [done (async/chan)
+        server {:init (fn [_] [:ok nil])
+                :handle-call (fn [_ _ _] :bad-return)
+                :terminate (fn [reason _]
+                             (is (= [:bad-return-value :bad-return] reason)
+                                 (str "reason passed to terminate must contain"
+                                      " the value returned from handle-call"))
+                             (async/close! done))}]
+    (match (gs/start server [] {})
+      [:ok pid]
+      (do
+        (is (= [:EXIT [[:bad-return-value :bad-return] [`gs/call [pid nil 50]]]]
+               (process/ex-catch [:ok (gs/call pid nil 50)]))
+            "call must exit on bad return from handle-call")
+        (is (await-completion done 50)
+            "terminate must be called on bad return from handle-call")
+        (is (await-process-exit pid 50)
+            "gen-server must exit on bad return from handle-call")))))
+
+(deftest ^:parallel handle-call.callback-throws
+  (let [done (async/chan)
+        server {:init (fn [_] [:ok nil])
+                :handle-call (fn [_ _ _] (throw (ex-info "TEST" {:test 1})))
+                :terminate (fn [[reason ex] _]
+                             (is (= [:exception
+                                     {:message "TEST"
+                                      :class "clojure.lang.ExceptionInfo"
+                                      :data {:test 1}}]
+                                    [reason (dissoc ex :stack-trace)])
+                                 (str "reason passed to terminate must contain"
+                                      " exception thrown from handle-call"))
+                             (async/close! done))}]
+    (match (gs/start server [] {})
+      [:ok pid]
+      (do
+        (is (= [:EXIT [[:exception {:message "TEST"
+                                    :class "clojure.lang.ExceptionInfo"
+                                    :data {:test 1}}]
+                       [`gs/call [pid nil 50]]]]
+               (let [[kind [[reason ex] f]] (process/ex-catch
+                                              [:ok (gs/call pid nil 50)])]
+                 [kind [[reason (dissoc ex :stack-trace)] f]]))
+            "call must exit after exit called in handle-call")
+        (is (await-completion done 50)
+            "terminate must be called on bad return from handle-call")
+        (is (await-process-exit pid 50)
+            "gen-server must exit on bad return from handle-call")))))
+
+(deftest ^:parallel handle-call.exit-abnormal
+  (let [done (async/chan)
+        server {:init (fn [_] [:ok nil])
+                :handle-call (fn [_ _ _] (process/exit :abnormal))
+                :terminate (fn [reason _]
+                             (is (= :abnormal reason)
+                                 (str "reason passed to terminate must be the"
+                                      " same as passed to exit in handle-call"))
+                             (async/close! done))}]
+    (match (gs/start server [] {})
+      [:ok pid]
+      (do
+        (is (= [:EXIT [:abnormal [`gs/call [pid nil 50]]]]
+               (process/ex-catch [:ok (gs/call pid nil 50)]))
+            "call must exit after exit called in handle-call")
+        (is (await-completion done 50)
+            "terminate must be called after exit called in  handle-call")
+        (is (await-process-exit pid 50)
+            "gen-server must exit after exit called in handle-call")))))
+
+(deftest ^:parallel handle-call.exit-normal
+  (let [done (async/chan)
+        server {:init (fn [_] [:ok nil])
+                :handle-call (fn [_ _ _] (process/exit :normal))
+                :terminate (fn [reason _]
+                             (is (= :normal reason)
+                                 (str "reason passed to terminate must be the"
+                                      " same as passed to exit in handle-call"))
+                             (async/close! done))}]
+    (match (gs/start server [] {})
+      [:ok pid]
+      (do
+        (is (= [:EXIT [:normal [`gs/call [pid nil 50]]]]
+               (process/ex-catch [:ok (gs/call pid nil 50)]))
+            "call must exit after exit called in handle-call")
+        (is (await-completion done 50)
+            "terminate must be called after exit called in handle-call")
+        (is (await-process-exit pid 50)
+            "gen-server must exit after exit called in handle-call")))))
+
+(deftest ^:parallel handle-call.stop-normal
+  (let [done (async/chan)
+        server {:init (fn [_] [:ok nil])
+                :handle-call (fn [_ _ state] [:stop :normal state])
+                :terminate (fn [reason _]
+                             (is (= :normal reason)
+                                 (str "reason passed to terminate must be the"
+                                      " same as returned by handle-call"))
+                             (async/close! done))}]
+    (match (gs/start server [] {})
+      [:ok pid]
+      (do
+        (is (= [:EXIT [:normal [`gs/call [pid nil 50]]]]
+               (process/ex-catch [:ok (gs/call pid nil 50)]))
+            "call must exit if :stop returned by handle-call")
+        (is (await-completion done 50)
+            "terminate must be called after :stop returned by handle-call")
+        (is (await-process-exit pid 50)
+            "gen-server must exit after :stop returned by handle-call")))))
+
+(deftest ^:parallel handle-call.stop-abnormal
+  (let [done (async/chan)
+        server {:init (fn [_] [:ok nil])
+                :handle-call (fn [_ _ state] [:stop :abnormal state])
+                :terminate (fn [reason _]
+                             (is (= :abnormal reason)
+                                 (str "reason passed to terminate must be the"
+                                      " same as returned by handle-call"))
+                             (async/close! done))}]
+    (match (gs/start server [] {})
+      [:ok pid]
+      (do
+        (is (= [:EXIT [:abnormal [`gs/call [pid nil 50]]]]
+               (process/ex-catch [:ok (gs/call pid nil 50)]))
+            "call must exit if :stop returned by handle-call")
+        (is (await-completion done 50)
+            "terminate must be called after :stop returned by handle-call")
+        (is (await-process-exit pid 50)
+            "gen-server must exit after :stop returned by handle-call")))))
+
+(deftest ^:parallel handle-call.return-reply
+  (let [server {:init (fn [_] [:ok nil])
+                :handle-call (fn [x _from state] [:reply (inc x) state])}]
+    (match (gs/start server [] {})
+      [:ok pid]
+      (do
+        (is (= 2 (gs/call pid 1 50)) "call must return response from server")
+        (is (= 5 (gs/call pid 4 50)) "call must return response from server")
+        (match (process/exit pid :abnormal) true :ok)))))
+
+(deftest ^:parallel handle-call.nil-return-reply
+  (let [server {:init (fn [_] [:ok nil])
+                :handle-call (fn [_ _from state] [:reply nil state])}]
+    (match (gs/start server [] {})
+      [:ok pid]
+      (do
+        (is (= nil (gs/call pid nil 50))
+            "call must return response from server")
+        (match (process/exit pid :abnormal) true :ok)))))
+
+(deftest ^:parallel handle-call.delayed-reply-before-return
+  (let [server {:init (fn [_] [:ok nil])
+                :handle-call (fn [_ from state]
+                               (gs/reply from :ok)
+                               [:noreply state])}]
+    (match (gs/start server [] {})
+      [:ok pid]
+      (do
+        (is (= :ok (gs/call pid nil 50))
+            "call must return response from server")
+        (match (process/exit pid :abnormal) true :ok)))))
+
+(deftest ^:parallel handle-call.return-reply-after-delayed-reply
+  (let [server {:init (fn [_] [:ok nil])
+                :handle-call (fn [_ from state]
+                               (gs/reply from :ok)
+                               [:reply :error state])}]
+    (match (gs/start server [] {})
+      [:ok pid]
+      (do
+        (is (= :ok (gs/call pid nil 50))
+            "call must return first response from server")
+        (is (= :ok (gs/call pid nil 50))
+            "call must return first response from server")
+        (match (process/exit pid :abnormal) true :ok)))))
+
+(deftest ^:parallel handle-call.nil-delayed-reply
+  (let [server {:init (fn [_] [:ok nil])
+                :handle-call (fn [_ from state]
+                               (gs/reply from nil)
+                               [:noreply state])}]
+    (match (gs/start server [] {})
+      [:ok pid]
+      (do
+        (is (= nil (gs/call pid nil 50))
+            "call must return response from server")
+        (match (process/exit pid :abnormal) true :ok)))))
+
+(deftest ^:parallel handle-call.delayed-reply-after-return
+  (let [done (async/chan)
+        done1 (async/chan)
+        server {:init (fn [_] [:ok nil])
+                :handle-call (fn [x from state]
+                               (match [x state]
+                                 [1 nil] (do (async/close! done)
+                                             [:noreply from])
+                                 [2 from1] (do (gs/reply from1 :ok1)
+                                               [:reply :ok2 nil])))}]
+    (match (gs/start server [] {})
+      [:ok pid]
+      (do
+        (process/spawn
+          (process/proc-fn []
+            (is (= :ok1 (gs/call pid 1 50))
+                "call must return response from server")
+            (async/close! done1)))
+        (is (await-completion done 50))
+        (is (= :ok2 (gs/call pid 2 50))
+            "call must return response from server")
+        (is (await-completion done1 50))
+        (match (process/exit pid :abnormal) true :ok)))))
+
+(deftest ^:parallel handle-call.stop-normal-reply
+  (let [done (async/chan)
+        server {:init (fn [_] [:ok nil])
+                :handle-call (fn [x _ state] [:stop :normal (inc x) state])
+                :terminate (fn [reason _]
+                             (is (= :normal reason)
+                                 (str "reason passed to terminate must be the"
+                                      " same as returned by handle-call"))
+                             (async/close! done))}]
+    (match (gs/start server [] {})
+      [:ok pid]
+      (do
+        (is (= 2 (gs/call pid 1 50)) "call must return response from server")
+        (is (await-completion done 50)
+            "terminate must be called after :stop returned by handle-call")
+        (is (await-process-exit pid 50)
+            "gen-server must exit after :stop returned by handle-call")))))
+
+(deftest ^:parallel handle-call.stop-abnormal-reply
+  (let [done (async/chan)
+        server {:init (fn [_] [:ok nil])
+                :handle-call (fn [x _ state] [:stop :abnormal (inc x) state])
+                :terminate (fn [reason _]
+                             (is (= :abnormal reason)
+                                 (str "reason passed to terminate must be the"
+                                      " same as returned by handle-call"))
+                             (async/close! done))}]
+    (match (gs/start server [] {})
+      [:ok pid]
+      (do
+        (is (= 2 (gs/call pid 1 50)) "call must return response from server")
+        (is (await-completion done 50)
+            "terminate must be called after :stop returned by handle-call")
+        (is (await-process-exit pid 50)
+            "gen-server must exit after :stop returned by handle-call")))))
+
+(deftest ^:parallel handle-call.call-to-exited-pid
+  (let [done (async/chan)
+        server {:init (fn [_] [:ok nil])
+                :handle-call (fn [x _ state] [:stop :normal :ok state])}]
+    (match (gs/start server [] {})
+      [:ok pid]
+      (do
+        (match (gs/call pid nil 50) :ok :ok)
+        (match (await-process-exit pid 50) :ok :ok)
+        (is (= [:EXIT [:noproc [`gs/call [pid nil 10]]]]
+               (process/ex-catch [:ok (gs/call pid nil 10)]))
+            "call to exited server must exit with :noproc reason")))))
+
+(deftest ^:parallel handle-call.timeout
+  (let [done (async/chan)
+        server {:init (fn [_] [:ok nil])
+                :handle-call (fn [x _ state] (<!! (async/timeout 50)))}]
+    (match (gs/start server [] {})
+      [:ok pid]
+      (do
+        (is (= [:EXIT [:timeout [`gs/call [pid nil 10]]]]
+               (process/ex-catch [:ok (gs/call pid nil 10)]))
+            "call must return response from server")
+        (match (process/exit pid :abnormal) true :ok)))))
+
+(deftest ^:parallel handle-call.update-state
+  (let [server {:init (fn [_] [:ok 1])
+                :handle-call
+                (fn [[old-state new-state] _from state]
+                  (is (= old-state state)
+                      "return from handle-call must update server state")
+                  [:reply :ok new-state])}]
+    (match (gs/start server [] {})
+      [:ok pid]
+      (do
+        (is (= :ok (gs/call pid [1 2] 50))
+            "call must return response from server")
+        (is (= :ok (gs/call pid [2 4] 50))
+            "call must return response from server")
+        (is (= :ok (gs/call pid [4 0] 50))
+            "call must return response from server")
+        (match (process/exit pid :abnormal) true :ok)))))
+
+(deftest ^:parallel handle-call.bad-return.terminate-throws
+  (let [server {:init (fn [_] [:ok nil])
+                :handle-call (fn [_ _ _] :bad-return)
+                :terminate (fn [_reason _] (throw (ex-info "TEST" {:a 1})))}]
+    (match (gs/start server [] {})
+      [:ok pid]
+      (do
+        (is (= [:EXIT [[:exception {:message "TEST"
+                                    :class "clojure.lang.ExceptionInfo"
+                                    :data {:a 1}}]
+                       [`gs/call [pid nil 50]]]]
+               (let [[kind [[reason ex] f]] (process/ex-catch
+                                              [:ok (gs/call pid nil 50)])]
+                 [kind [[reason (dissoc ex :stack-trace)] f]]))
+            (str "call must exit with reason containing exception thrown from"
+                 " terminate"))
+        (is (await-process-exit pid 50)
+            "gen-server must exit on bad return from handle-call")))))
+
+(deftest ^:parallel handle-call.callback-throws.terminate-throws
+  (let [server {:init (fn [_] [:ok nil])
+                :handle-call (fn [_ _ _] (throw (ex-info "TEST" {:a 1})))
+                :terminate (fn [_reason _] (throw (ex-info "TEST" {:b 2})))}]
+    (match (gs/start server [] {})
+      [:ok pid]
+      (do
+        (is (= [:EXIT [[:exception {:message "TEST"
+                                    :class "clojure.lang.ExceptionInfo"
+                                    :data {:b 2}}]
+                       [`gs/call [pid nil 50]]]]
+               (let [[kind [[reason ex] f]] (process/ex-catch
+                                              [:ok (gs/call pid nil 50)])]
+                 [kind [[reason (dissoc ex :stack-trace)] f]]))
+            (str "call must exit with reason containing exception thrown from"
+                 " terminate"))
+        (is (await-process-exit pid 50)
+            "gen-server must exit on bad return from handle-call")))))
+
+(deftest ^:parallel handle-call.exit-abnormal.terminate-throws
+  (let [server {:init (fn [_] [:ok nil])
+                :handle-call (fn [_ _ _] (process/exit :abnormal))
+                :terminate (fn [_reason _] (throw (ex-info "TEST" {:a 1})))}]
+    (match (gs/start server [] {})
+      [:ok pid]
+      (do
+        (is (= [:EXIT [[:exception {:message "TEST"
+                                    :class "clojure.lang.ExceptionInfo"
+                                    :data {:a 1}}]
+                       [`gs/call [pid nil 50]]]]
+               (let [[kind [[reason ex] f]] (process/ex-catch
+                                              [:ok (gs/call pid nil 50)])]
+                 [kind [[reason (dissoc ex :stack-trace)] f]]))
+            (str "call must exit with reason containing exception thrown from"
+                 " terminate"))
+        (is (await-process-exit pid 50)
+            "gen-server must exit on bad return from handle-call")))))
+
+(deftest ^:parallel handle-call.exit-normal.terminate-throws
+  (let [server {:init (fn [_] [:ok nil])
+                :handle-call (fn [_ _ _] (process/exit :normal))
+                :terminate (fn [_reason _] (throw (ex-info "TEST" {:a 1})))}]
+    (match (gs/start server [] {})
+      [:ok pid]
+      (do
+        (is (= [:EXIT [[:exception {:message "TEST"
+                                    :class "clojure.lang.ExceptionInfo"
+                                    :data {:a 1}}]
+                       [`gs/call [pid nil 50]]]]
+               (let [[kind [[reason ex] f]] (process/ex-catch
+                                              [:ok (gs/call pid nil 50)])]
+                 [kind [[reason (dissoc ex :stack-trace)] f]]))
+            (str "call must exit with reason containing exception thrown from"
+                 " terminate"))
+        (is (await-process-exit pid 50)
+            "gen-server must exit on bad return from handle-call")))))
+
+(deftest ^:parallel handle-call.stop-normal.terminate-throws
+  (let [server {:init (fn [_] [:ok nil])
+                :handle-call (fn [_ _ state] [:stop :normal state])
+                :terminate (fn [_reason _] (throw (ex-info "TEST" {:a 1})))}]
+    (match (gs/start server [] {})
+      [:ok pid]
+      (do
+        (is (= [:EXIT [[:exception {:message "TEST"
+                                    :class "clojure.lang.ExceptionInfo"
+                                    :data {:a 1}}]
+                       [`gs/call [pid nil 50]]]]
+               (let [[kind [[reason ex] f]] (process/ex-catch
+                                              [:ok (gs/call pid nil 50)])]
+                 [kind [[reason (dissoc ex :stack-trace)] f]]))
+            (str "call must exit with reason containing exception thrown from"
+                 " terminate"))
+        (is (await-process-exit pid 50)
+            "gen-server must exit on bad return from handle-call")))))
+
+(deftest ^:parallel handle-call.stop-abnormal.terminate-throws
+  (let [server {:init (fn [_] [:ok nil])
+                :handle-call (fn [_ _ state] [:stop :abnormal state])
+                :terminate (fn [_reason _] (throw (ex-info "TEST" {:a 1})))}]
+    (match (gs/start server [] {})
+      [:ok pid]
+      (do
+        (is (= [:EXIT [[:exception {:message "TEST"
+                                    :class "clojure.lang.ExceptionInfo"
+                                    :data {:a 1}}]
+                       [`gs/call [pid nil 50]]]]
+               (let [[kind [[reason ex] f]] (process/ex-catch
+                                              [:ok (gs/call pid nil 50)])]
+                 [kind [[reason (dissoc ex :stack-trace)] f]]))
+            (str "call must exit with reason containing exception thrown from"
+                 " terminate"))
+        (is (await-process-exit pid 50)
+            "gen-server must exit on bad return from handle-call")))))
+
+(deftest ^:parallel handle-call.stop-normal-reply.terminate-throws
+  (let [server {:init (fn [_] [:ok nil])
+                :handle-call (fn [x _ state] [:stop :normal (inc x) state])
+                :terminate (fn [_reason _] (throw (ex-info "TEST" {:a 1})))}]
+    (match (gs/start server [] {})
+      [:ok pid]
+      (do
+        (is (= 2 (gs/call pid 1 50))
+            "call must return response even if terminate throws")
+        (is (await-process-exit pid 50)
+            "gen-server must exit on bad return from handle-call")))))
+
+(deftest ^:parallel handle-call.stop-abnormal-reply.terminate-throws
+  (let [server {:init (fn [_] [:ok nil])
+                :handle-call (fn [x _ state] [:stop :abnormal (inc x) state])
+                :terminate (fn [_reason _] (throw (ex-info "TEST" {:a 1})))}]
+    (match (gs/start server [] {})
+      [:ok pid]
+      (do
+        (is (= 2 (gs/call pid 1 50))
+            "call must return response even if terminate throws")
+        (is (await-process-exit pid 50)
+            "gen-server must exit on bad return from handle-call")))))
+
+(deftest ^:parallel handle-call.undefined-callback.terminate-throws
+  (let [server {:init (fn [_] [:ok :state])
+                :terminate (fn [_reason _] (throw (ex-info "TEST" {:a 1})))}]
+    (match (gs/start server [] {})
+      [:ok pid]
+      (do
+        (is (= [:EXIT [[:exception {:message "TEST"
+                                    :class "clojure.lang.ExceptionInfo"
+                                    :data {:a 1}}]
+                       [`gs/call [pid nil 50]]]]
+               (let [[kind [[reason ex] f]] (process/ex-catch
+                                              [:ok (gs/call pid nil 50)])]
+                 [kind [[reason (dissoc ex :stack-trace)] f]]))
+            (str "call must exit with reason containing exception thrown from"
+                 " terminate"))
+        (is (await-process-exit pid 50)
+            "gen-server must exit on bad return from handle-call")))))
 
 ;; ====================================================================
 ;; (handle-cast [request state])
@@ -127,6 +594,7 @@
 ;(deftest ^:parallel undefined-callback)
 ;(deftest ^:parallel illegal-return-value)
 ;(deftest ^:parallel callback-throws)
+; test server's state
 
 ;; ====================================================================
 ;; (handle-info [message state])
@@ -135,85 +603,11 @@
 ;(deftest ^:parallel undefined-callback)
 ;(deftest ^:parallel illegal-return-value)
 ;(deftest ^:parallel callback-throws)
+; test server's state
 
 ;; ====================================================================
 ;; (terminate [reason state])
 
 ; TODO
 ;(deftest ^:parallel undefined-callback)
-;(deftest ^:parallel illegal-return-value)
-;(deftest ^:parallel callback-throws)
-
-;--------------
-
-#_(def server
-  (reify IGenServer
-    (init [_ n]
-      (println "init: " n)
-      (! (process/self) :init-message)
-      [:ok n])
-
-    (terminate [_ reason state]
-      (println "terminate: " reason ", state: " state))
-
-    (handle-call [_ request from state]
-      (println "handle-call: " request ", state: " state)
-      (match request
-        :get-async (do
-                     (gs/reply from state)
-                     [:noreply state])
-        :get-sync [:reply state state]
-        :stop [:stop :normal state]))
-
-    (handle-cast [_ message state]
-      (println "handle-cast: " message ", state: " state)
-      (match message
-        :dec [:noreply (dec state)]
-        :inc [:noreply (inc state)]))
-
-    (handle-info [_ message state]
-      (println "handle-info: " message ", state: " state)
-      [:noreply state])))
-
-
-#_(def server1
-  {:init
-   (fn [n]
-     (println "init: " n)
-     (! (process/self) :init-message)
-     [:ok n])
-
-   :terminate
-   (fn [reason state]
-     (println "terminate: " reason ", state: " state))
-
-   :handle-call
-   (fn [request from state]
-     (println "handle-call: " request ", state: " state)
-     (match request
-            :get-async (do
-                         (gs/reply from state)
-                         [:noreply state])
-            :get-sync [:reply state state]
-            :stop [:stop :normal state]))
-
-   :handle-cast
-   (fn [message state]
-     (println "handle-cast: " message ", state: " state)
-     (match message
-            :dec [:noreply (dec state)]
-            :inc [:noreply (inc state)]))
-
-   :handle-info
-   (fn [message state]
-     (println "handle-info: " message ", state: " state)
-     [:noreply state])})
-
-#_(deftest test-1
-  (match (gs/start server1 0 {})
-    [:ok pid] (do
-                (gs/cast pid :inc)
-                (gs/cast pid :dec)
-                (println "state-async: " (gs/call pid :get-async))
-                (println "state-sync: " (gs/call pid :get-sync))
-                (gs/call pid :stop))))
+; test server's state
