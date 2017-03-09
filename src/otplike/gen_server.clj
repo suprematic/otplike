@@ -134,22 +134,22 @@
     (init [_ args]
       (if init
         (init args)
-        [:stop :no-init]))
+        [:stop :no-init])) ;TODO check if init must call exit also (process/exit [:undef ['init [args]]])
 
     (handle-cast [_ request state]
       (if handle-cast
         (handle-cast request state)
-        [:stop :no-handle-cast state]))
+        (process/exit [:undef ['handle-cast [request state]]])))
 
     (handle-call [_ request from state]
       (if handle-call
         (handle-call request from state)
-        [:stop :no-handle-call state]))
+        (process/exit [:undef ['handle-call [request from state]]])))
 
     (handle-info [_ request state]
       (if handle-info
         (handle-info request state)
-        [:stop :no-handle-info state]))
+        (process/exit [:undef ['handle-info [request state]]])))
 
     (terminate [_ reason state] ; terminate is optional
       (if terminate
@@ -172,22 +172,22 @@
     (init [_ args]
       (if-let [init (ns-function impl-ns 'init)]
         (init args)
-        [:stop :no-init]))
+        [:stop :no-init])) ;TODO check if init must call exit also (process/exit [:undef ['init [args]]])
 
     (handle-cast [_ request state]
       (if-let [handle-cast (ns-function impl-ns 'handle-cast)]
         (handle-cast request state)
-        [:stop :no-handle-cast state]))
+        (process/exit [:undef ['handle-cast [request state]]])))
 
     (handle-call [_ request from state]
       (if-let [handle-call (ns-function impl-ns 'handle-call)]
         (handle-call request from state)
-        [:stop :no-handle-call state]))
+        (process/exit [:undef ['handle-call [request from state]]])))
 
     (handle-info [_ request state]
       (if-let [handle-info (ns-function impl-ns 'handle-info)]
         (handle-info request state)
-        [:stop :no-handle-info state]))
+        (process/exit [:undef ['handle-info [request state]]])))
 
     (terminate [_ reason state] ; terminate is optional
       (if-let [terminate (ns-function impl-ns 'terminate)]
