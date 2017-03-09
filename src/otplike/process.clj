@@ -307,8 +307,8 @@
   identified by pid, if there is not such a link already. If a
   process attempts to create a link to itself, nothing is done.
   If pid does not exist and the calling process
-  1. is trapping exits - an exit signal with reason :noproc is sent
-  to the calling process.
+  1. is trapping exits - the calling process receives message
+  [:EXIT pid :noproc].
   2. is not trapping exits - process exits with reason :noproc.
   Returns true.
   Throws when called not in process context, or by exited process,
