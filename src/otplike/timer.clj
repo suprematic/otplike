@@ -31,7 +31,7 @@
              (process/proc-fn []
                (process/monitor pid)
                (process/receive!
-                 [:DOWN _ _ _ _] :down
+                 [:DOWN _ _ _ _] :normal
                  (after msecs
                    (f)))
                (swap! *timers dissoc tref))
@@ -42,44 +42,46 @@
 (defn send-after
   "Sends message to process with pid after msecs. Returns the timer
   reference."
-  [msecs pid message]
-  (action-after msecs pid #(! pid message)))
+  ([msecs message]
+    (send-after msecs (process/self) message))
+  ([msecs pid message]
+    (action-after msecs pid #(! pid message))))
 
 (defn exit-after
   "Exits process with pid with reason after msecs. Returns the timer
   reference."
-  [msecs pid reason]
-  (action-after msecs pid #(process/exit pid reason)))
-
-(defn cast-after
-  "Casts message to gen-server with pid after msecs. Returns the timer
-  reference."
-  [msecs pid message]
-  (action-after msecs pid #(gs/cast pid message)))
+  ([msecs reason]
+    (exit-after msecs (process/self) reason))
+  ([msecs pid reason]
+    (action-after msecs pid #(process/exit pid reason))))
 
 (defn kill-after
   "Kills process with pid after msecs. Returns the timer reference."
-   [msecs pid]
-   (exit-after msecs pid :kill))
+  ([msecs]
+   (kill-after msecs (process/self)))
+  ([msecs pid]
+    (exit-after msecs pid :kill)))
 
 (defn send-interval
   "Sends message to process with pid repeatedly at intervals of msecs.
   Returns the timer reference."
-  [msecs pid message]
-  (let [tref (new-tref)]
-    (swap! *timers assoc tref
-           (process/spawn
-             (process/proc-fn []
-               (process/monitor pid)
-               (loop []
-                 (process/receive!
-                   [:DOWN _ _ _ _] (swap! *timers dissoc tref)
-                   (after msecs
-                     (! pid message)
-                     (recur)))))
-             []
-             {:name (str tref)}))
-    tref))
+  ([msecs message]
+   (send-interval msecs (process/self) message))
+  ([msecs pid message]
+    (let [tref (new-tref)]
+      (swap! *timers assoc tref
+             (process/spawn
+               (process/proc-fn []
+                 (process/monitor pid)
+                 (loop []
+                   (process/receive!
+                     [:DOWN _ _ _ _] (swap! *timers dissoc tref)
+                     (after msecs
+                       (! pid message)
+                       (recur)))))
+               []
+               {:name (str tref)}))
+      tref)))
 
 (defn cancel
   "Cancels a previously requested timeout. tref is a unique timer
