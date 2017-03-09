@@ -732,7 +732,9 @@
 (defmacro receive!! [& clauses]
   `(receive* false ~clauses))
 
-(defmacro proc-fn [args & body]
+(defmacro proc-fn
+  "Creates process function which can be passed to spawn."
+  [args & body]
   (assert (vector? args))
   `(fn ~args
      (go
@@ -742,5 +744,10 @@
          (catch Throwable t#
            (ex->reason t#))))))
 
-(defmacro proc-defn [fname & args-body]
-  `(def ~fname (proc-fn ~@args-body)))
+(defmacro proc-defn
+  "The same as proc-fn but also binds created function to a var with
+  the name fname."
+  [fname & args-body]
+  `(let [f# (proc-fn ~@args-body)]
+     (def ~fname f#)
+     f#))
