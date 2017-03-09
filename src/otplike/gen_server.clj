@@ -49,7 +49,7 @@
       [:EXIT reason]
       (do-terminate impl reason state))))
 
-(defn- call* [impl from request state]
+(defn- do-handle-call [impl from request state]
   (match (process/ex-catch [:ok (handle-call impl request from state)])
     [:ok [:reply reply new-state]]
     (do
@@ -92,7 +92,7 @@
       [:recur state])
 
     [:call from request]
-    (call* impl from request state)
+    (do-handle-call impl from request state)
 
     [:cast request]
     (cast-or-info :cast impl request state)
@@ -242,23 +242,28 @@
   (when-not (! server [:cast message])
     (throw (Exception. "noproc"))))
 
+(defn- call* [server message timeout-ms]
+  (let [reply-to (async/chan)
+        timeout (if (= :infinity timeout-ms)
+                  (async/chan)
+                  (async/timeout timeout-ms))]
+    (if-not (! server [:call reply-to message])
+      [:error :noproc]
+      (match (async/alts!! [reply-to timeout]) ;TODO make call to be macro and use alts! ?
+        [[::terminated reason] reply-to] [:error reason]
+        [[::reply value] reply-to] [:ok value]
+        [nil timeout] [:error :timeout]))))
+
 (defn call
   ([server message]
-   (call server message 5000))
-  ([server message timeout]
-   (let [reply-to (async/chan)
-         timeout (if (= :infinity timeout)
-                   (async/chan)
-                   (async/timeout timeout))]
-     (when-not (! server [:call reply-to message])
-       (throw (Exception. "noproc")))
-     (match (async/alts!! [reply-to timeout])
-       [[::terminated reason] reply-to]
-       (process/exit reason)
-
-       [[::reply value] reply-to] value
-
-       [nil timeout] (throw (Exception. "timeout"))))))
+   (match (call* server message 5000)
+     [:ok ret] ret
+     [:error reason] (process/exit [reason [`call [server message]]])))
+  ([server message timeout-ms]
+   (match (call* server message timeout-ms)
+     [:ok ret] ret
+     [:error reason] (process/exit
+                       [reason [`call [server message timeout-ms]]]))))
 
 (defn reply [to response]
   (async/put! to [::reply response]))
