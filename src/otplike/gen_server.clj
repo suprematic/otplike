@@ -118,6 +118,7 @@
         (process/receive!
           message (match (dispatch impl state message)
                     [:recur new-state] (recur new-state)
+                    [:terminate :normal _new-state] :ok
                     [:terminate reason _new-state] (process/exit reason)))))
 
     [:stop reason]
