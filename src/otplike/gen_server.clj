@@ -9,8 +9,8 @@
 
 (defprotocol IGenServer
   (init [_ args]
-    #_[:ok, State]
-    #_[:stop, Reason])
+    #_[:ok State]
+    #_[:stop Reason])
 
   (handle-call [_ request from state]
     #_[:reply Reply NewState]

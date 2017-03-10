@@ -29,21 +29,25 @@
 
 
 (defn await-completion
-  "Returns :ok if chan is closed during timeout-ms, otherwise throws."
+  "Returns:
+    - [:ok val] if chan gets any value during timeout-ms,
+    - :closed if chan becomes closed during timeout-ms.
+  Otherwise throws."
   [chan timeout-ms]
   (let [timeout (async/timeout timeout-ms)]
     (match (async/alts!! [chan timeout])
-      [nil chan] :ok
+      [nil chan] :closed
+      [value chan] [:ok value]
       [nil timeout] (throw (Exception. (str "timeout " timeout-ms))))))
 
 (defn await-process-exit
-  "Waits for process to exit. Returns :ok if process exited during
-  timeout-ms. otherwise throws."
+  "Waits for process to exit. Returns [:ok reason] if process exited
+  during timeout-ms. Otherwise throws."
   [pid timeout-ms]
   (let [done (async/chan)]
     (process/spawn (process/proc-fn []
                      (process/receive!
-                       [:EXIT pid reason] (async/close! done)
+                       [:EXIT pid reason] (async/put! done [:ok reason])
                        (after timeout-ms :timeout)))
                    {:link-to pid :flags {:trap-exit true}})
-    (await-completion done timeout-ms)))
+    (match (await-completion done timeout-ms) [:ok reason] reason)))

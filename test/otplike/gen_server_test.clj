@@ -120,26 +120,35 @@
 ;; (handle-call [request from state])
 
 (deftest ^:parallel handle-call.undefined-callback
-  (let [done (async/chan)
+  (let [done1 (async/chan)
+        done2 (async/chan)
+        done3 (async/chan)
         server {:init (fn [_] [:ok :state])
-                :terminate (fn [reason _]
-                             (is (match reason
-                                   [:undef ['handle-call [1 _ :state]]] :ok)
-                                 (str "reason passed to terminate must contain"
-                                      " name and arguments of handle-call"))
-                             (async/close! done))}]
+                :terminate (fn [reason _] (async/put! done2 [:reason reason]))}]
     (match (gs/start server [] {})
       [:ok pid]
       (do
+        (process/spawn
+          (process/proc-fn []
+            (async/close! done1)
+            (process/receive!
+              [:EXIT pid reason] (async/put! done3 [:reason reason])
+              (after 50 (async/put! done3 :timeout))))
+          {:link-to pid :flags {:trap-exit true}})
+        (await-completion done1 50)
         (is (match (process/ex-catch [:ok (gs/call pid 1 50)])
                [:EXIT [[:undef ['handle-call [1 _ :state]]]
                        [`gs/call [pid 1 50]]]]
                :ok)
             "call must exit on absent handle-call callback")
-        (is (await-completion done 50)
-            "terminate must be called on bad return from handle-call")
-        (is (await-process-exit pid 50)
-            "gen-server must exit on bad return from handle-call")))))
+        (is (match (await-completion done2 50)
+                   [:ok [:reason [:undef ['handle-call [1 _ :state]]]]] :ok)
+          (str "terminate must be called on bad return from handle-call"
+               " with reason containing name and arguments of handle-call"))
+        (is (match (await-completion done3 50)
+                   [:ok [:reason [:undef ['handle-call [1 _ :state]]]]] :ok)
+            (str "gen-server must exit on bad return from handle-call with"
+                 " reason containing name and arguments of handle-call"))))))
 
 (deftest ^:parallel handle-call.bad-return
   (let [done (async/chan)
@@ -396,7 +405,7 @@
       [:ok pid]
       (do
         (match (gs/call pid nil 50) :ok :ok)
-        (match (await-process-exit pid 50) :ok :ok)
+        (match (await-process-exit pid 50) [:ok reason] :ok)
         (is (= [:EXIT [:noproc [`gs/call [pid nil 10]]]]
                (process/ex-catch [:ok (gs/call pid nil 10)]))
             "call to exited server must exit with :noproc reason")))))
