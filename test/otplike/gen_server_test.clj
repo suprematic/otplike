@@ -744,7 +744,7 @@
       (do
         (is (= true (gs/cast pid nil))
             "cast must return true if server is alive")
-        (match (await-process-exit pid 50) [:ok reason] :ok)
+        (match (await-process-exit pid 100) [:ok reason] :ok)
         (is (= false (gs/cast pid nil))
             "cast must return false if server is not alive")))))
 
