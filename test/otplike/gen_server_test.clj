@@ -983,6 +983,164 @@
             (str "gen-server must exit with reason containing exception thrown"
                  " from terminate"))))))
 
+(deftest ^:parallel handle-cast.bad-return.terminate-undefined
+  (let [done1 (async/chan)
+        done2 (async/chan)
+        server {:init (fn [_] [:ok :state])
+                :handle-cast (fn [_ _] :bad-return)}]
+    (match (gs/start server [] {})
+      [:ok pid]
+      (do
+        (process/spawn
+          (process/proc-fn []
+            (async/close! done1)
+            (process/receive!
+              [:EXIT pid reason] (async/put! done2 [:reason reason])
+              (after 50 (async/put! done2 :timeout))))
+          {:link-to pid :flags {:trap-exit true}})
+        (await-completion done1 50)
+        (is (= true (gs/cast pid nil))
+            "cast must return true if server is alive")
+        (is (match (await-completion done2 50)
+              [:ok [:reason [:bad-return-value :bad-return]]] :ok)
+            (str "gen-server must exit with reason containing bad value"
+                 "returned from handle-cast"))))))
+
+(deftest ^:parallel handle-cast.callback-throws.terminate-undefined
+  (let [done1 (async/chan)
+        done2 (async/chan)
+        server {:init (fn [_] [:ok :state])
+                :handle-cast (fn [_ _] (throw (ex-info "TEST" {:b 2})))}]
+    (match (gs/start server [] {})
+      [:ok pid]
+      (do
+        (process/spawn
+          (process/proc-fn []
+            (async/close! done1)
+            (process/receive!
+              [:EXIT pid reason] (async/put! done2 [:reason reason])
+              (after 50 (async/put! done2 :timeout))))
+          {:link-to pid :flags {:trap-exit true}})
+        (await-completion done1 50)
+        (is (= true (gs/cast pid nil))
+            "cast must return true if server is alive")
+        (is (match (await-completion done2 50)
+              [:ok [:reason [:exception {:message "TEST"
+                                         :class "clojure.lang.ExceptionInfo"
+                                         :data {:b 2}}]]]
+              :ok)
+            (str "gen-server must exit with reason containing exception thrown"
+                 " from handle-cast"))))))
+
+(deftest ^:parallel handle-cast.exit-abnormal.terminate-undefined
+  (let [done1 (async/chan)
+        done2 (async/chan)
+        server {:init (fn [_] [:ok :state])
+                :handle-cast (fn [_ _] (process/exit :abnormal))}]
+    (match (gs/start server [] {})
+      [:ok pid]
+      (do
+        (process/spawn
+          (process/proc-fn []
+            (async/close! done1)
+            (process/receive!
+              [:EXIT pid reason] (async/put! done2 [:reason reason])
+              (after 50 (async/put! done2 :timeout))))
+          {:link-to pid :flags {:trap-exit true}})
+        (await-completion done1 50)
+        (is (= true (gs/cast pid nil))
+            "cast must return true if server is alive")
+        (is (match (await-completion done2 50) [:ok [:reason :abnormal]] :ok)
+            (str "gen-server must exit with reason passed to exit in"
+                 " handle-cast"))))))
+
+(deftest ^:parallel handle-cast.exit-normal.terminate-undefined
+  (let [done1 (async/chan)
+        done2 (async/chan)
+        server {:init (fn [_] [:ok :state])
+                :handle-cast (fn [_ _] (process/exit :normal))}]
+    (match (gs/start server [] {})
+      [:ok pid]
+      (do
+        (process/spawn
+          (process/proc-fn []
+            (async/close! done1)
+            (process/receive!
+              [:EXIT pid reason] (async/put! done2 [:reason reason])
+              (after 50 (async/put! done2 :timeout))))
+          {:link-to pid :flags {:trap-exit true}})
+        (await-completion done1 50)
+        (is (= true (gs/cast pid nil))
+            "cast must return true if server is alive")
+        (is (match (await-completion done2 50) [:ok [:reason :normal]] :ok)
+            (str "gen-server must exit with reason passed to exit in"
+                 " handle-cast"))))))
+
+(deftest ^:parallel handle-cast.stop-normal.terminate-undefined
+  (let [done1 (async/chan)
+        done2 (async/chan)
+        server {:init (fn [_] [:ok :state])
+                :handle-cast (fn [_ state] [:stop :normal state])}]
+    (match (gs/start server [] {})
+      [:ok pid]
+      (do
+        (process/spawn
+          (process/proc-fn []
+            (async/close! done1)
+            (process/receive!
+              [:EXIT pid reason] (async/put! done2 [:reason reason])
+              (after 50 (async/put! done2 :timeout))))
+          {:link-to pid :flags {:trap-exit true}})
+        (await-completion done1 50)
+        (is (= true (gs/cast pid nil))
+            "cast must return true if server is alive")
+        (is (match (await-completion done2 50) [:ok [:reason :normal]] :ok)
+            "gen-server must exit with reason returned by handle-cast")))))
+
+(deftest ^:parallel handle-cast.stop-abnormal.terminate-undefined
+  (let [done1 (async/chan)
+        done2 (async/chan)
+        server {:init (fn [_] [:ok :state])
+                :handle-cast (fn [_ state] [:stop :abnormal state])}]
+    (match (gs/start server [] {})
+      [:ok pid]
+      (do
+        (process/spawn
+          (process/proc-fn []
+            (async/close! done1)
+            (process/receive!
+              [:EXIT pid reason] (async/put! done2 [:reason reason])
+              (after 50 (async/put! done2 :timeout))))
+          {:link-to pid :flags {:trap-exit true}})
+        (await-completion done1 50)
+        (is (= true (gs/cast pid nil))
+            "cast must return true if server is alive")
+        (is (match (await-completion done2 50) [:ok [:reason :abnormal]] :ok)
+            (str "gen-server must exit with reason returned by handle-cast"
+                 " when terminate is undefined"))))))
+
+(deftest ^:parallel handle-cast.undefined-callback.terminate-undefined
+  (let [done1 (async/chan)
+        done2 (async/chan)
+        server {:init (fn [_] [:ok :state])}]
+    (match (gs/start server [] {})
+      [:ok pid]
+      (do
+        (process/spawn
+          (process/proc-fn []
+            (async/close! done1)
+            (process/receive!
+              [:EXIT pid reason] (async/put! done2 [:reason reason])
+              (after 50 (async/put! done2 :timeout))))
+          {:link-to pid :flags {:trap-exit true}})
+        (await-completion done1 50)
+        (is (= true (gs/cast pid nil))
+            "cast must return true if server is alive")
+        (is (match (await-completion done2 50)
+              [:ok [:reason [:undef ['handle-cast [nil :state]]]]] :ok)
+            (str "gen-server must exit with reason containing exception thrown"
+                 " from terminate"))))))
+
 ;; ====================================================================
 ;; (handle-info [message state])
 
@@ -1433,9 +1591,7 @@
           {:link-to pid :flags {:trap-exit true}})
         (await-completion done1 50)
         (match (! pid 1) true :ok)
-        (is (match (await-completion done2 50)
-              [:ok [:reason :normal]]
-              :ok)
+        (is (match (await-completion done2 50) [:ok [:reason :normal]] :ok)
             "gen-server must exit with reason returned by handle-info")))))
 
 (deftest ^:parallel handle-info.stop-abnormal.terminate-undefined
