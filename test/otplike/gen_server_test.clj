@@ -613,9 +613,9 @@
         (is (= true (gs/cast pid 1))
             "cast must return true if server is alive")
         (is (await-completion done 50)
-            "terminate must be called on bad return from handle-cast")
+            "terminate must be called on undefined handle-cast callback")
         (is (await-process-exit pid 50)
-            "gen-server must exit on bad return from handle-cast")))))
+            "gen-server must exit on  undefined handle-cast callback")))))
 
 (deftest ^:parallel handle-cast.bad-return
   (let [done (async/chan)
