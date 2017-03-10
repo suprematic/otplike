@@ -1116,8 +1116,7 @@
         (is (= true (gs/cast pid nil))
             "cast must return true if server is alive")
         (is (match (await-completion done2 50) [:ok [:reason :abnormal]] :ok)
-            (str "gen-server must exit with reason returned by handle-cast"
-                 " when terminate is undefined"))))))
+            "gen-server must exit with reason returned by handle-cast")))))
 
 (deftest ^:parallel handle-cast.undefined-callback.terminate-undefined
   (let [done1 (async/chan)
@@ -1138,8 +1137,8 @@
             "cast must return true if server is alive")
         (is (match (await-completion done2 50)
               [:ok [:reason [:undef ['handle-cast [nil :state]]]]] :ok)
-            (str "gen-server must exit with reason containing exception thrown"
-                 " from terminate"))))))
+            (str "gen-server must exit with reason containing arguments passed"
+                 " to handle-cast"))))))
 
 ;; ====================================================================
 ;; (handle-info [message state])
@@ -1612,8 +1611,7 @@
         (await-completion done1 50)
         (match (! pid 1) true :ok)
         (is (match (await-completion done2 50) [:ok [:reason :abnormal]] :ok)
-            (str "gen-server must exit with reason returned by handle-info"
-                 " when terminate is undefined"))))))
+            "gen-server must exit with reason returned by handle-info")))))
 
 (deftest ^:parallel handle-info.undefined-callback.terminate-undefined
   (let [done1 (async/chan)
@@ -1633,5 +1631,5 @@
         (match (! pid 1) true :ok)
         (is (match (await-completion done2 50)
               [:ok [:reason [:undef ['handle-info [1 :state]]]]] :ok)
-            (str "gen-server must exit with reason containing exception thrown"
-                 " from terminate"))))))
+            (str "gen-server must exit with reason containing arguments"
+                 " passed to handle-info"))))))
