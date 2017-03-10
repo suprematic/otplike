@@ -957,11 +957,330 @@
 ;; ====================================================================
 ;; (handle-info [message state])
 
-; TODO
-;(deftest ^:parallel undefined-callback)
-;(deftest ^:parallel illegal-return-value)
-;(deftest ^:parallel callback-throws)
-; test server's state
+(deftest ^:parallel handle-info.undefined-callback
+  (let [done (async/chan)
+        server {:init (fn [_] [:ok :state])
+                :terminate (fn [reason _]
+                             (is (= [:undef ['handle-info [1 :state]]] reason)
+                                 (str "reason passed to terminate must contain"
+                                      " name and arguments of handle-info"))
+                             (async/close! done))}]
+    (match (gs/start server [] {})
+      [:ok pid]
+      (do
+        (match (! pid 1) true :ok)
+        (is (await-completion done 50)
+            "terminate must be called on undefined handle-info callback")
+        (is (await-process-exit pid 50)
+            "gen-server must exit on undefined handle-info callback")))))
+
+(deftest ^:parallel handle-info.bad-return
+  (let [done (async/chan)
+        server {:init (fn [_] [:ok nil])
+                :handle-info (fn [_ _] :bad-return)
+                :terminate (fn [reason _]
+                             (is (= [:bad-return-value :bad-return] reason)
+                                 (str "reason passed to terminate must contain"
+                                      " the value returned from handle-info"))
+                             (async/close! done))}]
+    (match (gs/start server [] {})
+      [:ok pid]
+      (do
+        (match (! pid 1) true :ok)
+        (is (await-completion done 50)
+            "terminate must be called on bad return from handle-info")
+        (is (await-process-exit pid 50)
+            "gen-server must exit on bad return from handle-info")))))
+
+(deftest ^:parallel handle-info.callback-throws
+  (let [done (async/chan)
+        server {:init (fn [_] [:ok nil])
+                :handle-info (fn [_ _] (throw (ex-info "TEST" {:test 1})))
+                :terminate (fn [[reason ex] _]
+                             (is (= [:exception
+                                     {:message "TEST"
+                                      :class "clojure.lang.ExceptionInfo"
+                                      :data {:test 1}}]
+                                    [reason (dissoc ex :stack-trace)])
+                                 (str "reason passed to terminate must contain"
+                                      " exception thrown from handle-info"))
+                             (async/close! done))}]
+    (match (gs/start server [] {})
+      [:ok pid]
+      (do
+        (match (! pid 1) true :ok)
+        (is (await-completion done 50)
+            "terminate must be called on bad return from handle-info")
+        (is (await-process-exit pid 50)
+            "gen-server must exit on bad return from handle-info")))))
+
+(deftest ^:parallel handle-info.exit-abnormal
+  (let [done (async/chan)
+        server {:init (fn [_] [:ok nil])
+                :handle-info (fn [_ _] (process/exit :abnormal))
+                :terminate (fn [reason _]
+                             (is (= :abnormal reason)
+                                 (str "reason passed to terminate must be the"
+                                      " same as passed to exit in handle-info"))
+                             (async/close! done))}]
+    (match (gs/start server [] {})
+      [:ok pid]
+      (do
+        (match (! pid 1) true :ok)
+        (is (await-completion done 50)
+            "terminate must be called after exit called in  handle-info")
+        (is (await-process-exit pid 50)
+            "gen-server must exit after exit called in handle-info")))))
+
+(deftest ^:parallel handle-info.exit-normal
+  (let [done (async/chan)
+        server {:init (fn [_] [:ok nil])
+                :handle-info (fn [_ _] (process/exit :normal))
+                :terminate (fn [reason _]
+                             (is (= :normal reason)
+                                 (str "reason passed to terminate must be the"
+                                      " same as passed to exit in handle-info"))
+                             (async/close! done))}]
+    (match (gs/start server [] {})
+      [:ok pid]
+      (do
+        (match (! pid 1) true :ok)
+        (is (await-completion done 50)
+            "terminate must be called after exit called in handle-info")
+        (is (await-process-exit pid 50)
+            "gen-server must exit after exit called in handle-info")))))
+
+(deftest ^:parallel handle-info.stop-normal
+  (let [done (async/chan)
+        server {:init (fn [_] [:ok nil])
+                :handle-info (fn [_ state] [:stop :normal state])
+                :terminate (fn [reason _]
+                             (is (= :normal reason)
+                                 (str "reason passed to terminate must be the"
+                                      " same as returned by handle-info"))
+                             (async/close! done))}]
+    (match (gs/start server [] {})
+      [:ok pid]
+      (do
+        (match (! pid 1) true :ok)
+        (is (await-completion done 50)
+            "terminate must be called after :stop returned by handle-info")
+        (is (await-process-exit pid 50)
+            "gen-server must exit after :stop returned by handle-info")))))
+
+(deftest ^:parallel handle-info.stop-abnormal
+  (let [done (async/chan)
+        server {:init (fn [_] [:ok nil])
+                :handle-info (fn [_ state] [:stop :abnormal state])
+                :terminate (fn [reason _]
+                             (is (= :abnormal reason)
+                                 (str "reason passed to terminate must be the"
+                                      " same as returned by handle-info"))
+                             (async/close! done))}]
+    (match (gs/start server [] {})
+      [:ok pid]
+      (do
+        (match (! pid 1) true :ok)
+        (is (await-completion done 50)
+            "terminate must be called after :stop returned by handle-info")
+        (is (await-process-exit pid 50)
+            "gen-server must exit after :stop returned by handle-info")))))
+
+(deftest ^:parallel handle-info.update-state
+  (let [server {:init (fn [_] [:ok 1])
+                :handle-info
+                (fn [[old-state new-state] state]
+                  (is (= old-state state)
+                      "return from handle-info must update server state")
+                  [:noreply new-state])}]
+    (match (gs/start server [] {})
+      [:ok pid]
+      (do
+        (match (! pid [1 2]) true :ok)
+        (match (! pid [2 4]) true :ok)
+        (match (! pid [4 0]) true :ok)
+        (match (process/exit pid :abnormal) true :ok)))))
+
+(deftest ^:parallel handle-info.bad-return.terminate-throws
+  (let [done1 (async/chan)
+        done2 (async/chan)
+        server {:init (fn [_] [:ok :state])
+                :handle-info (fn [_ _] :bad-return)
+                :terminate (fn [reason _] (throw (ex-info "TEST" {:a 1})))}]
+    (match (gs/start server [] {})
+      [:ok pid]
+      (do
+        (process/spawn
+          (process/proc-fn []
+            (async/close! done1)
+            (process/receive!
+              [:EXIT pid reason] (async/put! done2 [:reason reason])
+              (after 50 (async/put! done2 :timeout))))
+          {:link-to pid :flags {:trap-exit true}})
+        (await-completion done1 50)
+        (match (! pid 1) true :ok)
+        (is (match (await-completion done2 50)
+              [:ok [:reason [:exception {:message "TEST"
+                                         :class "clojure.lang.ExceptionInfo"
+                                         :data {:a 1}}]]]
+              :ok)
+            (str "gen-server must exit with reason containing exception thrown"
+                 " from terminate"))))))
+
+(deftest ^:parallel handle-info.callback-throws.terminate-throws
+  (let [done1 (async/chan)
+        done2 (async/chan)
+        server {:init (fn [_] [:ok :state])
+                :handle-info (fn [_ _] (throw (ex-info "TEST" {:b 2})))
+                :terminate (fn [reason _] (throw (ex-info "TEST" {:a 1})))}]
+    (match (gs/start server [] {})
+      [:ok pid]
+      (do
+        (process/spawn
+          (process/proc-fn []
+            (async/close! done1)
+            (process/receive!
+              [:EXIT pid reason] (async/put! done2 [:reason reason])
+              (after 50 (async/put! done2 :timeout))))
+          {:link-to pid :flags {:trap-exit true}})
+        (await-completion done1 50)
+        (match (! pid 1) true :ok)
+        (is (match (await-completion done2 50)
+              [:ok [:reason [:exception {:message "TEST"
+                                         :class "clojure.lang.ExceptionInfo"
+                                         :data {:a 1}}]]]
+              :ok)
+            (str "gen-server must exit with reason containing exception thrown"
+                 " from terminate"))))))
+
+(deftest ^:parallel handle-info.exit-abnormal.terminate-throws
+  (let [done1 (async/chan)
+        done2 (async/chan)
+        server {:init (fn [_] [:ok :state])
+                :handle-info (fn [_ _] (process/exit :abnormal))
+                :terminate (fn [reason _] (throw (ex-info "TEST" {:a 1})))}]
+    (match (gs/start server [] {})
+      [:ok pid]
+      (do
+        (process/spawn
+          (process/proc-fn []
+            (async/close! done1)
+            (process/receive!
+              [:EXIT pid reason] (async/put! done2 [:reason reason])
+              (after 50 (async/put! done2 :timeout))))
+          {:link-to pid :flags {:trap-exit true}})
+        (await-completion done1 50)
+        (match (! pid 1) true :ok)
+        (is (match (await-completion done2 50)
+              [:ok [:reason [:exception {:message "TEST"
+                                         :class "clojure.lang.ExceptionInfo"
+                                         :data {:a 1}}]]]
+              :ok)
+            (str "gen-server must exit with reason containing exception thrown"
+                 " from terminate"))))))
+
+(deftest ^:parallel handle-info.exit-normal.terminate-throws
+  (let [done1 (async/chan)
+        done2 (async/chan)
+        server {:init (fn [_] [:ok :state])
+                :handle-info (fn [_ _] (process/exit :normal))
+                :terminate (fn [reason _] (throw (ex-info "TEST" {:a 1})))}]
+    (match (gs/start server [] {})
+      [:ok pid]
+      (do
+        (process/spawn
+          (process/proc-fn []
+            (async/close! done1)
+            (process/receive!
+              [:EXIT pid reason] (async/put! done2 [:reason reason])
+              (after 50 (async/put! done2 :timeout))))
+          {:link-to pid :flags {:trap-exit true}})
+        (await-completion done1 50)
+        (match (! pid 1) true :ok)
+        (is (match (await-completion done2 50)
+              [:ok [:reason [:exception {:message "TEST"
+                                         :class "clojure.lang.ExceptionInfo"
+                                         :data {:a 1}}]]]
+              :ok)
+            (str "gen-server must exit with reason containing exception thrown"
+                 " from terminate"))))))
+
+(deftest ^:parallel handle-info.stop-normal.terminate-throws
+  (let [done1 (async/chan)
+        done2 (async/chan)
+        server {:init (fn [_] [:ok :state])
+                :handle-info (fn [_ state] [:stop :normal state])
+                :terminate (fn [reason _] (throw (ex-info "TEST" {:a 1})))}]
+    (match (gs/start server [] {})
+      [:ok pid]
+      (do
+        (process/spawn
+          (process/proc-fn []
+            (async/close! done1)
+            (process/receive!
+              [:EXIT pid reason] (async/put! done2 [:reason reason])
+              (after 50 (async/put! done2 :timeout))))
+          {:link-to pid :flags {:trap-exit true}})
+        (await-completion done1 50)
+        (match (! pid 1) true :ok)
+        (is (match (await-completion done2 50)
+              [:ok [:reason [:exception {:message "TEST"
+                                         :class "clojure.lang.ExceptionInfo"
+                                         :data {:a 1}}]]]
+              :ok)
+            (str "gen-server must exit with reason containing exception thrown"
+                 " from terminate"))))))
+
+(deftest ^:parallel handle-info.stop-abnormal.terminate-throws
+  (let [done1 (async/chan)
+        done2 (async/chan)
+        server {:init (fn [_] [:ok :state])
+                :handle-info (fn [_ state] [:stop :abnormal state])
+                :terminate (fn [reason _] (throw (ex-info "TEST" {:a 1})))}]
+    (match (gs/start server [] {})
+      [:ok pid]
+      (do
+        (process/spawn
+          (process/proc-fn []
+            (async/close! done1)
+            (process/receive!
+              [:EXIT pid reason] (async/put! done2 [:reason reason])
+              (after 50 (async/put! done2 :timeout))))
+          {:link-to pid :flags {:trap-exit true}})
+        (await-completion done1 50)
+        (match (! pid 1) true :ok)
+        (is (match (await-completion done2 50)
+              [:ok [:reason [:exception {:message "TEST"
+                                         :class "clojure.lang.ExceptionInfo"
+                                         :data {:a 1}}]]]
+              :ok)
+            (str "gen-server must exit with reason containing exception thrown"
+                 " from terminate"))))))
+
+(deftest ^:parallel handle-info.undefined-callback.terminate-throws
+  (let [done1 (async/chan)
+        done2 (async/chan)
+        server {:init (fn [_] [:ok :state])
+                :terminate (fn [reason _] (throw (ex-info "TEST" {:a 1})))}]
+    (match (gs/start server [] {})
+      [:ok pid]
+      (do
+        (process/spawn
+          (process/proc-fn []
+            (async/close! done1)
+            (process/receive!
+              [:EXIT pid reason] (async/put! done2 [:reason reason])
+              (after 50 (async/put! done2 :timeout))))
+          {:link-to pid :flags {:trap-exit true}})
+        (await-completion done1 50)
+        (match (! pid 1) true :ok)
+        (is (match (await-completion done2 50)
+              [:ok [:reason [:exception {:message "TEST"
+                                         :class "clojure.lang.ExceptionInfo"
+                                         :data {:a 1}}]]]
+              :ok)
+            (str "gen-server must exit with reason containing exception thrown"
+                 " from terminate"))))))
 
 ;; ====================================================================
 ;; (terminate [reason state])
