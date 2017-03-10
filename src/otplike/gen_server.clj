@@ -239,8 +239,7 @@
   `(gs/start ~*ns* ~params ~options))
 
 (defn cast [server message]
-  (when-not (! server [:cast message])
-    (throw (Exception. "noproc"))))
+  (! server [:cast message]))
 
 (defn- call* [server message timeout-ms]
   (let [reply-to (async/chan)
