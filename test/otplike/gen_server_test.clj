@@ -609,6 +609,183 @@
         (is (await-process-exit pid 50)
             "gen-server must exit on bad return from handle-call")))))
 
+(deftest ^:parallel handle-call.bad-return.terminate-undefined
+  (let [done1 (async/chan)
+        done2 (async/chan)
+        server {:init (fn [_] [:ok :state])
+                :handle-call (fn [_ _ _] :bad-return)}]
+    (match (gs/start server [] {})
+      [:ok pid]
+      (do
+        (process/spawn
+          (process/proc-fn []
+            (async/close! done1)
+            (process/receive!
+              [:EXIT pid reason] (async/put! done2 [:reason reason])
+              (after 50 (async/put! done2 :timeout))))
+          {:link-to pid :flags {:trap-exit true}})
+        (await-completion done1 50)
+        (is (= [:EXIT [[:bad-return-value :bad-return] [`gs/call [pid nil 50]]]]
+               (process/ex-catch [:ok (gs/call pid nil 50)]))
+            (str "call must exit with reason containing bad-value returned from"
+                 " handle-call"))
+        (is (match (await-completion done2 50)
+              [:ok [:reason [:bad-return-value :bad-return]]] :ok)
+            (str "gen-server must exit with reason containing bad value"
+                 "returned from handle-call"))))))
+
+(deftest ^:parallel handle-call.callback-throws.terminate-undefined
+  (let [done1 (async/chan)
+        done2 (async/chan)
+        server {:init (fn [_] [:ok :state])
+                :handle-call (fn [_ _ _] (throw (ex-info "TEST" {:b 2})))}]
+    (match (gs/start server [] {})
+      [:ok pid]
+      (do
+        (process/spawn
+          (process/proc-fn []
+            (async/close! done1)
+            (process/receive!
+              [:EXIT pid reason] (async/put! done2 [:reason reason])
+              (after 50 (async/put! done2 :timeout))))
+          {:link-to pid :flags {:trap-exit true}})
+        (await-completion done1 50)
+        (is (= [:EXIT [[:exception {:message "TEST"
+                                    :class "clojure.lang.ExceptionInfo"
+                                    :data {:b 2}}]
+                       [`gs/call [pid nil 50]]]]
+               (let [[kind [[reason ex] f]] (process/ex-catch
+                                              [:ok (gs/call pid nil 50)])]
+                 [kind [[reason (dissoc ex :stack-trace)] f]]))
+            (str "call must exit with reason containing exception thrown from"
+                 " handle-call"))
+        (is (match (await-completion done2 50)
+              [:ok [:reason [:exception {:message "TEST"
+                                         :class "clojure.lang.ExceptionInfo"
+                                         :data {:b 2}}]]]
+              :ok)
+            (str "gen-server must exit with reason containing exception thrown"
+                 " from handle-call"))))))
+
+(deftest ^:parallel handle-call.exit-abnormal.terminate-undefined
+  (let [done1 (async/chan)
+        done2 (async/chan)
+        server {:init (fn [_] [:ok :state])
+                :handle-call (fn [_ _ _] (process/exit :abnormal))}]
+    (match (gs/start server [] {})
+      [:ok pid]
+      (do
+        (process/spawn
+          (process/proc-fn []
+            (async/close! done1)
+            (process/receive!
+              [:EXIT pid reason] (async/put! done2 [:reason reason])
+              (after 50 (async/put! done2 :timeout))))
+          {:link-to pid :flags {:trap-exit true}})
+        (await-completion done1 50)
+        (is (= [:EXIT [:abnormal [`gs/call [pid nil 50]]]]
+               (process/ex-catch [:ok (gs/call pid nil 50)]))
+            (str "call must exit with reason containing reason passed to exit"
+                 " in handle-call"))
+        (is (match (await-completion done2 50) [:ok [:reason :abnormal]] :ok)
+            (str "gen-server must exit with reason passed to exit in"
+                 " handle-call"))))))
+
+(deftest ^:parallel handle-call.exit-normal.terminate-undefined
+  (let [done1 (async/chan)
+        done2 (async/chan)
+        server {:init (fn [_] [:ok :state])
+                :handle-call (fn [_ _ _] (process/exit :normal))}]
+    (match (gs/start server [] {})
+      [:ok pid]
+      (do
+        (process/spawn
+          (process/proc-fn []
+            (async/close! done1)
+            (process/receive!
+              [:EXIT pid reason] (async/put! done2 [:reason reason])
+              (after 50 (async/put! done2 :timeout))))
+          {:link-to pid :flags {:trap-exit true}})
+        (await-completion done1 50)
+        (is (= [:EXIT [:normal [`gs/call [pid nil 50]]]]
+               (process/ex-catch [:ok (gs/call pid nil 50)]))
+            (str "call must exit with reason containing reason passed to exit"
+                 " in handle-call"))
+        (is (match (await-completion done2 50) [:ok [:reason :normal]] :ok)
+            (str "gen-server must exit with reason passed to exit in"
+                 " handle-call"))))))
+
+(deftest ^:parallel handle-call.stop-normal.terminate-undefined
+  (let [done1 (async/chan)
+        done2 (async/chan)
+        server {:init (fn [_] [:ok :state])
+                :handle-call (fn [_ _ state] [:stop :normal state])}]
+    (match (gs/start server [] {})
+      [:ok pid]
+      (do
+        (process/spawn
+          (process/proc-fn []
+            (async/close! done1)
+            (process/receive!
+              [:EXIT pid reason] (async/put! done2 [:reason reason])
+              (after 50 (async/put! done2 :timeout))))
+          {:link-to pid :flags {:trap-exit true}})
+        (await-completion done1 50)
+        (is (= [:EXIT [:normal [`gs/call [pid nil 50]]]]
+               (process/ex-catch [:ok (gs/call pid nil 50)]))
+            (str "call must exit with reason containing reason returned by"
+                 "  handle-call"))
+        (is (match (await-completion done2 50) [:ok [:reason :normal]] :ok)
+            "gen-server must exit with reason returned by handle-call")))))
+
+(deftest ^:parallel handle-call.stop-abnormal.terminate-undefined
+  (let [done1 (async/chan)
+        done2 (async/chan)
+        server {:init (fn [_] [:ok :state])
+                :handle-call (fn [_ _ state] [:stop :abnormal state])}]
+    (match (gs/start server [] {})
+      [:ok pid]
+      (do
+        (process/spawn
+          (process/proc-fn []
+            (async/close! done1)
+            (process/receive!
+              [:EXIT pid reason] (async/put! done2 [:reason reason])
+              (after 50 (async/put! done2 :timeout))))
+          {:link-to pid :flags {:trap-exit true}})
+        (await-completion done1 50)
+        (is (= [:EXIT [:abnormal [`gs/call [pid nil 50]]]]
+               (process/ex-catch [:ok (gs/call pid nil 50)]))
+            (str "call must exit with reason containing reason returned by"
+                 "  handle-call"))
+        (is (match (await-completion done2 50) [:ok [:reason :abnormal]] :ok)
+            "gen-server must exit with reason returned by handle-call")))))
+
+(deftest ^:parallel handle-call.undefined-callback.terminate-undefined
+  (let [done1 (async/chan)
+        done2 (async/chan)
+        server {:init (fn [_] [:ok :state])}]
+    (match (gs/start server [] {})
+      [:ok pid]
+      (do
+        (process/spawn
+          (process/proc-fn []
+            (async/close! done1)
+            (process/receive!
+              [:EXIT pid reason] (async/put! done2 [:reason reason])
+              (after 50 (async/put! done2 :timeout))))
+          {:link-to pid :flags {:trap-exit true}})
+        (await-completion done1 50)
+        (is (match (process/ex-catch [:ok (gs/call pid nil 50)])
+                   [:EXIT [[:undef ['handle-call [nil _ :state]]]
+                           [`gs/call [pid nil 50]]]] :ok)
+            (str "call must exit with reason containing arguments passed to"
+                 " handle-call"))
+        (is (match (await-completion done2 50)
+              [:ok [:reason [:undef ['handle-call [nil _ :state]]]]] :ok)
+            (str "gen-server must exit with reason containing arguments passed"
+                 " to handle-call"))))))
+
 ;; ====================================================================
 ;; (handle-cast [request state])
 
