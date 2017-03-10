@@ -119,6 +119,19 @@
 ;; ====================================================================
 ;; (handle-call [request from state])
 
+(deftest ^:parallel handle-call.call-delivers-message
+  (let [server {:init (fn [_] [:ok :state])
+                :handle-call
+                (fn [x _  state]
+                  (is (= x 123)
+                      "handle-call must receive message passed to call")
+                  [:reply :ok state])}]
+    (match (gs/start server [] {})
+      [:ok pid]
+      (do
+        (gs/call pid 123 50)
+        (match (process/exit pid :abnormal) true :ok)))))
+
 (deftest ^:parallel handle-call.undefined-callback
   (let [done1 (async/chan)
         done2 (async/chan)
@@ -599,6 +612,22 @@
 ;; ====================================================================
 ;; (handle-cast [request state])
 
+(deftest ^:parallel handle-cast.cast-delivers-message
+  (let [done (async/chan)
+        server {:init (fn [_] [:ok :state])
+                :handle-cast
+                (fn [x state]
+                  (is (= x 123)
+                      "handle-cast must receive message passed to cast")
+                  (async/close! done)
+                  [:reply :ok state])}]
+    (match (gs/start server [] {})
+      [:ok pid]
+      (do
+        (gs/cast pid 123)
+        (await-completion done 50)
+        (match (process/exit pid :abnormal) true :ok)))))
+
 (deftest ^:parallel handle-cast.undefined-callback
   (let [done (async/chan)
         server {:init (fn [_] [:ok :state])
@@ -956,6 +985,22 @@
 
 ;; ====================================================================
 ;; (handle-info [message state])
+
+(deftest ^:parallel handle-call.call-delivers-message
+  (let [done (async/chan)
+        server {:init (fn [_] [:ok :state])
+                :handle-info
+                (fn [x state]
+                  (is (= x 123)
+                      "handle-info must receive message passed to !")
+                  (async/close! done)
+                  [:reply :ok state])}]
+    (match (gs/start server [] {})
+      [:ok pid]
+      (do
+        (! pid 123)
+        (await-completion done 50)
+        (match (process/exit pid :abnormal) true :ok)))))
 
 (deftest ^:parallel handle-info.undefined-callback
   (let [done (async/chan)
