@@ -135,7 +135,7 @@
                [:EXIT [[:undef ['handle-call [1 _ :state]]]
                        [`gs/call [pid 1 50]]]]
                :ok)
-            "call must exit on bad return from handle-call")
+            "call must exit on absent handle-call callback")
         (is (await-completion done 50)
             "terminate must be called on bad return from handle-call")
         (is (await-process-exit pid 50)
