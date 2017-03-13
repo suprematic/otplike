@@ -12,109 +12,98 @@
 ;; ====================================================================
 ;; (start [server-impl args options])
 
-(deftest ^:parallel start-starts-the-process
-  (let [done (async/chan)
-        server (reify IGenServer
-                 (init [_ _]
-                   (async/close! done)
-                   [:ok []])
-                 (terminate [_ reason state]
-                   :ok)
-                 (handle-call [_ request from state]
-                   [:stop :handle-call-must-not-be-called state])
-                 (handle-cast [_ message state]
-                   [:stop :handle-cast-must-not-be-called state])
-                 (handle-info [_ message state]
-                   [:stop :handle-info-must-not-be-called state]))]
-    (gs/start server [] {})
-    (is (await-completion done 50))))
-
-(deftest ^:parallel start-passes-arguments-to-init
-  (let [done (async/chan)
-        server (reify IGenServer
-                 (init [_ args]
-                   (is
-                     (match args
-                       [:a 1 "str" ({:a 1 :b 2} :only [:a :b]) ([] :seq)]
-                       :ok))
-                   (async/close! done)
-                   [:ok args])
-                 (terminate [_ reason state]
-                   :ok)
-                 (handle-call [_ request from state]
-                   [:stop :handle-call-must-not-be-called state])
-                 (handle-cast [_ message state]
-                   [:stop :handle-cast-must-not-be-called state])
-                 (handle-info [_ message state]
-                   [:stop :handle-info-must-not-be-called state]))]
-    (gs/start server [:a 1 "str" {:a 1 :b 2} '()] {})
-    (await-completion done 50))
-  (let [done (async/chan)
-        server (reify IGenServer
-                 (init [_ args]
-                   (is (match args nil :ok))
-                   (async/close! done)
-                   [:ok args])
-                 (terminate [_ reason state]
-                   :ok)
-                 (handle-call [_ request from state]
-                   [:stop :handle-call-must-not-be-called state])
-                 (handle-cast [_ message state]
-                   [:stop :handle-cast-must-not-be-called state])
-                 (handle-info [_ message state]
-                   [:stop :handle-info-must-not-be-called state]))]
-    (gs/start server nil {})
-    (await-completion done 50)))
-
-(deftest ^:parallel start-throws-on-illegal-arguments
+(deftest ^:parallel start.illegal-arguments
   (is (thrown? Exception (gs/start 1 [] {})))
   (is (thrown? Exception (gs/start "server" [] {})))
   (is (thrown? Exception (gs/start [] [] {})))
   (is (thrown? Exception (gs/start #{} [] {})))
-  (let [server (reify IGenServer
-                 (init [_ args]
-                   [:ok args])
-                 (terminate [_ reason state]
-                   :ok)
-                 (handle-call [_ request from state]
-                   [:stop :handle-call-must-not-be-called state])
-                 (handle-cast [_ message state]
-                   [:stop :handle-cast-must-not-be-called state])
-                 (handle-info [_ message state]
-                   [:stop :handle-info-must-not-be-called state]))]
-    (is (thrown? Exception (gs/start server [] {:inbox "inbox"})))))
+  (let [done (async/chan)
+        server {:init (fn [args] [:ok args])
+                :terminate (fn [_ _] (async/close! done))}]
+    (is (thrown? Exception (gs/start server [] {:inbox "inbox"})))
+    (is (thrown? Exception (await-completion done 50))
+        (str "terminate must not be called when illegal arguments were passed"
+             " to start"))))
 
-(deftest ^:parallel start-returns-error-if-server-does-not-implement-init
-  #_(is (match (gs/start (reify IGenServer) [] {}) [:error :no-init] :ok)) ;FIXME
-  (is (match (gs/start {} [] {}) [:error :no-init] :ok))
-  (is (match (gs/start (in-ns 'test-ns) [] {}) [:error :no-init] :ok)))
+(deftest ^:parallel start.start-returns-pid
+  (let [server {:init (fn [args] [:ok args])}]
+    (match (gs/start server [] {})
+      [:ok pid] (match (process/exit pid :abnormal) true :ok))))
 
-(deftest ^:parallel start-returns-pid-on-successful-start
-  (let [server (reify IGenServer
-                 (init [_ args]
-                   [:ok args])
-                 (terminate [_ reason state]
-                   :ok)
-                 (handle-call [_ request from state]
-                   [:stop :handle-call-must-not-be-called state])
-                 (handle-cast [_ message state]
-                   [:stop :handle-cast-must-not-be-called state])
-                 (handle-info [_ message state]
-                   [:stop :handle-info-must-not-be-called state]))]
+(deftest ^:parallel init.start-calls-init
+  (let [done (async/chan)
+        server {:init (fn [_] (async/close! done) [:ok nil])}]
+    (gs/start server [] {})
+    (match (gs/start server nil {})
+      [:ok pid]
+      (do
+        (await-completion done 50)
+        (match (process/exit pid :abnormal) true :ok)))))
+
+(deftest ^:parallel init.start-passes-arguments
+  (let [done (async/chan)
+        server {:init
+                (fn [args]
+                  (is (= [:a 1 "str" {:a 1 :b 2} '()] args)
+                      "args passed to init must be the same as passed to start")
+                  (async/close! done)
+                  [:ok args])}]
+    (match (gs/start server [:a 1 "str" {:a 1 :b 2} '()] {})
+      [:ok pid]
+      (do
+        (await-completion done 50)
+        (match (process/exit pid :abnormal) true :ok))))
+  (let [done (async/chan)
+        server {:init
+                (fn [args]
+                  (is (= nil args)
+                      "args passed to init must be the same as passed to start")
+                  (async/close! done)
+                  [:ok args])}]
+    (match (gs/start server nil {})
+      [:ok pid]
+      (do
+        (await-completion done 50)
+        (match (process/exit pid :abnormal) true :ok)))))
+
+(deftest ^:parallel init.undefined-callback
+  (is (= [:error [:undef ['init [1]]]] (gs/start {} 1 {})))
+  (is (= [:error [:undef ['init [1]]]] (gs/start (in-ns 'test-ns) 1 {})))
+  (let [done (async/chan)
+        server {:terminate (fn [_ _] (async/put! done :val))}]
+    (is (= [:error [:undef ['init [1]]]] (gs/start server 1 {})))
+    (is (= nil (async/poll! done))
+        "terminate must not be called if init is undefined")))
+
+(deftest ^:parallel init.callback-throws
+  (let [done (async/chan)
+        server {:init (fn [_] (throw (Exception. "TEST")))
+                :terminate (fn [_ _] (async/put! done :val))}]
     (is (match (gs/start server [] {})
-          [:ok (_pid :guard process/pid?)] :ok))))
+          [:error [:exception {:message "TEST" :class "java.lang.Exception"}]]
+          :ok)
+        "error returned by start must contain exception thrown from callback")
+    (is (= nil (async/poll! done))
+        "terminate must not be called if init throws")))
 
-(deftest ^:parallel start-returns-error-with-exception-when-init-throws
-  (let [server {:init (fn [_] (throw (Exception.)))}]
+(deftest ^:parallel init.bad-return
+  (let [done (async/chan)
+        server {:init (fn [_] :bad-return)
+                :terminate (fn [_ _] (async/put! done :val))}]
     (is (match (gs/start server [] {})
-          [:error {:message _m :class "java.lang.Exception"}] :ok))))
+          [:error [:bad-return-value :bad-return]] :ok)
+        "error returned by start must contain value returned by callback")
+    (is (= nil (async/poll! done))
+        "terminate must not be called if init returns bad value")))
 
-(deftest ^:parallel start-returns-bad-value-when-init-returns-bad-value
-  (let [server {:init (fn [_] :bad-return)}]
-    (is (match (gs/start server [] {})
-          [:error [:bad-return-value :bad-return]] :ok))))
-
-; TODO test init timeout
+(deftest ^:parallel init.timeout
+  (let [done (async/chan)
+        server {:init (fn [_] (async/<!! (async/timeout 2000)) [:ok nil])
+                :terminate (fn [_ _] (async/put! done :val))}]
+    (is (match (gs/start server [] {}) [:error :timeout] :ok)
+        "error returned by start must contain :timeout")
+    (is (= nil (async/poll! done))
+        "terminate must not be called if init returns bad value")))
 
 ;; ====================================================================
 ;; (handle-call [request from state])
