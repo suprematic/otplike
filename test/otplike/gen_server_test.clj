@@ -269,7 +269,7 @@
             "call must exit if :stop returned by handle-call")
         (is (await-completion done 50)
             "terminate must be called after :stop returned by handle-call")
-        (is (await-process-exit pid 50)
+        (is (await-process-exit pid 100)
             "gen-server must exit after :stop returned by handle-call")))))
 
 (deftest ^:parallel handle-call.stop-abnormal
