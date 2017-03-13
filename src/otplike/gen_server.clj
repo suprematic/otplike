@@ -103,15 +103,9 @@
     _
     (cast-or-info :info impl message state)))
 
-(defn- call-init [impl args]
-  (try
-    (init impl args)
-    (catch Exception e
-      [:stop (u/stack-trace e)])))
-
 (process/proc-defn gen-server-proc [impl init-args response]
-  (match (call-init impl init-args)
-    [:ok initial-state]
+  (match (process/ex-catch [:ok (init impl init-args)])
+    [:ok [:ok initial-state]]
     (do
       (put!* response :ok)
       (loop [state initial-state]
@@ -121,39 +115,57 @@
                     [:terminate :normal _new-state] :ok
                     [:terminate reason _new-state] (process/exit reason)))))
 
-    [:stop reason]
+    [:ok [:stop reason]]
     (put!* response [:error reason])
 
-    other
-    (put!* response [:error [:bad-return-value other]])))
+    [:ok other]
+    (put!* response [:error [:bad-return-value other]])
+
+    [:EXIT reason]
+    (put!* response [:error reason])))
 
 (alter-meta! #'gen-server-proc assoc :no-doc true)
+
+(defn- call-init [init args]
+  (if init
+    (init args)
+    (process/exit [:undef ['init [args]]])))
+
+(defn- call-handle-call [handle-call request from state]
+  (if handle-call
+    (handle-call request from state)
+    (process/exit [:undef ['handle-call [request from state]]])))
+
+(defn- call-handle-cast [handle-cast request state]
+  (if handle-cast
+    (handle-cast request state)
+    (process/exit [:undef ['handle-cast [request state]]])))
+
+(defn- call-handle-info [handle-info request state]
+  (if handle-info
+    (handle-info request state)
+    (process/exit [:undef ['handle-info [request state]]])))
+
+(defn- call-terminate [terminate reason state]
+  (if terminate
+    (terminate reason state)))
 
 (defn- coerce-map [{:keys [init handle-call handle-cast handle-info terminate]}]
   (reify IGenServer
     (init [_ args]
-      (if init
-        (init args)
-        [:stop :no-init])) ;TODO check if init must call exit also (process/exit [:undef ['init [args]]])
+      (call-init init args))
 
     (handle-cast [_ request state]
-      (if handle-cast
-        (handle-cast request state)
-        (process/exit [:undef ['handle-cast [request state]]])))
+      (call-handle-cast handle-cast request state))
 
     (handle-call [_ request from state]
-      (if handle-call
-        (handle-call request from state)
-        (process/exit [:undef ['handle-call [request from state]]])))
+      (call-handle-call handle-call request from state))
 
     (handle-info [_ request state]
-      (if handle-info
-        (handle-info request state)
-        (process/exit [:undef ['handle-info [request state]]])))
+      (call-handle-info handle-info request state))
 
     (terminate [_ reason state] ; terminate is optional
-      (if terminate
-        (terminate reason state)))))
+      (call-terminate terminate reason state))))
 
 (defn- ns-function [fun-ns fun-name]
   (if-let [fun-var (ns-resolve fun-ns fun-name)]
@@ -170,28 +182,19 @@
 (defn- coerce-ns-dynamic [impl-ns]
   (reify IGenServer
     (init [_ args]
-      (if-let [init (ns-function impl-ns 'init)]
-        (init args)
-        [:stop :no-init])) ;TODO check if init must call exit also (process/exit [:undef ['init [args]]])
+      (call-init (ns-function impl-ns 'init) args))
 
     (handle-cast [_ request state]
-      (if-let [handle-cast (ns-function impl-ns 'handle-cast)]
-        (handle-cast request state)
-        (process/exit [:undef ['handle-cast [request state]]])))
+      (call-handle-cast (ns-function impl-ns 'handle-cast) request state))
 
     (handle-call [_ request from state]
-      (if-let [handle-call (ns-function impl-ns 'handle-call)]
-        (handle-call request from state)
-        (process/exit [:undef ['handle-call [request from state]]])))
+      (call-handle-call (ns-function impl-ns 'handle-call) request from state))
 
     (handle-info [_ request state]
-      (if-let [handle-info (ns-function impl-ns 'handle-info)]
-        (handle-info request state)
-        (process/exit [:undef ['handle-info [request state]]])))
+      (call-handle-info (ns-function impl-ns 'handle-info) request state))
 
     (terminate [_ reason state] ; terminate is optional
-      (if-let [terminate (ns-function impl-ns 'terminate)]
-        (terminate reason state)))))
+      (call-terminate (ns-function impl-ns 'terminate) reason state))))
 
 (def ^:private coerce-ns coerce-ns-dynamic)
 
