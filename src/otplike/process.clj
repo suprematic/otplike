@@ -616,7 +616,8 @@
 
   The following options are allowed:
   :flags - a map of process' flags (e.g. {:trap-exit true})
-  :register - any valid name to register the process
+  :register - name to register the process, can not be pid, if name is
+    nil process will not be registered
   :link-to - a pid or a sequence of pids to link process to
   :inbox - the channel to be used as a process' inbox"
   ([proc-func]
