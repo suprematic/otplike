@@ -231,7 +231,8 @@
     ; FIXME handle timeout
     (match (async/alts!! [response (async/timeout 1000)])
       [:ok response] [:ok pid]
-      [[:error reason] response] [:error reason])))
+      [[:error reason] response] [:error reason]
+      [nil timeout] [:error :timeout])))
 
 (defmacro start-ns [params options]
   "Starts the server, taking current ns as a implementation source.
