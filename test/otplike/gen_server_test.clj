@@ -8,6 +8,10 @@
   (:import [otplike.gen_server IGenServer]))
 
 ; TODO test external exit of server process (trap-exit true and false)
+; TODO test bad callback (bad arity or not a function at all)
+; TODO test everything with both map and ns server
+
+; TODO unlink starting process on timeout
 
 ;; ====================================================================
 ;; (start [server-impl args options])
@@ -107,6 +111,8 @@
 
 ;; ====================================================================
 ;; (handle-call [request from state])
+
+; TODO test process exit reason
 
 (deftest ^:parallel handle-call.call-delivers-message
   (let [server {:init (fn [_] [:ok :state])
