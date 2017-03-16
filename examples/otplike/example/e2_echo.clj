@@ -1,6 +1,6 @@
 (ns otplike.example.e2-echo
   (:require [otplike.process :as process :refer [!]]
-            [otplike.util :as util]))
+            [otplike.proc-util :as proc-util]))
 
 (process/proc-defn server []
   (println "server: waiting for messages...")
@@ -11,7 +11,7 @@
                  (recur))
     :stop (println "server: stopped")))
 
-(util/defn-proc run []
+(proc-util/defn-proc run []
   (let [pid (process/spawn server [] {})]
     (! pid [(process/self) :hello])
     (process/receive!

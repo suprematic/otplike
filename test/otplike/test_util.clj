@@ -27,7 +27,6 @@
       (catch Exception _e
         nil))))
 
-
 (defn await-completion
   "Returns:
     - [:ok val] if chan gets any value during timeout-ms,

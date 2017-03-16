@@ -21,21 +21,3 @@
                              (if (instance? clojure.lang.ExceptionInfo e)
                                {:data (ex-data e)}))))
      acc)))
-
-(defmacro defn-proc
-  "Defines function with name fname, arguments args, which body is
-  executed in newly created process context."
-  [fname args & body]
-  `(defn ~fname []
-     (let [done# (async/chan)]
-       (spawn
-         (proc-fn
-           ~args
-           (try
-             (let [res# (do ~@body)]
-               (when (some? res#) (>! done# res#)))
-             (finally
-               (async/close! done#))))
-         []
-         {})
-       (<!! done#))))

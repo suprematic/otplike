@@ -7,7 +7,7 @@
 ; => (require '[otplike.example.e7-bike-rent :as e7])
 ; => (require '[otplike.process :as process])
 ; => (e7/start [1 2 3])
-; => (util/defn-proc p []
+; => (proc-util/defn-proc p []
 ;      (let [[_ bike] (e7/rent)]
 ;        (e7/return bike)
 ;        (e7/rent)
