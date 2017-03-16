@@ -1090,6 +1090,9 @@
 ;; ====================================================================
 ;; (spawn [proc-fun args options])
 
+; TODO test spawn linking to calling process called not by process
+; TODO test registering process with nil name
+
 (deftest ^:parallel spawn-calls-pfn
   (let [done (async/chan)]
     (process/spawn (proc-fn [] (async/close! done)) [] {})
