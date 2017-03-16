@@ -240,7 +240,7 @@
 (defmacro start-ns [params options]
   "Starts the server, taking current ns as a implementation source.
   See start for more info."
-  `(gs/start ~*ns* ~params ~options))
+  `(start ~*ns* ~params ~options))
 
 (defn cast [server message]
   (! server [:cast message]))
