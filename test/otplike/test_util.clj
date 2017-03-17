@@ -1,7 +1,9 @@
 (ns otplike.test-util
-  (:require [otplike.process :as process]
-            [clojure.core.async :as async]
-            [clojure.core.match :refer [match]]))
+  (:require [clojure.core.async :as async]
+            [clojure.test :as clojure-test]
+            [clojure.core.match :refer [match]]
+            [otplike.proc-util :as proc-util]
+            [otplike.process :as process]))
 
 (defn uuid-keyword
   "Makes random keyword with a name being UUID string."
@@ -50,3 +52,18 @@
                        (after timeout-ms :timeout)))
                    {:link-to pid :flags {:trap-exit true}})
     (match (await-completion done timeout-ms) [:ok reason] reason)))
+
+(defn notify-on-process-exit
+  "Puts [:ok reason] to chan if process exited during timeout-ms
+  or :timeout if not."
+  [pid chan timeout-ms]
+  (process/spawn (process/proc-fn []
+                   (process/receive!
+                     [:EXIT pid reason] (async/put! chan [:ok reason])
+                     (after timeout-ms (async/put! chan :timeout))))
+                 {:link-to pid :flags {:trap-exit true}}))
+
+(defmacro def-proc-test [name & body]
+  `(clojure-test/deftest ~name
+     (proc-util/execute-proc
+       ~@body)))

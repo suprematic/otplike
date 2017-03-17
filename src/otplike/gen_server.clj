@@ -84,7 +84,7 @@
   (async/put! chan value)
   (async/close! chan))
 
-(defn- dispatch [impl state message]
+(defn- dispatch [impl parent state message]
   (match message
     [:call from [:internal :get-state]]
     (do
@@ -97,20 +97,20 @@
     [:cast request]
     (cast-or-info :cast impl request state)
 
-    [:EXIT _ :shutdown]
-    (do-terminate impl :shutdown state)
+    [:EXIT parent reason]
+    (do-terminate impl reason state)
 
     _
     (cast-or-info :info impl message state)))
 
-(process/proc-defn gen-server-proc [impl init-args response]
+(process/proc-defn gen-server-proc [impl init-args parent response]
   (match (process/ex-catch [:ok (init impl init-args)])
     [:ok [:ok initial-state]]
     (do
       (put!* response :ok)
       (loop [state initial-state]
         (process/receive!
-          message (match (dispatch impl state message)
+          message (match (dispatch impl parent state message)
                     [:recur new-state] (recur new-state)
                     [:terminate :normal _new-state] :ok
                     [:terminate reason _new-state] (process/exit reason)))))
@@ -229,7 +229,8 @@
   [server-impl args options]
   (let [gs (->gen-server server-impl)
         response (async/chan)
-        pid (process/spawn gen-server-proc [gs args response] options)]
+        parent (process/self)
+        pid (process/spawn gen-server-proc [gs args parent response] options)]
     ; TODO allow to override timeout passing it as argument
     ; FIXME handle timeout
     (match (async/alts!! [response (async/timeout 1000)])
