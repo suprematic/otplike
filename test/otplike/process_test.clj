@@ -270,7 +270,7 @@
 (deftest ^:parallel exit-abnormal-no-trap-exit
   (let [done (async/chan)
         pfn (proc-fn []
-              (is (nil? (<! (await-message 50)))
+              (is (match (<! (await-message 50)) [:noproc _] :ok)
                   (str "exit with reason other than :normal must close"
                        "process' inbox"))
               (async/close! done))
@@ -291,7 +291,7 @@
 (deftest ^:parallel exit-kill-no-trap-exit
   (let [done (async/chan)
         pfn (proc-fn []
-              (is (nil? (<! (await-message 50)))
+              (is (match (<! (await-message 50)) [:noproc _] :ok)
                   "exit with reason :kill must close process' inbox")
               (async/close! done))
         pid (process/spawn pfn [] {})]
@@ -301,7 +301,7 @@
 (deftest ^:parallel exit-kill-trap-exit
   (let [done (async/chan)
         pfn (proc-fn []
-              (is (nil? (<! (await-message 50)))
+              (is (match (<! (await-message 50)) [:noproc _] :ok)
                   "exit with reason :kill must close process' inbox")
               (async/close! done))
         pid (process/spawn pfn [] {:flags {:trap-exit true}})]
@@ -375,7 +375,7 @@
     (process/spawn
       (proc-fn []
         (process/exit (process/self) :kill)
-        (is (nil? (<! (await-message 50)))
+        (is (match (<! (await-message 50)) [:noproc _] :ok)
             "exit with reason :kill must close inbox of process trapping exits")
         (async/close! done))
       []
@@ -398,7 +398,7 @@
     (process/spawn
       (proc-fn []
         (process/exit (process/self) :abnormal)
-        (is (nil? (<! (await-message 50)))
+        (is (match (<! (await-message 50)) [:noproc _] :ok)
             (str "exit with any reason except :normal must close"
                  " inbox of proces not trapping exits"))
         (async/close! done))
@@ -409,7 +409,7 @@
     (process/spawn
       (proc-fn []
         (process/exit (process/self) :kill)
-        (is (nil? (<! (await-message 50)))
+        (is (match (<! (await-message 50)) [:noproc _] :ok)
             (str "exit with reason :kill must close inbox of process"
                  " not trapping exits"))
         (async/close! done))
@@ -560,7 +560,7 @@
                        " make process to trap exits"))
               (process/flag :trap-exit false)
               (async/close! done2)
-              (is (nil? (<! (await-message 50)))
+              (is (match (<! (await-message 50)) [:noproc _] :ok)
                   (str "flag :trap-exit switched second time in process"
                        " must make process to switch trapping exits"))
               (async/close! done3))
@@ -703,7 +703,7 @@
   (let [done1 (async/chan)
         done2 (async/chan)
         pfn2 (proc-fn []
-               (is (nil? (<! (await-message 50)))
+               (is (match (<! (await-message 50)) [:noproc _] :ok)
                    (str "process must exit when linked process exits"
                         " with reason other than :normal"))
                (async/close! done2))
@@ -711,7 +711,7 @@
         pfn1 (proc-fn []
                (process/link pid2)
                (async/close! done1)
-               (is (nil? (<! (await-message 50)))
+               (is (match (<! (await-message 50)) [:noproc _] :ok)
                    "exit must close inbox of process not trapping exits"))
         pid1 (process/spawn pfn1 [] {})]
     (await-completion done1 50)
@@ -736,7 +736,7 @@
         pfn1 (proc-fn []
                (process/link pid2)
                (async/close! done1)
-               (is (nil? (<! (await-message 100)))
+               (is (match (<! (await-message 100)) [:noproc _] :ok)
                    "exit must close inbox of process not trapping exits"))
         pid1 (process/spawn pfn1 [] {})]
     (async/>!! ch pid1)
@@ -749,7 +749,7 @@
   (let [done1 (async/chan)
         done2 (async/chan)
         pfn2 (proc-fn []
-               (is (nil? (<! (await-message 100)))
+               (is (match (<! (await-message 100)) [:noproc _] :ok)
                    (str "process must exit when linked process exits"
                         " with reason other than :normal"))
                (async/close! done2))
@@ -759,7 +759,7 @@
                (process/link pid2)
                (process/link pid2)
                (async/close! done1)
-               (is (nil? (<! (await-message 50)))
+               (is (match (<! (await-message 50)) [:noproc _] :ok)
                    "exit must close inbox of process not trapping exits"))
         pid1 (process/spawn pfn1 [] {})]
     (await-completion done1 50)
@@ -784,7 +784,7 @@
                (process/link pid2)
                (process/link pid2)
                (async/close! done1)
-               (is (nil? (<! (await-message 50)))
+               (is (match (<! (await-message 50)) [:noproc _] :ok)
                    "exit must close inbox of process not trapping exits"))
         pid1 (process/spawn pfn1 [] {})]
     (async/>!! ch pid1)
@@ -809,7 +809,7 @@
                (process/link pid2)
                (process/unlink pid2)
                (async/close! done1)
-               (is (nil? (<! (await-message 50)))
+               (is (match (<! (await-message 50)) [:noproc _] :ok)
                    "exit must close inbox of process not trapping exits"))
         pid1 (process/spawn pfn1 [] {})]
     (await-completion done1 50)
@@ -853,7 +853,7 @@
         pfn1 (proc-fn []
                (try
                  (process/link pid2)
-                 (is (nil? (<! (await-message 50)))
+                 (is (match (<! (await-message 50)) [:noproc _] :ok)
                      (str "linking to terminated process must either"
                           " throw or close inbox of process"
                           " not trapping exits"))
@@ -1282,7 +1282,7 @@
 (deftest ^:parallel spawned-process-traps-exits-according-options
   (let [done (async/chan)
         pfn (proc-fn []
-              (is (nil? (<! (await-message 50)))
+              (is (match (<! (await-message 50)) [:noproc _] :ok)
                   "process spawned with no options must not trap exits")
               (async/close! done))
         pid (process/spawn pfn [] {})]
@@ -1308,7 +1308,7 @@
         pid (process/spawn pfn [] {})
         pfn1 (proc-fn []
                (async/close! done1)
-               (is (nil? (<! (await-message 50)))
+               (is (match (<! (await-message 50)) [:noproc _] :ok)
                    (str "process spawned with option :link-to must exit"
                         " when linked process exited"))
                (async/close! done))]
@@ -1316,7 +1316,7 @@
     (await-completion done 100))
   (let [done (async/chan)
         done1 (async/chan)
-        pfn (proc-fn [] (is (nil? (<! (await-message 100)))))
+        pfn (proc-fn [] (is (match (<! (await-message 100)) [:noproc _] :ok)))
         pid (process/spawn pfn [] {})
         pfn1 (proc-fn []
                       (async/close! done1)
@@ -1353,7 +1353,7 @@
 (deftest ^:parallel spawned-process-does-not-trap-exits-by-default
   (let [done (async/chan)
         pfn (proc-fn []
-              (is (nil? (<! (await-message 50)))
+              (is (match (<! (await-message 50)) [:noproc _] :ok)
                   (str "process' inbox must be closed after exit with"
                        " reason other than :normal was called if process"
                        " doesn't trap exits"))
@@ -1400,7 +1400,7 @@
         pfn (proc-fn [] (is (process/exit (process/self) :abnormal)))
         pfn1 (proc-fn []
                (process/spawn-link pfn [] {})
-               (is (nil? (<! (await-message 50)))
+               (is (match (<! (await-message 50)) [:noproc _] :ok)
                    (str "process #1 not trapping exits and spawned process #2"
                         " with spawn-link must exit after process #2 exited"))
                (async/close! done))]
@@ -1422,7 +1422,7 @@
   spawn-link-called-from-exited-proc-fn-cause-spawned-process-exit
   (let [done (async/chan)
         pfn (proc-fn []
-              (is (nil? (<! (await-message 50))))
+              (is (match (<! (await-message 50)) [:noproc _] :ok))
               (async/close! done))
         pfn1 (proc-fn []
               (process/exit (process/self) :abnormal)
@@ -1439,7 +1439,7 @@
 
 (deftest ^:parallel down-message-is-sent-when-monitored-process-exits
   (let [done (async/chan)
-        pfn1 (proc-fn [] (is (nil? (<! (await-message 100)))))
+        pfn1 (proc-fn [] (is (match (<! (await-message 100)) [:noproc _] :ok)))
         pid1 (process/spawn pfn1 [] {})
         pfn2 (proc-fn []
                (let [mref (process/monitor pid1)]
@@ -1470,7 +1470,7 @@
     (await-completion done 150))
   (let [reg-name (uuid-keyword)
         done (async/chan)
-        pfn1 (proc-fn [] (is (nil? (<! (await-message 100)))))
+        pfn1 (proc-fn [] (is (match (<! (await-message 100)) [:noproc _] :ok)))
         pid1 (process/spawn pfn1 [] {:register reg-name})
         pfn2 (proc-fn []
                (let [mref (process/monitor reg-name)]
@@ -1486,7 +1486,7 @@
     (await-completion done 150))
   (let [reg-name (uuid-keyword)
         done (async/chan)
-        pfn1 (proc-fn [] (is (nil? (<! (await-message 100)))))
+        pfn1 (proc-fn [] (is (match (<! (await-message 100)) [:noproc _] :ok)))
         pid1 (process/spawn pfn1 [] {:register reg-name})
         pfn2 (proc-fn []
                (let [mref (process/monitor reg-name)]
@@ -1697,7 +1697,7 @@
               (process/monitor (process/self))
               (<! (async/timeout 50))
               (async/close! done1)
-              (is (nil? (<! (await-message 50)))
+              (is (match (<! (await-message 50)) [:noproc _] :ok)
                   (str "process called monitor with self as argument must not"
                        " receive :DOWN message when exit is called for the"
                        " process"))
@@ -1713,7 +1713,7 @@
               (process/monitor reg-name)
               (<! (async/timeout 50))
               (async/close! done1)
-              (is (nil? (<! (await-message 50)))
+              (is (match (<! (await-message 50)) [:noproc _] :ok)
                   (str "process called monitor with self reg-name as argument"
                        " must not receive :DOWN message when exit is called"
                        " for the process"))

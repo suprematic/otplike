@@ -16,7 +16,8 @@
     - [:exit [pid reason]] if :EXIT message received
     - [:down [ref object reason]] if :DOWN message received
     - [:message message] on any other message
-    - nil if inbox becomes closed before message appears"
+    - [:noproc reason] if inbox becomes closed before message
+      appears"
   [timeout-ms]
   (async/go
     (try
@@ -26,8 +27,8 @@
         msg [:message msg]
         (after timeout-ms
           :timeout))
-      (catch Exception _e
-        nil))))
+      (catch Exception e
+        [:noproc (process/ex->reason e)]))))
 
 (defn await-completion
   "Returns:
@@ -65,5 +66,4 @@
 
 (defmacro def-proc-test [name & body]
   `(clojure-test/deftest ~name
-     (proc-util/execute-proc
-       ~@body)))
+     (proc-util/execute-proc ~@body)))
