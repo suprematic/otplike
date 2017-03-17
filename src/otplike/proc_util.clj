@@ -1,5 +1,6 @@
 (ns otplike.proc-util
   (:require [clojure.core.async :as async]
+            [clojure.core.match :refer [match]]
             [otplike.process :as process]))
 
 (defmacro execute-proc
@@ -11,12 +12,16 @@
          []
          (try
            (let [res# (do ~@body)]
-             (when (some? res#) (async/>! done# res#)))
-           (finally
-             (async/close! done#))))
+             (async/put! done# [:ok res#]))
+           (catch Throwable t#
+             (async/put! done# [:ex t#]))))
        []
        {})
-     (async/<!! done#)))
+     (match (async/<!! done#)
+       [:ok res#] res#
+       [:ex e#] (do
+                  (println ">ex")
+                  (throw e#)))))
 
 (defmacro defn-proc
   "Defines function with name fname, arguments args, which body is
