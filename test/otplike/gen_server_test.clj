@@ -145,7 +145,8 @@
 (def-proc-test ^:parallel start.start-returns-pid
   (let [server {:init (fn [args] [:ok args])}]
     (match (gs/start server [] {})
-      [:ok pid] (match (process/exit pid :abnormal) true :ok))))
+      [:ok (pid :guard process/pid?)]
+      (match (process/exit pid :abnormal) true :ok))))
 
 (def-proc-test ^:parallel init.start-calls-init
   (let [done (async/chan)
