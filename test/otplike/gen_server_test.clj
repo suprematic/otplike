@@ -213,14 +213,38 @@
     (is (= nil (async/poll! done))
         "terminate must not be called if init returns bad value")))
 
-(def-proc-test ^:parallel init.timeout
+(def-proc-test ^:parallel init.timeout.not-linked-to-parent
   (let [done (async/chan)
-        server {:init (fn [_] (async/<!! (async/timeout 2000)) [:ok nil])
+        pid-chan (async/chan)
+        server {:init (fn [_]
+                        (async/put! pid-chan (process/self))
+                        (<!! (async/timeout 1100))
+                        [:ok nil])
                 :terminate (fn [_ _] (async/put! done :val))}]
     (is (match (gs/start server [] {}) [:error :timeout] :ok)
         "error returned by start must contain :timeout")
-    (is (= nil (async/poll! done))
-        "terminate must not be called if init returns bad value")))
+    (match (await-completion pid-chan 50)
+      [:ok pid]
+      (do
+        (is (await-process-exit pid 50)
+            "gen-server process must exit if start failed by timeout")
+        (is (= nil (async/poll! done))
+            "terminate must not be called if init returns bad value")))))
+
+(def-proc-test ^:parallel init.timeout.linked-to-parent
+  (let [server {:init (fn [_]
+                        (<!! (async/timeout 1100))
+                        [:ok nil])}]
+    (is (match (gs/start server [] {:link-to (process/self)})
+               [:error :timeout] :ok)
+        "error returned by start must contain :timeout")
+    (is (= :timeout (<!! (await-message 200)))
+        (str "process must stay alive after gen-server/start fails with"
+             "timeout even if start was called with :link-to options set"
+             "to self"))))
+
+; FIXME remove possibility to link to arbitrary processes on spawn leave spawn-link only)
+; link required to establish exactly one link between processes
 
 ;; ====================================================================
 ;; (handle-call [request from state])

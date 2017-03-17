@@ -237,7 +237,9 @@
     (match (async/alts!! [response (async/timeout 1000)])
       [:ok response] [:ok pid]
       [[:error reason] response] [:error reason]
-      [nil timeout] [:error :timeout])))
+      [nil timeout] (do (process/unlink pid)
+                        (process/exit pid :kill)
+                        [:error :timeout]))))
 
 (defmacro start-ns [params options]
   "Starts the server, taking current ns as a implementation source.
