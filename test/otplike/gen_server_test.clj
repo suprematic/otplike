@@ -150,7 +150,6 @@
 (def-proc-test ^:parallel init.start-calls-init
   (let [done (async/chan)
         server {:init (fn [_] (async/close! done) [:ok nil])}]
-    (gs/start server [] {})
     (match (gs/start server nil {})
       [:ok pid]
       (do
