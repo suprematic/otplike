@@ -14,6 +14,7 @@
 
   (handle-call [_ request from state]
     #_[:reply Reply NewState]
+    #_[:noreply NewState]
     #_[:stop Reason Reply NewState]
     #_[:stop Reason NewState])
 
