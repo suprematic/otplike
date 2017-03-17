@@ -216,7 +216,7 @@
    {:post [(or (true? %) (false? %))]}
    (u/check-args [(pid? pid)
                   (some? reason)])
-   (!control pid [:exit pid reason])))
+   (!control pid [:exit (self) reason])))
 
 (defn flag
   "Sets the value of a process flag. See description of each flag below.
