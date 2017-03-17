@@ -19,9 +19,7 @@
        {})
      (match (async/<!! done#)
        [:ok res#] res#
-       [:ex e#] (do
-                  (println ">ex")
-                  (throw e#)))))
+       [:ex e#] (throw e#))))
 
 (defmacro defn-proc
   "Defines function with name fname, arguments args, which body is
