@@ -233,7 +233,6 @@
         parent (process/self)
         pid (process/spawn gen-server-proc [gs args parent response] options)]
     ; TODO allow to override timeout passing it as argument
-    ; FIXME handle timeout
     (match (async/alts!! [response (async/timeout 1000)])
       [:ok response] [:ok pid]
       [[:error reason] response] [:error reason]
