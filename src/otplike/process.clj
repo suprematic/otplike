@@ -497,21 +497,17 @@
   (let [trap-exit (:trap-exit @flags)]
     (match message
       [:stop reason] [::break reason]
-      [:exit xpid :kill] (do
-                           (assert (pid? xpid))
-                           [::break :killed])
-      [:exit xpid :normal] (do
-                             (assert (pid? xpid))
-                             (when trap-exit
-                               (! pid [:EXIT xpid :normal]))
-                             ::continue)
-      [:exit xpid reason] (do
-                            (assert (pid? xpid))
-                            (if trap-exit
-                              (do
-                                (! pid [:EXIT xpid reason])
-                                ::continue)
-                              [::break reason]))
+      [:exit (xpid :guard pid?) :kill] [::break :killed]
+      [:exit (xpid :guard pid?) :normal] (do
+                                           (when trap-exit
+                                             (! pid [:EXIT xpid :normal]))
+                                           ::continue)
+      [:exit (xpid :guard pid?) reason] (do
+                                          (if trap-exit
+                                            (do
+                                              (! pid [:EXIT xpid reason])
+                                              ::continue)
+                                            [::break reason]))
       [:two-phase
        complete other cfn] (do
                              (let [p1result (two-phase process other cfn)]
