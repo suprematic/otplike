@@ -147,7 +147,9 @@
   Throws when called not in process context."
   []
   {:post [(pid? %)]}
-  (or *self* (throw (Exception. "noproc"))))
+  (if (@*processes *self*)
+    *self*
+    (throw (Exception. "noproc"))))
 
 (defn whereis
   "Returns the process identifier with the registered name reg-name,

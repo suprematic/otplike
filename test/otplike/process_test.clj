@@ -1425,17 +1425,14 @@
     (process/spawn pfn1 [] {:flags {:trap-exit true}})
     (await-completion done 100)))
 
-(def-proc-test ^:parallel
-  spawn-link-called-from-exited-proc-fn-cause-spawned-process-exit
+(def-proc-test ^:parallel spawn-link-throws-when-called-from-exited-process
   (let [done (async/chan)
-        pfn (proc-fn []
-              (is (match (<! (await-message 50)) [:noproc _] :ok))
-              (async/close! done))
+        pfn (proc-fn [] (is false "process must not be started"))
         pfn1 (proc-fn []
-              (process/exit (process/self) :abnormal)
-              (<! (async/timeout 50))
-              (is (process/spawn-link pfn [] {}))
-              (is (await-completion done 100)))]
+               (process/exit (process/self) :abnormal)
+               (<! (async/timeout 50))
+               (is (thrown? Exception (process/spawn-link pfn [] {})))
+               (async/close! done))]
     (process/spawn pfn1 [] {})
     (await-completion done 200)))
 
