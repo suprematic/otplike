@@ -117,13 +117,19 @@
                     [:terminate reason _new-state] (process/exit reason)))))
 
     [:ok [:stop reason]]
-    (put!* response [:error reason])
+    (do
+      (put!* response [:error reason])
+      (process/exit reason))
 
     [:ok other]
-    (put!* response [:error [:bad-return-value other]])
+    (let [reason [:bad-return-value other]]
+      (put!* response [:error reason])
+      (process/exit reason))
 
     [:EXIT reason]
-    (put!* response [:error reason])))
+    (do
+      (put!* response [:error reason])
+      (process/exit reason))))
 
 (alter-meta! #'gen-server-proc assoc :no-doc true)
 
