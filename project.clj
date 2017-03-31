@@ -7,7 +7,8 @@
 
   :dependencies [[org.clojure/clojure "1.8.0"]
                  [org.clojure/core.async ~core-async-version]
-                 [org.clojure/core.match "0.3.0-alpha4"]]
+                 [org.clojure/core.match "0.3.0-alpha4"]
+                 [clojure-future-spec "1.9.0-alpha14"]]
 
   :source-paths  ["src"]
 

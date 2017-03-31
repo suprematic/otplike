@@ -32,7 +32,7 @@
                 :terminate
                 (fn [reason _state]
                   (is (not (any? reason))
-                      "terminate must not be called on parent exit")) }
+                      "terminate must not be called on parent exit"))}
         parent (process/proc-fn []
                  (match (gs/start server nil {:link-to (process/self)})
                         [:ok pid] (async/put! pid-chan pid))

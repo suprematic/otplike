@@ -34,6 +34,7 @@
   (:require [clojure.core.async :as async :refer [<!! <! >! put! go go-loop]]
             [clojure.core.async.impl.protocols :as ap]
             [clojure.core.match :refer [match]]
+            [clojure.spec :as spec]
             [otplike.trace]
             [otplike.util :as u]
             [clojure.core.async.impl.protocols :as impl]))
@@ -102,6 +103,8 @@
   "Returns true if term is a process identifier, false otherwise."
   [pid]
   (instance? Pid pid))
+
+(spec/def ::pid pid?)
 
 (defn- new-monitor-ref
   ([]
