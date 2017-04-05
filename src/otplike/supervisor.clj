@@ -201,13 +201,20 @@
 
 (spec/fdef start-child*
            :args (spec/cat :child ::stopped-child)
-           :ret (spec/or :success (spec/tuple ::ok ::started-child)
-                         :failure (spec/tuple ::error ::reason)))
+           :ret (spec/or
+                  :success
+                  (spec/or :pid (spec/tuple ::ok ::started-child)
+                           :pid+info (spec/tuple ::ok ::started-child any?))
+                  :failure
+                  (spec/tuple ::error ::reason)))
 (defn- start-child* [{[f args] ::start :as child}]
   ;(printf "sup starting child, id=%s%n" (::id child))
   (match (process/ex-catch [:ok (apply f args)])
     [:ok [:ok (pid :guard process/pid?)]]
     [:ok (assoc child ::pid pid)]
+
+    [:ok [:ok (pid :guard process/pid?) info]]
+    [:ok (assoc child ::pid pid) info]
 
     [:ok [:error reason]]
     [:error reason]
@@ -454,8 +461,12 @@
 (spec/fdef handle-start-child
            :args (spec/cat :spec any? :state ::state)
            :ret (spec/tuple
-                  (spec/or :success (spec/tuple ::ok ::process/pid)
-                           :failure (spec/tuple ::error any?))
+                  (spec/or
+                    :success
+                    (spec/or :pid (spec/tuple ::ok ::process/pid)
+                             :pid+info (spec/tuple ::ok ::process/pid any?))
+                    :failure
+                    (spec/tuple ::error any?))
                   ::state))
 (defn- handle-start-child [child-spec {children ::children :as state}]
   (match (check-spec ::child-spec child-spec :bad-child-spec)
@@ -464,6 +475,8 @@
       nil
       (match (start-child* (spec->child child-spec))
         [:ok child] [[:ok (::pid child)]
+                     (update state ::children #(cons child %))]
+        [:ok child info] [[:ok (::pid child) info]
                      (update state ::children #(cons child %))]
         [:error reason] [[:error reason] state])
 
@@ -480,8 +493,12 @@
 (spec/fdef handle-restart-child
            :args (spec/cat :id ::id :state ::state)
            :ret (spec/tuple
-                  (spec/or :success (spec/tuple ::ok ::process/pid)
-                           :failure (spec/tuple ::error any?))
+                  (spec/or
+                    :success
+                    (spec/or :pid (spec/tuple ::ok ::process/pid)
+                             :pid+info (spec/tuple ::ok ::process/pid any?))
+                    :failure
+                    (spec/tuple ::error any?))
                   ::state))
 (defn- handle-restart-child [id {children ::children :as state}]
   (match (child-by-id children id)
@@ -492,6 +509,10 @@
     (match (start-child* child)
       [:ok started-child]
       [[:ok (::pid started-child)]
+       (update state ::children replace-child started-child)]
+
+      [:ok started-child info]
+      [[:ok (::pid started-child) info]
        (update state ::children replace-child started-child)]
 
       [:error reason]
@@ -698,7 +719,8 @@
 
 (spec/fdef start-child
   :args (spec/cat :sup ::sup-ref :child-spec any?)
-  :ret (spec/or :ok (spec/tuple ::ok ::process/pid)
+  :ret (spec/or :ok (spec/or :pid (spec/tuple ::ok ::process/pid)
+                             :pid+info (spec/tuple ::ok ::process/pid any?))
                 :error (spec/tuple ::error ::reason)))
 (defn start-child
   [sup child-spec]
@@ -707,7 +729,8 @@
 
 (spec/fdef restart-child
   :args (spec/cat :sup ::sup-ref :id ::id)
-  :ret (spec/or :ok (spec/tuple ::ok ::process/pid)
+  :ret (spec/or :ok (spec/or :pid (spec/tuple ::ok ::process/pid)
+                             :pid+info (spec/tuple ::ok ::process/pid any?))
                 :error (spec/tuple ::error ::reason)))
 (defn restart-child
   [sup id]
