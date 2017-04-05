@@ -182,11 +182,11 @@
            :ret ::child)
 (defn- terminate-child* [{how ::shutdown pid ::pid :as child}]
   ;(printf "sup terminating child, id=%s%n" (::id child))
-  (if pid
+  (if (process/pid? pid)
     (match how
       :brutal-kill (do-terminate-child child :kill :infinity)
       timeout (do-terminate-child child :shutdown timeout))
-    child))
+    (assoc child ::pid nil)))
 (spec-util/instrument `terminate-child*)
 
 (spec/fdef terminate-children
