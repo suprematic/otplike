@@ -114,7 +114,7 @@
                   (async/close! sup-init-done)
                   [:ok sup-spec])]
     (match (process/ex-catch (sup/start-link init-fn [nil]))
-      [:error [:bad-children-spec [:duplicate-child-id :id2]]]
+      [:error [:bad-child-specs [:duplicate-child-id :id2]]]
       (is (await-completion sup-init-done 50)
           "supervisor must call init-fn to get its spec"))))
 
@@ -146,7 +146,7 @@
                                  {})
                               []]}]]])]
     (match (sup/start-link init-fn [nil])
-           [:error [:bad-children-spec _]]
+           [:error [:bad-child-specs _]]
            (do
              (is (thrown? Exception (process/self))
                  "process must exit after suprevisor/init error")
@@ -161,7 +161,7 @@
                   [:ok [{} [{:id :child1
                              :start ["not a function" []]}]]])]
     (match (sup/start-link init-fn [nil])
-           [:error [:bad-children-spec _]]
+           [:error [:bad-child-specs _]]
            (do
              (is (thrown? Exception (process/self))
                  "process must exit after suprevisor/init error")
