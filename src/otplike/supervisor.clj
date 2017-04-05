@@ -14,7 +14,7 @@
 ;; ====================================================================
 ;; Specs
 
-(spec/def ::sup-ref (spec/or :pid ::process/pid))
+(spec/def ::sup-ref (spec/or :pid ::process/pid :reg-name any?))
 (spec/def ::timeout (spec/or :ms nat-int? :inf #{:infinity}))
 
 (spec/def ::id any?)
