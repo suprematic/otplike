@@ -496,6 +496,20 @@
                         " called with reason :kill"))
                (async/close! done))]
     (process/spawn pfn1 [] {:link-to pid :flags {:trap-exit true}})
+    (await-completion done 100))
+  (let [done (async/chan)
+        done1 (async/chan)
+        pfn (proc-fn []
+              (is (await-completion done1 50))
+              (process/exit :kill))
+        pid (process/spawn pfn [] {})
+        pfn1 (proc-fn []
+               (async/close! done1)
+               (is (= [:exit [pid :kill]] (<! (await-message 50)))
+                   (str "process exit reason must be :killed when exit is"
+                        " called with reason :kill"))
+               (async/close! done))]
+    (process/spawn pfn1 [] {:link-to pid :flags {:trap-exit true}})
     (await-completion done 100)))
 
 ; TODO

@@ -222,7 +222,14 @@
    {:post [(or (true? %) (false? %))]}
    (u/check-args [(pid? pid)
                   (some? reason)])
-   (!control pid [:exit (self) reason])))
+   (let [self-pid (self)]
+     (case reason
+       :kill (match (@*processes pid)
+               {:kill kill} (do
+                              (async/put! kill :killed)
+                              true)
+               nil false)
+       (!control pid [:exit self-pid reason])))))
 
 (defn flag
   "Sets the value of a process flag. See description of each flag below.
@@ -503,7 +510,6 @@
   (let [trap-exit (:trap-exit @flags)]
     (match message
       [:stop reason] [::break reason]
-      [:exit (xpid :guard pid?) :kill] [::break :killed]
       [:exit (xpid :guard pid?) :normal] (do
                                            (when trap-exit
                                              (! pid [:EXIT xpid :normal]))
