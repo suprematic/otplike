@@ -2,10 +2,14 @@
   "gen-server behaviour and related functions."
   (:refer-clojure :exclude [cast get])
   (:require
+    [clojure.future :refer :all]
     [clojure.core.async :as async :refer [<! >! put! go go-loop]]
     [clojure.core.match :refer [match]]
+    [clojure.spec :as spec]
     [otplike.util :as u]
     [otplike.process :as process :refer [!]]))
+
+(spec/def ::from any?)
 
 (defprotocol IGenServer
   (init [_ args]

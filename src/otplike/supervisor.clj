@@ -9,9 +9,12 @@
             [otplike.process :as process]
             [otplike.gen-server :as gen-server]))
 
+(declare check-child-specs)
+
 ;; ====================================================================
 ;; Specs
 
+(spec/def ::sup-ref (spec/or :pid ::process/pid))
 (spec/def ::timeout (spec/or :ms nat-int? :inf #{:infinity}))
 
 (spec/def ::id any?)
@@ -28,7 +31,7 @@
                                            ::shutdown
                                            ::type]))
 
-(spec/def ::children-spec (spec/coll-of ::child-spec))
+(spec/def ::child-specs (spec/coll-of ::child-spec))
 
 (spec/def ::intensity nat-int?)
 (spec/def ::period pos-int?)
@@ -48,14 +51,22 @@
                                                    ::intensity
                                                    ::period]))
 
+(spec/def ::pid (spec/or :pid ::process/pid
+                         :restarting #{:restarting}
+                         :stopped nil?))
+
 (spec/def ::child (spec/keys :req [::id
                                    ::start
                                    ::restart
                                    ::shutdown
-                                   ::type]
-                             :opt [::process/pid]))
+                                   ::type
+                                   ::pid]))
 
-(spec/def ::started-child (spec/merge ::child (spec/keys :req [::process/pid])))
+(spec/def ::started-child (spec/and #(spec/valid? ::child %)
+                                    #(-> % ::pid process/pid?)))
+
+(spec/def ::stopped-child (spec/and #(spec/valid? ::child %)
+                                    #(-> % ::pid process/pid? not)))
 
 (spec/def ::started-children (spec/coll-of ::started-child :distinct true))
 
@@ -106,18 +117,20 @@
            :ret any?)
 (defn- check-spec [spec x reason]
   (if-let [{problems ::spec/problems} (spec/explain-data spec x)]
-    (process/exit [reason [:problems (map spec-problem problems)]])))
+    [:error [reason [:problems (map spec-problem problems)]]]
+    :ok))
 (spec-util/instrument `check-spec)
 
 (spec/fdef spec->child
            :args (spec/cat :spec ::child-spec)
-           :ret ::child)
+           :ret ::stopped-child)
 (defn- spec->child [{:keys [id start restart shutdown type]}]
   {::id id
    ::start start
    ::restart (or restart :permanent)
    ::shutdown (or shutdown (if (= :supervisor type) :infinity 5000))
-   ::type (or type :worker)})
+   ::type (or type :worker)
+   ::pid nil})
 (spec-util/instrument `spec->child)
 
 (process/proc-defn await-termination-proc [pid reason timeout done]
@@ -153,7 +166,7 @@
                            :timeout ::timeout)
            :ret ::child)
 (defn- do-terminate-child
-  [{pid ::process/pid restart ::restart :as child} reason timeout]
+  [{pid ::pid restart ::restart :as child} reason timeout]
   ;(printf "sup terminating child, id=%s, reason=%s, timeout=%s%n" (::id child) reason timeout)
   (match (shutdown pid reason timeout)
          [:ok reason] :ok
@@ -161,20 +174,20 @@
          (when (or (not= other-reason :normal) (= restart :permanent))
            (report-error [:shutdown-error other-reason child])))
   ;(printf "sup child shut down, id=%s%n" (::id child))
-  (dissoc child ::process/pid))
+  (assoc child ::pid nil))
 (spec-util/instrument `do-terminate-child)
 
-(spec/fdef terminate-child
+(spec/fdef terminate-child*
            :args (spec/cat :child ::child)
            :ret ::child)
-(defn- terminate-child [{how ::shutdown pid ::process/pid :as child}]
+(defn- terminate-child* [{how ::shutdown pid ::pid :as child}]
   ;(printf "sup terminating child, id=%s%n" (::id child))
   (if pid
     (match how
       :brutal-kill (do-terminate-child child :kill :infinity)
       timeout (do-terminate-child child :shutdown timeout))
     child))
-(spec-util/instrument `terminate-child)
+(spec-util/instrument `terminate-child*)
 
 (spec/fdef terminate-children
            :args (spec/cat :children ::children)
@@ -182,19 +195,19 @@
 (defn- terminate-children [children]
   ;(printf "sup terminate all children%n")
   (->> children
-       (reduce #(cons (terminate-child %2) %1) '())
+       (reduce #(cons (terminate-child* %2) %1) '())
        (filter #(not= :temporary (::restart %)))))
 (spec-util/instrument `terminate-children)
 
-(spec/fdef start-child
-           :args (spec/cat :child ::child)
+(spec/fdef start-child*
+           :args (spec/cat :child ::stopped-child)
            :ret (spec/or :success (spec/tuple ::ok ::started-child)
                          :failure (spec/tuple ::error ::reason)))
-(defn- start-child [{[f args] ::start :as child}]
+(defn- start-child* [{[f args] ::start :as child}]
   ;(printf "sup starting child, id=%s%n" (::id child))
   (match (process/ex-catch [:ok (apply f args)])
     [:ok [:ok (pid :guard process/pid?)]]
-    [:ok (assoc child ::process/pid pid)]
+    [:ok (assoc child ::pid pid)]
 
     [:ok [:error reason]]
     [:error reason]
@@ -204,7 +217,7 @@
 
     [:EXIT reason]
     [:error reason]))
-(spec-util/instrument `start-child)
+(spec-util/instrument `start-child*)
 
 (spec/fdef start-children
   :args (spec/cat :children ::children)
@@ -218,13 +231,13 @@
   (loop [to-start children
          started []]
     (if-let [child (first to-start)]
-      (match (start-child child)
+      (match (start-child* child)
         [:ok started-child]
         (do
           ;(printf "sup child started, id=%s%n" (::id started-child))
           (recur (rest to-start) (cons started-child started)))
         [:error reason]
-        (let [stopped-child (dissoc child ::process/pid)
+        (let [stopped-child (assoc child ::pid nil)
               new-children (concat (reverse to-start)
                                    (cons stopped-child started))]
           (report-error [:start-error reason child])
@@ -238,7 +251,7 @@
            :args (spec/cat :children ::children :pid ::process/pid)
            :ret (spec/nilable ::child))
 (defn- child-by-pid [children pid]
-  (some #(if (= pid (::process/pid %)) %) children))
+  (some #(if (= pid (::pid %)) %) children))
 (spec-util/instrument `child-by-pid)
 
 (spec/fdef child-by-id
@@ -259,7 +272,7 @@
            :args (spec/cat :children ::children :pid ::process/pid)
            :ret ::children)
 (defn- delete-child-by-pid [children pid]
-  (filter #(= pid (::process/pid %)) children))
+  (filter #(= pid (::pid %)) children))
 (spec-util/instrument `delete-child-by-pid)
 
 (spec/fdef replace-child
@@ -315,7 +328,7 @@
            :ret ::state)
 (defn- restart-child:one-for-one [{id ::id :as child} state]
   ;(println "strategy is 'one-for-one', restarting only this child")
-  (match (start-child child)
+  (match (start-child* child)
     [:ok new-child]
     (update state ::children replace-child new-child)
 
@@ -361,13 +374,13 @@
         (assoc state ::children (concat new-children before))))))
 (spec-util/instrument `restart-child:rest-for-one)
 
-(spec/fdef restart-child
+(spec/fdef restart-child*
            :args (spec/cat :child ::child :state ::state)
            :ret (spec/or :success (spec/tuple ::ok ::state)
                          :shutdown (spec/tuple #{:shutdown} ::state)))
-(defn- restart-child [{id ::id :as child} {strategy ::strategy :as state}]
+(defn- restart-child* [{id ::id :as child} {strategy ::strategy :as state}]
   ;(printf "strategy %s%n" strategy)
-  (let [child (dissoc child ::process/pid)
+  (let [child (assoc child ::pid :restarting)
         state (update state ::children replace-child child)]
     (match (add-restart state)
       [:continue new-state]
@@ -381,7 +394,7 @@
                 (select-keys state [::intensity ::period ::strategy]) child])
         [:shutdown
          (update new-state ::children delete-child-by-id (::id child))]))))
-(spec-util/instrument `restart-child)
+(spec-util/instrument `restart-child*)
 
 (spec/fdef handle-child-exit
            :args (spec/cat :child ::child
@@ -395,7 +408,7 @@
     (do
       ;(println "permanent child, restarting")
       (report-error [:child-terminated reason child])
-      (restart-child child state))
+      (restart-child* child state))
 
     [_ (:or :normal :shutdown)]
     (do
@@ -406,7 +419,7 @@
     (do
       ;(println "transient child exited abnormally, restarting")
       (report-error [:child-terminated reason child])
-      (restart-child child state))
+      (restart-child* child state))
 
     [:temporary _]
     (do
@@ -438,17 +451,104 @@
    ::period (or period 5000)})
 (spec-util/instrument `sup-flags)
 
-(spec/fdef check-children-spec
-           :args (spec/cat :children-spec any?)
-           :ret any?)
-(defn- check-children-spec [spec]
-  (check-spec ::children-spec spec :bad-children-spec)
-  (if-let [[id _] (->> spec
-                       (map :id)
-                       (frequencies)
-                       (some #(if (> (val %) 1) %)))]
-    (process/exit [:bad-children-spec [:duplicate-child-id id]])))
-(spec-util/instrument `check-children-spec)
+(spec/fdef handle-start-child
+           :args (spec/cat :spec any? :state ::state)
+           :ret (spec/tuple
+                  (spec/or :success (spec/tuple ::ok ::process/pid)
+                           :failure (spec/tuple ::error any?))
+                  ::state))
+(defn- handle-start-child [child-spec {children ::children :as state}]
+  (match (check-spec ::child-spec child-spec :bad-child-spec)
+    :ok
+    (match (child-by-id children (:id child-spec))
+      nil
+      (match (start-child* (spec->child child-spec))
+        [:ok child] [[:ok (::pid child)]
+                     (update state ::children #(cons child %))]
+        [:error reason] [[:error reason] state])
+
+      {::pid (pid :guard process/pid?)}
+      [[:error [:already-started pid]] state]
+
+      _
+      [[:error :already-present] state])
+
+    error
+    [error state]))
+(spec-util/instrument `handle-start-child)
+
+(spec/fdef handle-restart-child
+           :args (spec/cat :id ::id :state ::state)
+           :ret (spec/tuple
+                  (spec/or :success (spec/tuple ::ok ::process/pid)
+                           :failure (spec/tuple ::error any?))
+                  ::state))
+(defn- handle-restart-child [id {children ::children :as state}]
+  (match (child-by-id children id)
+    nil
+    [[:error :not-found] state]
+
+    ({::pid nil} :as child)
+    (match (start-child* child)
+      [:ok started-child]
+      [[:ok (::pid started-child)]
+       (update state ::children replace-child started-child)]
+
+      [:error reason]
+      [[:error reason] state])
+
+    {::pid :restarting}
+    [[:error :restarting] state]
+
+    {::pid (_ :guard process/pid?)}
+    [[:error :running] state]))
+(spec-util/instrument `handle-restart-child)
+
+(spec/fdef handle-terminate-child
+           :args (spec/cat :id ::id :state ::state)
+           :ret (spec/tuple
+                  (spec/or :success ::ok
+                           :failure (spec/tuple ::error #{:not-found}))
+                  ::state))
+(defn- handle-terminate-child [id {children ::children :as state}]
+  (match (child-by-id children id)
+    nil
+    [[:error :not-found] state]
+
+    child
+    (match (terminate-child* child)
+      {::restart :temporary}
+      [:ok (update state ::children delete-child-by-id id)]
+
+      terminated-child
+      [:ok (update state ::children replace-child terminated-child)])))
+(spec-util/instrument `handle-terminate-child)
+
+(spec/fdef handle-delete-child
+           :args (spec/cat :id ::id :state ::state)
+           :ret (spec/tuple
+                  (spec/or :success ::ok
+                           :failure (spec/tuple
+                                      ::error
+                                      #{:restarting :running :not-found}))
+                  ::state))
+(defn- handle-delete-child [id {children ::children :as state}]
+  (match (child-by-id children id)
+    nil
+    [[:error :not-found] state]
+
+    {::pid nil}
+    [:ok (update state ::children delete-child-by-id id)]
+
+    {::pid :restarting}
+    [[:error :restarting] state]
+
+    {::pid (_ :guard process/pid?)}
+    [[:error :running] state]))
+(spec-util/instrument `handle-delete-child)
+
+(match {:a 1}
+       {:a (_ :guard int?)} :ok)
 
 ;; ====================================================================
 ;; gen-server callbacks
@@ -460,14 +560,18 @@
 (defn init [[sup-fn args]]
   ;(printf "sup init: %s%n" args)
   (match (apply sup-fn args)
-    [:ok [sup-spec children-spec]]
+    [:ok [sup-spec child-specs]]
     (do
       ;(printf "sup init sup-spec: %s%n" (pprint/write sup-spec :level 3 :stream nil))
-      ;(printf "sup init children-spec: %s%n" (pprint/write children-spec :level 3 :stream nil))
-      (check-spec ::sup-spec sup-spec :bad-supervisor-flags)
-      (check-children-spec children-spec)
+      ;(printf "sup init child-specs: %s%n" (pprint/write child-specs :level 3 :stream nil))
+      (match (check-spec ::sup-spec sup-spec :bad-supervisor-flags)
+        :ok :ok
+        [:error reason] (process/exit reason))
+      (match (check-child-specs child-specs)
+        :ok :ok
+        [:error reason] (process/exit reason))
       (let [sup-flags (sup-flags sup-spec)
-            children (map spec->child children-spec)]
+            children (map spec->child child-specs)]
         ;(printf "sup init sup-flags: %s%n" (pprint/write sup-flags :level 3 :stream nil))
         ;(printf "sup init children: %s%n" (pprint/write children :level 3 :stream nil))
         (match (start-children children)
@@ -485,14 +589,30 @@
 
 (spec/fdef handle-call
   :args (spec/cat :request any?
+                  :from ::gen-server/from
                   :state ::state)
   :ret (spec/or :reply (spec/tuple #{:reply} any? ::state)
                 :noreply (spec/tuple #{:noreply} ::state)
                 :stop-reply (spec/tuple #{:stop} ::reason any? ::state)
                 :stop (spec/tuple #{:stop} ::reason ::state)))
-(defn handle-call [request from state]
+(defn handle-call [request from {children ::children :as state}]
   ;(printf "sup call: %s%n" request)
-  (process/exit :not-implemented))
+  (match request
+    [:start-child child-spec]
+    (match (handle-start-child child-spec state)
+      [res new-state] [:reply res new-state])
+
+    [:restart-child id]
+    (match (handle-restart-child id state)
+      [res new-state] [:reply res new-state])
+
+    [:terminate-child id]
+    (match (handle-terminate-child id state)
+      [res new-state] [:reply res new-state])
+
+    [:delete-child id]
+    (match (handle-delete-child id state)
+      [res new-state] [:reply res new-state])))
 (spec-util/instrument `handle-call)
 
 (spec/fdef handle-cast
@@ -505,8 +625,8 @@
   (match request
     [:restart id]
     (match (child-by-id children)
-      ({::process/pid pid} :as child)
-      (match (restart-child child state)
+      ({::pid (pid :guard #{:restarting})} :as child)
+      (match (restart-child* child state)
         [:ok new-state] [:ok new-state]
         [:shutdown new-state] [:stop :shutdown new-state])
 
@@ -554,3 +674,55 @@
   (gen-server/start-ns [sup-fn args] {:link-to (process/self)
                                       :flags {:trap-exit true}}))
 (spec-util/instrument `start-link)
+
+(spec/fdef check-child-specs
+  :args (spec/cat :child-specs any?)
+  :ret (spec/or :ok ::ok
+                :error (spec/tuple ::error ::reason)))
+(defn check-child-specs [spec]
+  (match (check-spec ::child-specs spec :bad-child-specs)
+    :ok (if-let [[id _] (->> spec
+                             (map :id)
+                             (frequencies)
+                             (some #(if (> (val %) 1) %)))]
+          [:error [:bad-child-specs [:duplicate-child-id id]]]
+          :ok)
+    error error))
+(spec-util/instrument `check-child-specs)
+
+(spec/fdef start-child
+  :args (spec/cat :sup ::sup-ref :child-spec any?)
+  :ret (spec/or :ok (spec/tuple ::ok ::process/pid)
+                :error (spec/tuple ::error ::reason)))
+(defn start-child
+  [sup child-spec]
+  (gen-server/call sup [:start-child child-spec]))
+(spec-util/instrument `start-child)
+
+(spec/fdef restart-child
+  :args (spec/cat :sup ::sup-ref :id ::id)
+  :ret (spec/or :ok (spec/tuple ::ok ::process/pid)
+                :error (spec/tuple ::error ::reason)))
+(defn restart-child
+  [sup id]
+  (gen-server/call sup [:restart-child id]))
+(spec-util/instrument `restart-child)
+
+(spec/fdef terminate-child
+  :args (spec/cat :sup ::sup-ref :id ::id)
+  :ret (spec/or :ok ::ok
+                :error (spec/tuple ::error #{:not-found})))
+(defn terminate-child
+  [sup id]
+  (gen-server/call sup [:terminate-child id]))
+(spec-util/instrument `terminate-child)
+
+(spec/fdef delete-child
+  :args (spec/cat :sup ::sup-ref :id ::id)
+  :ret (spec/or :ok ::ok
+                :error (spec/tuple ::error
+                                   #{:running :restarting :not-found})))
+(defn delete-child
+  [sup id]
+  (gen-server/call sup [:delete-child id]))
+(spec-util/instrument `delete-child)
