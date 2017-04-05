@@ -662,17 +662,23 @@
 ;; API
 
 (spec/fdef start-link
-  :args (spec/cat :sup-fn fn?
+  :args (spec/cat :sup-name (spec/? any?)
+                  :sup-fn fn?
                   :args (spec/nilable (spec/coll-of any?)))
   :ret (spec/or :success (spec/tuple ::ok ::process/pid)
                 :failure (spec/tuple ::error ::reason)))
 (defn start-link
   "Supervisor always links to calling process.
   Thus it can not be started from nonprocess context."
-  [sup-fn args]
-  ;(printf "parent %s%n" (process/self))
-  (gen-server/start-ns [sup-fn args] {:link-to (process/self)
-                                      :flags {:trap-exit true}}))
+  ([sup-fn args]
+   ;(printf "parent %s%n" (process/self))
+   (gen-server/start-ns [sup-fn args] {:link-to (process/self)
+                                       :flags {:trap-exit true}}))
+  ([sup-name sup-fn args]
+   ;(printf "parent %s%n" (process/self))
+   (gen-server/start-ns [sup-fn args] {:register sup-name
+                                       :link-to (process/self)
+                                       :flags {:trap-exit true}})))
 (spec-util/instrument `start-link)
 
 (spec/fdef check-child-specs
