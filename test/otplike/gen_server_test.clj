@@ -13,7 +13,8 @@
 ; TODO test everything with both map and ns server
 ; TODO test gen-server unlinks starting process on init timeout
 ; FIXME check exit reason as soon as process/link or process/spawn will
-; allow to wait until linking is finished
+; allow to wait until linking is finished (including [:stop reason] returned
+; from init)
 
 ;; ====================================================================
 ;; (start [server-impl args options])
@@ -242,9 +243,6 @@
         (str "process must stay alive after gen-server/start fails with"
              "timeout even if start was called with :link-to options set"
              "to self"))))
-
-; FIXME remove possibility to link to arbitrary processes on spawn leave spawn-link only)
-; link required to establish exactly one link between processes
 
 ;; ====================================================================
 ;; (handle-call [request from state])
@@ -1942,5 +1940,3 @@
               [:ok [:reason [:undef ['handle-info [1 :state]]]]] :ok)
             (str "gen-server must exit with reason containing arguments"
                  " passed to handle-info"))))))
-
-; FIXME: 2 processes survive after all tests execution
