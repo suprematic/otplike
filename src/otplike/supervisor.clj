@@ -665,7 +665,7 @@
     [:EXIT pid reason]
     (match (handle-exit pid reason state)
       [:ok new-state] [:noreply new-state]
-      [:shutdown new-state] [:stop :sutdown new-state])
+      [:shutdown new-state] [:stop :shutdown new-state])
     message
     (do ;(printf "sup %s -unexpected message: %s%n" (process/self) message)
         [:noreply state])))
