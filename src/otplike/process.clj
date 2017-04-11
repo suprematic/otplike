@@ -691,9 +691,10 @@
                       (close! outbox)
                       (dosync
                         (sync-unregister pid)
-                        (doseq [p @linked]
-                          (when-let [p (@*processes p)]
-                            (alter (:linked p) disj process))))
+                        (doseq [lpid @linked]
+                          (if-let [p (@*processes lpid)]
+                            (let [l (:linked p)]
+                              (alter l disj pid)))))
                       (doseq [p @linked]
                         (!control p [:exit pid reason]))
                       (doseq [[mref [pid object]] @monitors]
