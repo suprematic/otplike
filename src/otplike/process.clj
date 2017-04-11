@@ -724,15 +724,20 @@
        (throw (Exception. "noproc")))
     (match (last clauses)
       (['after
-        (ms :guard #(or (symbol? %) (and (integer? %) (not (neg? %)))))
+        (ms :guard #(or (symbol? %)
+                        (= % :infinity)
+                        (and (integer? %) (not (neg? %)))))
         & body]
        :seq)
-      `(let [inbox# *inbox*
-             timeout# (async/timeout ~ms)]
-         (match (~(if park? `async/alts! `async/alts!!) [inbox# timeout#])
-           [nil timeout#] (do ~@body)
-           [nil inbox#] (throw (Exception. "noproc"))
-           [msg# inbox#] (match msg# ~@(butlast clauses)))))))
+      (let [clauses1 (butlast clauses)]
+        `(if (= ~ms :infinity)
+           (receive* ~park? ~clauses1)
+           (let [inbox# *inbox*
+                 timeout# (async/timeout ~ms)]
+             (match (~(if park? `async/alts! `async/alts!!) [inbox# timeout#])
+                    [nil timeout#] (do ~@body)
+                    [nil inbox#] (throw (Exception. "noproc"))
+                    [msg# inbox#] (match msg# ~@(butlast clauses)))))))))
 
 (alter-meta! #'receive* assoc :no-doc true)
 
