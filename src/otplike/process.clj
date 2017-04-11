@@ -96,8 +96,8 @@
   [expr]
   `(try
      ~expr
-     (catch Exception e#
-       [:EXIT (ex->reason e#)])))
+     (catch Throwable t#
+       [:EXIT (ex->reason t#)])))
 
 (defn pid?
   "Returns true if term is a process identifier, false otherwise."
