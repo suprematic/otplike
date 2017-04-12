@@ -134,13 +134,32 @@
 (spec-util/instrument `spec->child)
 
 (process/proc-defn await-termination-proc [pid reason timeout done]
-  (process/receive!
-    [:EXIT pid reason] (async/put! done [:ok reason])
-    [:EXIT pid other-reason] (async/put! done [:error other-reason])
-    (after timeout
-      (process/exit pid :kill)
+  ;(printf "Started exit watcher for %s%n" pid)
+  (try
+    (if (= :kill reason)
       (process/receive!
-        [:EXIT pid other-reason] (async/put! done [:error other-reason])))))
+        [:EXIT pid :killed] (async/put! done [:ok reason])
+        [:EXIT pid other-reason] (async/put! done [:error other-reason]))
+      (process/receive!
+        [:EXIT pid reason]
+        (do
+          ;(printf "Exit watcher for %s received exit with expected reason %s%n" pid reason)
+          (async/put! done [:ok reason]))
+        [:EXIT pid other-reason]
+        (do
+          ;(printf "Exit watcher for %s received exit with unexpected reason=%s, expected reason=%s%n" pid other-reason reason)
+          (async/put! done [:error other-reason]))
+        msg (do
+              ;(printf "Exit watcher %s - unexpected message: %s%n" pid msg)
+              (async/put! done [:panic "shutdown watcher got unexpected message"]))
+        (after timeout
+               ;(printf "Exit watcher for %s: timeout, killing%n" pid)
+               (process/exit pid :kill)
+               (process/receive!
+                 [:EXIT pid other-reason] (async/put! done [:error other-reason])))))
+    (catch Throwable t
+      ;(printf "Exit watcher %s - exception: %s%n" pid t)
+      (async/put! done [:panic (process/ex->reason t)]))))
 
 (spec/fdef shutdown
            :args (spec/cat :pid process/pid?
