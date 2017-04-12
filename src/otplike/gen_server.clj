@@ -91,9 +91,9 @@
 
 (defn- dispatch [impl parent state message]
   (match message
-    [:call from [:internal :get-state]]
+    [:call from [::get-state]]
     (do
-      (put!* from state)
+      (put!* from [::reply state])
       [:recur state])
 
     [:call from request]
@@ -285,4 +285,4 @@
   (async/put! to [::reply response]))
 
 (defn get [server]
-  (call server [:internal :get-state]))
+  (call server [::get-state]))
