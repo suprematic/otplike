@@ -181,7 +181,6 @@
            :args (spec/cat :child ::child)
            :ret ::child)
 (defn- terminate-child* [{how ::shutdown pid ::pid :as child}]
-  ;(printf "sup terminating child, id=%s%n" (::id child))
   (if (process/pid? pid)
     (match how
       :brutal-kill (do-terminate-child child :kill :infinity)
@@ -203,8 +202,8 @@
            :args (spec/cat :child ::stopped-child)
            :ret (spec/or
                   :success
-                  (spec/or :pid (spec/tuple ::ok ::started-child)
-                           :pid+info (spec/tuple ::ok ::started-child any?))
+                  (spec/or :child (spec/tuple ::ok ::started-child)
+                           :child+info (spec/tuple ::ok ::started-child any?))
                   :failure
                   (spec/tuple ::error ::reason)))
 (defn- start-child* [{[f args] ::start :as child}]
@@ -326,7 +325,7 @@
         ;(println "too many restarts, shutting sup down")
         [:shutdown state])
       (do
-        ;(println "continuing to restart child")
+        ;(println "restart is allowed")
         [:continue state]))))
 (spec-util/instrument `add-restart)
 
@@ -645,10 +644,10 @@
   ;(printf "sup cast: %s%n" request)
   (match request
     [:restart id]
-    (match (child-by-id children)
+    (match (child-by-id children id)
       ({::pid (pid :guard #{:restarting})} :as child)
       (match (restart-child* child state)
-        [:ok new-state] [:ok new-state]
+        [:ok new-state] [:noreply new-state]
         [:shutdown new-state] [:stop :shutdown new-state])
 
       _ [:noreply state])))
