@@ -711,11 +711,13 @@
   :noproc just after the start.
 
   Throws when called not in process context."
-  [proc-func args opts]
-  {:post [(pid? %)]}
-  (u/check-args [(or (nil? opts) (map? opts))])
-  (let [opts (update-in opts [:link-to] conj (self))]
-    (spawn proc-func args opts)))
+  ([proc-func args]
+   (spawn-link proc-func args {}))
+  ([proc-func args opts]
+    {:post [(pid? %)]}
+    (u/check-args [(or (nil? opts) (map? opts))])
+    (let [opts (update-in opts [:link-to] conj (self))]
+      (spawn proc-func args opts))))
 
 (defmacro receive* [park? clauses]
   (if (even? (count clauses))
