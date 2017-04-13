@@ -3,6 +3,9 @@
             [clojure.core.match :refer [match]]
             [otplike.process :as process]))
 
+(defmacro current-line-number []
+  (:line (meta &form)))
+
 (defmacro execute-proc
   "Executes body in newly created process context."
   [& body]
@@ -16,7 +19,7 @@
            (catch Throwable t#
              (async/put! done# [:ex t#]))))
        []
-       {})
+       {:name (str "execute-proc:" (.getName *ns*) ":" (current-line-number))})
      (match (async/<!! done#)
        [:ok res#] res#
        [:ex e#] (throw e#))))
