@@ -191,12 +191,12 @@
   {:pre [(pid? pid)
          (vector? message) (keyword? (first message))]
    :post [(or (true? %) (false? %))]}
-  (match (@*processes pid)
-    {:control control :kill kill} (or (async/offer! control message)
-                                      (do
-                                        (async/put! kill :control-overflow)
-                                        false))
-    nil false))
+  (if-let [{control :control kill :kill} (@*processes pid)]
+    (or (async/offer! control message)
+        (do
+          (async/put! kill :control-overflow)
+          false))
+    false))
 
 (defn exit
   "Sends an exit signal with exit reason to the process identified
@@ -254,12 +254,6 @@
                        (alter flags assoc flag (boolean value))
                        (boolean old-value)))))
     (throw (Exception. "noproc"))))
-
-(defn- monitor* [func pid1 pid2]
-  (if-let [{:keys [monitors] :as process} (find-process pid2)]
-    (do
-      (swap! monitors func pid1)
-      :ok)))
 
 (defn registered
  "Returns a set of names of the processes that have been registered."
@@ -407,7 +401,7 @@
 (defn monitor
   "Sends a monitor request to the entity identified by pid-or-name.
   If the monitored entity does not exist or when it dies,
-  the caller of monitor will be notified by a message on the
+  the caller of monitor will be notified by a message of the
   following format:
 
   [tag monitor-ref type object info]
@@ -506,6 +500,7 @@
 (defn- dispatch-control [{:keys [flags pid linked] :as process} message]
   {:pre [(instance? ProcessRecord process)]
    :post []}
+  ;(printf ">> %s - dispatch message=%s%n" pid message)
   (trace pid [:control message])
   (let [trap-exit (:trap-exit @flags)]
     (match message
