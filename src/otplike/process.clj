@@ -745,14 +745,18 @@
 (defmacro proc-fn
   "Creates process function which can be passed to spawn."
   [args & body]
-  (assert (vector? args))
-  `(fn ~args
-     (go
-       (try
-         (loop ~(vec (interleave args args)) ~@body)
-         :normal
-         (catch Throwable t#
-           (ex->reason t#))))))
+  (assert (vector? args)
+          (format "Parameter declaration %s should be a vector" args))
+  (assert (not (some #{'&} args))
+          (format "Variadic arguments are not supported" args))
+  (let [arg-names (vec (repeatedly (count args) #(gensym "argname")))]
+    `(fn ~arg-names
+       (go-loop ~(vec (interleave args arg-names))
+         (try
+           ~@body
+           :normal
+           (catch Throwable t#
+             (ex->reason t#)))))))
 
 (defmacro proc-defn
   "The same as proc-fn but also binds created function to a var with
