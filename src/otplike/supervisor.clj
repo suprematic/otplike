@@ -586,8 +586,6 @@
     [[:error :running] state]))
 (spec-util/instrument `handle-delete-child)
 
-(match {:a 1}
-       {:a (_ :guard int?)} :ok)
 
 ;; ====================================================================
 ;; gen-server callbacks
