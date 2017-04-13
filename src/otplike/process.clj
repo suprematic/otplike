@@ -616,8 +616,8 @@
   application of proc-fun to args.
   options argument is a map of option names (keyword) to its values.
 
-  When :link-to contains pid(s) of already exited process(es), spawned
-  process exits with reason :noproc just after the start.
+  When :link-to is a pid of already exited process, spawned process
+  exits with reason :noproc just after the start.
 
   The default process' inbox is blocking buffered channel of size 1024.
   The :inbox option allows providing a custom channel.
@@ -626,7 +626,7 @@
   :flags - a map of process' flags (e.g. {:trap-exit true})
   :register - name to register the process, can not be pid, if name is
     nil process will not be registered
-  :link-to - a pid or a sequence of pids to link process to
+  :link-to - a pid to link process to
   :inbox - the channel to be used as a process' inbox"
   ([proc-func]
    (spawn proc-func [] {}))
@@ -640,7 +640,7 @@
    (u/check-args [(or (fn? proc-func) (symbol? proc-func))
                   (sequential? args)
                   (map? options) ;FIXME check for unknown options
-                  (or (nil? link-to) (pid? link-to) (every? pid? link-to))
+                  (or (nil? link-to) (pid? link-to))
                   (or (nil? inbox)
                       (and (satisfies? ap/ReadPort inbox)
                            (satisfies? ap/WritePort inbox)))
