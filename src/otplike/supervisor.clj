@@ -173,7 +173,8 @@
     (process/spawn await-termination-proc
                    [pid reason timeout done]
                    {:link-to pid
-                    :flags {:trap-exit true}})
+                    :flags {:trap-exit true}
+                    :name (str "supervisor.exit-watcher." pid)})
     (process/unlink pid)
     (process/exit pid reason)
     (async/<!! done)))
@@ -586,6 +587,18 @@
     [[:error :running] state]))
 (spec-util/instrument `handle-delete-child)
 
+(spec/fdef start-link*
+  :args (spec/cat :sup-fn fn?
+                  :args (spec/nilable (spec/coll-of any?))
+                  :proc-opts map?)
+  :ret (spec/or :success (spec/tuple ::ok ::process/pid)
+                :failure (spec/tuple ::error ::reason)))
+(defn start-link* [sup-fn args options]
+  ;(printf "parent %s%n" (process/self))
+  (gen-server/start-ns [sup-fn args] (merge options {:link-to (process/self)
+                                                     :flags {:trap-exit true}
+                                                     :name "supervisor"})))
+(spec-util/instrument `start-link*)
 
 ;; ====================================================================
 ;; gen-server callbacks
@@ -699,23 +712,23 @@
 ;; API
 
 (spec/fdef start-link
-  :args (spec/cat :sup-name (spec/? any?)
-                  :sup-fn fn?
-                  :args (spec/nilable (spec/coll-of any?)))
+  :args (spec/or
+          :noname (spec/cat :sup-fn fn?
+                            :args (spec/? (spec/nilable (spec/coll-of any?))))
+          :register (spec/cat :sup-name any?
+                              :sup-fn fn?
+                              :args (spec/nilable (spec/coll-of any?))))
   :ret (spec/or :success (spec/tuple ::ok ::process/pid)
                 :failure (spec/tuple ::error ::reason)))
 (defn start-link
   "Supervisor always links to calling process.
   Thus it can not be started from nonprocess context."
+  ([sup-fn]
+   (start-link* sup-fn [] {}))
   ([sup-fn args]
-   ;(printf "parent %s%n" (process/self))
-   (gen-server/start-ns [sup-fn args] {:link-to (process/self)
-                                       :flags {:trap-exit true}}))
+   (start-link* sup-fn args {}))
   ([sup-name sup-fn args]
-   ;(printf "parent %s%n" (process/self))
-   (gen-server/start-ns [sup-fn args] {:register sup-name
-                                       :link-to (process/self)
-                                       :flags {:trap-exit true}})))
+   (start-link* sup-fn args {:register sup-name})))
 (spec-util/instrument `start-link)
 
 (spec/fdef check-child-specs
