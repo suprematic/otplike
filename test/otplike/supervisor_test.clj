@@ -178,7 +178,7 @@
                                  []
                                  {})
                               []]})]
-    (otplike.proc-util/execute-proc
+    (otplike.proc-util/execute-proc!
       (let [sup-init-done (async/chan)
             sup-flags {:strategy "one-for-one"}
             children-spec (map make-child [:id1])
@@ -190,7 +190,7 @@
                [:error [:bad-supervisor-flags _]]
                (is (await-completion sup-init-done 50)
                    "supervisor must call init-fn to get its spec"))))
-    (otplike.proc-util/execute-proc
+    (otplike.proc-util/execute-proc!
       (let [sup-init-done (async/chan)
             sup-flags {:intensity "2"}
             children-spec (map make-child [:id1])
@@ -202,7 +202,7 @@
                [:error [:bad-supervisor-flags _]]
                (is (await-completion sup-init-done 50)
                    "supervisor must call init-fn to get its spec"))))
-    (otplike.proc-util/execute-proc
+    (otplike.proc-util/execute-proc!
       (let [sup-init-done (async/chan)
             sup-flags {:period :1}
             children-spec (map make-child [:id1])
@@ -214,7 +214,7 @@
                [:error [:bad-supervisor-flags _]]
                (is (await-completion sup-init-done 50)
                    "supervisor must call init-fn to get its spec"))))
-    (otplike.proc-util/execute-proc
+    (otplike.proc-util/execute-proc!
       (let [sup-init-done (async/chan)
             sup-flags {:strategy "one-for-one"
                        :intensity "2"
@@ -268,9 +268,9 @@
     (fn [_] [:stop :some-reason])
     :some-reason))
 
-;(def-proc-test ^:parallel
-; start-link:multiple-children:first-child-init-returns-error
-(otplike.proc-util/execute-proc
+(def-proc-test ^:parallel
+ start-link:multiple-children:first-child-init-returns-error
+;(otplike.proc-util/execute-proc
   (let [child1-done (async/chan)
         sup-init-done (async/chan)
         sup-flags {}
@@ -432,7 +432,7 @@
 ;TODO check defaults
 
 #_(do
-    (otplike.proc-util/execute-proc
+    (otplike.proc-util/execute-proc!!
       (let [done0 (doto (async/chan) (async/close!))
             done1 (async/chan)
             done2 (async/chan)

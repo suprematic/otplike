@@ -66,4 +66,4 @@
 
 (defmacro def-proc-test [name & body]
   `(clojure-test/deftest ~name
-     (proc-util/execute-proc ~@body)))
+     (proc-util/execute-proc!! ~@body)))

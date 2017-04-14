@@ -20,9 +20,21 @@
              (async/put! done# [:ex t#]))))
        []
        {:name (str "execute-proc:" (.getName *ns*) ":" (current-line-number))})
-     (match (async/<!! done#)
-       [:ok res#] res#
-       [:ex e#] (throw e#))))
+     done#))
+
+(defmacro execute-proc!
+  "Executes body in newly created process context."
+  [& body]
+  `(match (async/<! (execute-proc ~@body))
+     [:ok res#] res#
+     [:ex e#] (throw e#)))
+
+(defmacro execute-proc!!
+  "Executes body in newly created process context."
+  [& body]
+  `(match (async/<!! (execute-proc ~@body))
+     [:ok res#] res#
+     [:ex e#] (throw e#)))
 
 (defmacro defn-proc
   "Defines function with name fname, arguments args, which body is
