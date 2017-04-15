@@ -6,7 +6,7 @@
             [clojure.pprint :as pprint]
             [otplike.spec-util :as spec-util]
             [otplike.trace :as trace]
-            [otplike.process :as process]
+            [otplike.process :as process :refer [!]]
             [otplike.gen-server :as gen-server]))
 
 (declare check-child-specs)
@@ -133,34 +133,6 @@
    ::pid nil})
 (spec-util/instrument `spec->child)
 
-(process/proc-defn await-termination-proc [pid reason timeout done]
-  ;(printf "Started exit watcher for %s%n" pid)
-  (try
-    (if (= :kill reason)
-      (process/receive!
-        [:EXIT pid :killed] (async/put! done [:ok reason])
-        [:EXIT pid other-reason] (async/put! done [:error other-reason]))
-      (process/receive!
-        [:EXIT pid reason]
-        (do
-          ;(printf "Exit watcher for %s received exit with expected reason %s%n" pid reason)
-          (async/put! done [:ok reason]))
-        [:EXIT pid other-reason]
-        (do
-          ;(printf "Exit watcher for %s received exit with unexpected reason=%s, expected reason=%s%n" pid other-reason reason)
-          (async/put! done [:error other-reason]))
-        msg (do
-              ;(printf "Exit watcher %s - unexpected message: %s%n" pid msg)
-              (async/put! done [:panic "shutdown watcher got unexpected message"]))
-        (after timeout
-               ;(printf "Exit watcher for %s: timeout, killing%n" pid)
-               (process/exit pid :kill)
-               (process/receive!
-                 [:EXIT pid other-reason] (async/put! done [:error other-reason])))))
-    (catch Throwable t
-      ;(printf "Exit watcher %s - exception: %s%n" pid t)
-      (async/put! done [:panic (process/ex->reason t)]))))
-
 (spec/fdef shutdown
            :args (spec/cat :pid process/pid?
                            :reason any?
@@ -168,16 +140,33 @@
            :ret (spec/or :success (spec/tuple ::ok ::reason)
                          :failure (spec/tuple ::error ::reason)))
 (defn- shutdown [pid reason timeout]
-  ;(printf "sup shutting down child %s%n" pid)
-  (let [done (async/chan)]
-    (process/spawn await-termination-proc
-                   [pid reason timeout done]
-                   {:link-to pid
-                    :flags {:trap-exit true}
-                    :name (str "supervisor.exit-watcher." pid)})
-    (process/unlink pid)
-    (process/exit pid reason)
-    (async/<!! done)))
+  (try
+    (let [timeout (case timeout
+                    :infinity timeout
+                    (async/timeout timeout))]
+      (process/exit pid reason)
+      (let [[res msgs]
+            (loop [msgs []]
+              (if (= :kill reason)
+                (process/receive!!
+                  [:EXIT pid :killed] [[:ok reason] msgs]
+                  [:EXIT pid other-reason] [[:error other-reason] msgs]
+                  msg (recur (conj msgs msg)))
+                (process/receive!!
+                  [:EXIT pid reason] [[:ok reason] msgs]
+                  [:EXIT pid other-reason] [[:error other-reason] msgs]
+                  msg (recur (conj msgs msg))
+                  (after timeout
+                         (loop [msgs msgs]
+                           (process/exit pid :kill)
+                           (process/receive!!
+                             [:EXIT pid other-reason] [[:error other-reason] msgs]
+                             msg (recur (conj msgs msg))))))))]
+        (doseq [m msgs] (! (process/self) m))
+        res))
+    (catch Throwable t
+      (println t)
+      [:panic (process/ex->reason t)])))
 (spec-util/instrument `shutdown)
 
 (spec/fdef do-terminate-child
