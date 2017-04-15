@@ -6,6 +6,7 @@
             [otplike.process :as process :refer [!]]
             [otplike.trace :as trace]
             [otplike.test-util :refer :all]
+            [otplike.proc-util :as proc-util]
             [otplike.supervisor :as sup]
             [otplike.gen-server :as gs])
   (:import [otplike.gen_server IGenServer]))
@@ -145,10 +146,12 @@
                                  []
                                  {})
                               []]}]]])]
+    (process/flag :trap-exit true)
     (match (sup/start-link init-fn [nil])
            [:error [:bad-child-specs _]]
            (do
-             (is (thrown? Exception (process/self))
+             (is (match (<! (await-message 50))
+                        [:exit [_ [:bad-child-specs _]]] :ok)
                  "process must exit after suprevisor/init error")
              (is (await-completion sup-init-done 50)
                  "supervisor must call init-fn to get its spec")))))
@@ -160,10 +163,12 @@
                   (async/close! sup-init-done)
                   [:ok [{} [{:id :child1
                              :start ["not a function" []]}]]])]
+    (process/flag :trap-exit true)
     (match (sup/start-link init-fn [nil])
            [:error [:bad-child-specs _]]
            (do
-             (is (thrown? Exception (process/self))
+             (is (match (<! (await-message 50))
+                        [:exit [_ [:bad-child-specs _]]] :ok)
                  "process must exit after suprevisor/init error")
              (is (await-completion sup-init-done 50)
                  "supervisor must call init-fn to get its spec")))))
@@ -348,7 +353,7 @@
 
 (def-proc-test ^:parallel
   start-link:multiple-children:last-child-init-returns-error
-;(otplike.proc-util/execute-proc
+;(otplike.proc-util/execute-proc!!
   (let [child1-init-done (async/chan)
         child1-terminate-done (async/chan)
         child2-init-done (async/chan)
@@ -388,10 +393,10 @@
                        (child-spec :id2 healthy-child2-init child2-terminate)
                        (child-spec :id3 error-child-init nil)]
         sup-spec [sup-flags children-spec]
-        init-fn (fn [_]
+        init-fn (fn []
                   (async/close! sup-init-done)
                   [:ok sup-spec])]
-    (match (sup/start-link init-fn [nil])
+    (match (sup/start-link init-fn)
            [:error [:shutdown [:failed-to-start-child :id3 :abnormal]]]
            (do
              (is (await-completion child1-init-done 50)
