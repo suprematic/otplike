@@ -3,6 +3,7 @@
             [otplike.process :as process :refer [! proc-fn]]
             [otplike.trace :as trace]
             [otplike.test-util :refer :all]
+            [otplike.proc-util :as proc-util]
             [clojure.core.async :as async :refer [<!! <! >! >!!]]
             [clojure.core.async.impl.protocols :as ap]
             [clojure.core.match :refer [match]]))
@@ -175,21 +176,16 @@
     (! reg-name :msg)
     (await-completion done 100)))
 
-(deftest ^:parallel process-killed-when-inbox-is-overflowed
+(def-proc-test ^:parallel process-killed-when-inbox-is-overflowed
+  (process/flag :trap-exit true)
   (let [done (async/chan)
-        done1 (async/chan)
-        pfn (proc-fn [] (is (await-completion done1 1000)))
-        pid (process/spawn pfn [] {})
-        pfn1 (proc-fn []
-               (dotimes [_ 1200] (! pid :msg))
-               (async/close! done1)
-               (is (= [:exit [pid :inbox-overflow]]
-                      (<! (await-message 1000)))
-                   (str "process must be killed when its control inbox"
-                        " is overflowed"))
-               (async/close! done))]
-    (process/spawn pfn1 [] {:link-to pid :flags {:trap-exit true}})
-    (await-completion done 1000)))
+        pid (process/spawn-link (proc-fn [] (is (await-completion done 1000))))]
+    (dotimes [_ 2000] (! pid :msg))
+    (is (= [:exit [pid :inbox-overflow]]
+           (<! (await-message 1000)))
+        (str "process must be killed when its control inbox"
+             " is overflowed"))
+    (async/close! done)))
 
 ;; ====================================================================
 ;; (proc-fn [args & body])
@@ -420,97 +416,51 @@
     (await-completion done 100)))
 
 (def-proc-test ^:parallel exit-self-reason-is-process-exit-reason
-  (let [done (async/chan)
-        done1 (async/chan)
-        pfn (proc-fn []
-              (is (await-completion done1 50))
-              (process/exit (process/self) :abnormal))
-        pid (process/spawn pfn [] {})
-        pfn1 (proc-fn []
-               (async/close! done1)
-               (is (= [:exit [pid :abnormal]] (<! (await-message 50)))
-                   "process exit reason must be the one passed to exit call")
-               (async/close! done))]
-    (process/spawn pfn1 [] {:link-to pid :flags {:trap-exit true}})
-    (await-completion done 100)))
+  (process/flag :trap-exit true)
+  (let [pfn (proc-fn [] (process/exit (process/self) :abnormal))
+        pid (process/spawn-link pfn)]
+    (is (= [:exit [pid :abnormal]] (<! (await-message 100)))
+        "process exit reason must be the one passed to exit call")))
 
 ; See issue #12 on github
 (def-proc-test ^:parallel link-call-does-not-increase-exit-message-delivery-time
+  (process/flag :trap-exit true)
   (let [done (async/chan)
-        done1 (async/chan)
         pfn (proc-fn []
-              (is (await-completion done1 50))
-              (process/exit (process/self) :abnormal))
-        pid (process/spawn pfn [] {})
-        pfn1 (proc-fn []
-               (process/link pid)
-               (async/close! done1)
-               (is (= [:exit [pid :abnormal]] (<! (await-message 50)))
-                   "process exit reason must be the one passed to exit call")
-               (async/close! done))]
-    (process/spawn pfn1 [] {:link-to pid :flags {:trap-exit true}})
-    (await-completion done 100)))
-
-(deftest ^:parallel process-killed-when-control-inbox-is-overflowed
-  (let [done (async/chan)
-        done1 (async/chan)
-        pid (process/spawn (proc-fn [] (is (await-completion done 1000))) [] {})
-        pfn1 (proc-fn []
-               (is (await-completion done1 50))
-               (dotimes [_ 300] (process/link pid)))
-        pid1 (process/spawn pfn1 [] {})
-        pfn2 (proc-fn []
-               (async/close! done1)
-               (is (= [:exit [pid1 :control-overflow]]
-                      (<! (await-message 1000)))
-                   (str "process must be killed when its control inbox"
-                        " is overflowed"))
-               (async/close! done))]
-    (process/spawn pfn2 [] {:link-to pid1 :flags {:trap-exit true}})
-    (await-completion done 1000)))
+                     (is (await-completion done 50))
+                     (process/exit (process/self) :abnormal))
+        pid (process/spawn pfn)]
+    (process/link pid)
+    (async/close! done)
+    (is (= [:exit [pid :abnormal]] (<! (await-message 100)))
+        "process exit reason must be the one passed to exit call")))
 
 (def-proc-test ^:parallel exit-kill-reason-is-killed
+  (process/flag :trap-exit true)
   (let [done (async/chan)
-        done1 (async/chan)
-        pfn (proc-fn [] (is (await-completion done1 50)))
-        pid (process/spawn pfn [] {})
-        pfn1 (proc-fn []
-               (process/exit pid :kill)
-               (async/close! done1)
-               (is (= [:exit [pid :killed]] (<! (await-message 50)))
-                   (str "process exit reason must be :killed when exit is"
-                        " called with reason :kill"))
-               (async/close! done))]
-    (process/spawn pfn1 [] {:link-to pid :flags {:trap-exit true}})
-    (await-completion done 100))
-  (let [done (async/chan)
-        done1 (async/chan)
-        pfn (proc-fn []
-              (is (await-completion done1 50))
-              (process/exit (process/self) :kill))
-        pid (process/spawn pfn [] {})
-        pfn1 (proc-fn []
-               (async/close! done1)
-               (is (= [:exit [pid :killed]] (<! (await-message 50)))
-                   (str "process exit reason must be :killed when exit is"
-                        " called with reason :kill"))
-               (async/close! done))]
-    (process/spawn pfn1 [] {:link-to pid :flags {:trap-exit true}})
-    (await-completion done 100))
-  (let [done (async/chan)
-        done1 (async/chan)
-        pfn (proc-fn []
-              (is (await-completion done1 50))
-              (process/exit :kill))
-        pid (process/spawn pfn [] {})
-        pfn1 (proc-fn []
-               (async/close! done1)
-               (is (= [:exit [pid :kill]] (<! (await-message 50)))
-                   (str "process exit reason must be :killed when exit is"
-                        " called with reason :kill"))
-               (async/close! done))]
-    (process/spawn pfn1 [] {:link-to pid :flags {:trap-exit true}})
-    (await-completion done 100)))
+        pid (process/spawn-link (proc-fn [] (is (await-completion done 100))))]
+    (process/exit pid :kill)
+    (is (= [:exit [pid :killed]] (<! (await-message 50)))
+        (str "process exit reason must be :killed when exit is"
+             " called with reason :kill"))
+    (async/close! done)))
+
+(def-proc-test ^:parallel exit-kill-reason-is-killed
+  (process/flag :trap-exit true)
+  (let [pid (process/spawn-link
+              (proc-fn [] (process/exit (process/self) :kill)))]
+    (is (= [:exit [pid :killed]] (<! (await-message 50)))
+        (str "process exit reason must be :killed when exit is"
+             " called with reason :kill"))))
+
+(def-proc-test ^:parallel exit-kill-reason-is-killed
+;(otplike.proc-util/execute-proc!!
+  (process/flag :trap-exit true)
+  (let [pid (process/spawn-link
+              (proc-fn [] (process/exit :kill)))]
+    (is (= [:exit [pid :kill]] (<! (await-message 50)))
+        (str "process exit reason must be :killed when exit is"
+             " called with reason :kill"))))
 
 ; TODO
 ;(deftest ^:parallel exit-kill-does-not-propagate)
@@ -1188,12 +1138,6 @@
       "spawn must throw if :flags option is not a map")
   (is (thrown? Exception (process/spawn (proc-fn []) [] {:flags '()}))
       "spawn must throw if :flags option is not a map")
-  (is (thrown? Exception
-               (process/spawn (proc-fn []) [] {:link-to 1}))
-      "spawn must throw if :link-to option is not a pid or collection of pids")
-  (is (thrown? Exception
-               (process/spawn (proc-fn []) [] {:link-to [1]}))
-      "spawn must throw if :link-to option is not a pid or collection of pids")
   (is (thrown? Exception (process/spawn (proc-fn []) [] {:inbox 1}))
       "spawn must throw if :inbox-size option is not a channel")
   (is (thrown? Exception (process/spawn (proc-fn []) [] {:inbox true}))
@@ -1213,25 +1157,15 @@
         "spawn must throw if :register name is a pid")))
 
 (defn- process-exits-abnormally-when-pfn-throws* [ex]
-  (let [done (async/chan)
-        done1 (async/chan)
-        ex-class-name (.getName (class ex))
-        pfn (fn []
-              (is (await-completion done1 50))
-              (throw ex))
-        pid (process/spawn pfn [] {})
-        pfn1 (proc-fn []
-               (async/close! done1)
-               (is (= [:exit [pid [:exception {:class ex-class-name}]]]
-                      (match (<! (await-message 50))
-                        [:exit [pid [:exception {:class ex-class-name}]]]
-                        [:exit [pid [:exception {:class ex-class-name}]]]
-                        msg msg))
-                   (str "process should be exited abnormally when its proc-fn"
-                        " throws any exception"))
-               (async/close! done))]
-    (process/spawn pfn1 [] {:link-to pid :flags {:trap-exit true}})
-    (await-completion done 100)))
+  (proc-util/execute-proc!!
+    (process/flag :trap-exit true)
+    (let [done (async/chan)
+          ex-class-name (.getName (class ex))
+          pid (process/spawn-link (fn [] (throw ex)))]
+      (is (match (<! (await-message 50))
+            [:exit [pid [:exception {:class ex-class-name}]]]
+            :ok)
+          "process must exit when its proc-fn throws any exception"))))
 
 (deftest ^:parallel process-exits-abnormally-when-pfn-throws
   (process-exits-abnormally-when-pfn-throws* (InterruptedException.))
@@ -1239,43 +1173,23 @@
   (process-exits-abnormally-when-pfn-throws* (Error.)))
 
 (defn- process-exits-abnormally-when-pfn-arity-doesnt-match-args* [pfn args]
-  (let [done (async/chan)
-        ch (async/chan)
-        pfn1 (proc-fn []
-               (is
-                 (match (async/alts! [ch (async/timeout 50)])
-                   [(pid :guard #(process/pid? %)) ch]
-                   (is (= [:exit [pid [:exception :stack-trace]]]
-                          (match (<! (await-message 50))
-                                 [:exit [pid [:exception _]]]
-                                 [:exit [pid [:exception :stack-trace]]]
-                                 msg msg))
-                       (str "process should be exited abnormally when its"
-                            " proc-fn throws any exception"))))
-               (async/close! done))
-        pid1 (process/spawn pfn1 [] {:flags {:trap-exit true}})
-        pid (process/spawn pfn args {:link-to pid1})]
-    (>!! ch pid)
-    (await-completion done 100)))
+  (proc-util/execute-proc!!
+    (process/flag :trap-exit true)
+    (let [pid (process/spawn-link pfn args)]
+      (is (match (<! (await-message 50)) [:exit [pid [:exception _]]] :ok)
+          "process must exit when arguments to its proc-fn dont match arity"))))
 
 (deftest ^:parallel process-exits-abnormally-when-pfn-arity-doesnt-match-args
   (process-exits-abnormally-when-pfn-arity-doesnt-match-args* (fn []) [:a 1])
   (process-exits-abnormally-when-pfn-arity-doesnt-match-args* (fn [a b]) [])
   (process-exits-abnormally-when-pfn-arity-doesnt-match-args* (fn [b]) [:a :b]))
 
-(deftest ^:parallel process-is-linked-when-proc-fn-starts
-  (let  [done (async/chan)
-         done1 (async/chan)
-         pfn (proc-fn [] (is (await-completion done1 50)))
-         pid (process/spawn pfn [] {})
-         pfn1 (proc-fn []
-                 (async/close! done1)
-                 (is (= [:exit [pid :normal]] (<! (await-message 50)))
-                     (str "process spawned with :link-to option must be linked"
-                          " before its proc-fn starts"))
-                 (async/close! done))]
-    (process/spawn pfn1 [] {:link-to pid :flags {:trap-exit true}})
-    (await-completion done 100)))
+;(def-proc-test ^:parallel process-is-linked-when-proc-fn-starts
+(proc-util/execute-proc!!
+  (process/flag :trap-exit true)
+  (let [pid (process/spawn-link (proc-fn []))]
+    (is (= [:exit [pid :normal]] (<! (await-message 50)))
+        "spawn-linked process must be linked before its proc-fn starts")))
 
 (deftest ^:parallel spawn-passes-opened-read-port-to-pfn-as-inbox
   (let [done (async/chan)
@@ -1303,11 +1217,12 @@
   (let [done (async/chan)
         pfn (proc-fn []
               (is (match (<! (await-message 50)) [:noproc _] :ok)
-                  "process spawned with no options must not trap exits")
+                  (str "process not trapping exits must exit"
+                       " when it receives exit signal"))
               (async/close! done))
-        pid (process/spawn pfn [] {})]
+        pid (process/spawn pfn)]
     (process/exit pid :abnormal)
-    (await-completion done 50))
+    (await-completion done 100))
   (let [done (async/chan)
         test-pid (process/self)
         pfn (proc-fn []
@@ -1316,38 +1231,7 @@
                   (str "process spawned option :trap-exit set to true"
                        " must trap exits"))
               (async/close! done))
-        pid (process/spawn pfn [] {:flags {:trap-exit true}})]
-    (process/exit pid :abnormal)
-    (await-completion done 50)))
-
-(def-proc-test ^:parallel spawned-process-is-linked-according-options
-  (let [done (async/chan)
-        done1 (async/chan)
-        pfn (proc-fn []
-              (is (await-completion done1 50))
-              (throw (Exception. "TEST")))
-        pid (process/spawn pfn [] {})
-        pfn1 (proc-fn []
-               (async/close! done1)
-               (is (match (<! (await-message 50)) [:noproc _] :ok)
-                   (str "process spawned with option :link-to must exit"
-                        " when linked process exited"))
-               (async/close! done))]
-    (process/spawn pfn1 [] {:link-to pid})
-    (await-completion done 100))
-  (let [done (async/chan)
-        done1 (async/chan)
-        pfn (proc-fn [] (is (match (<! (await-message 100)) [:noproc _] :ok)))
-        pid (process/spawn pfn [] {})
-        pfn1 (proc-fn []
-                      (async/close! done1)
-               (is (= [:exit [pid :abnormal]] (<! (await-message 100)))
-                   (str "process trapping exits and spawned with option"
-                        " :link-to must receive exit message when linked"
-                        " process exited"))
-               (async/close! done))]
-    (process/spawn pfn1 [] {:link-to pid :flags {:trap-exit true}})
-    (await-completion done1 50)
+        pid (process/spawn pfn {:flags {:trap-exit true}})]
     (process/exit pid :abnormal)
     (await-completion done 50)))
 
@@ -1383,19 +1267,6 @@
     (process/exit pid :abnormal)
     (await-completion done 50)))
 
-(def-proc-test ^:parallel processes-linked-on-spawn-receive-exit-message
-  (let [done (async/chan)
-        exit-reason (uuid-keyword)
-        pfn (proc-fn []
-              (is (match (<! (await-message 50))
-                    [:exit [_ exit-reason]] :ok))
-              (async/close! done))
-        pid (process/spawn pfn [] {:flags {:trap-exit true}})
-        pfn1 (proc-fn [] (process/exit (process/self) exit-reason))
-        pid1 (process/spawn pfn1 [] {:link-to pid})]
-    (process/exit pid1 exit-reason)
-    (await-completion done 100)))
-
 (deftest ^:parallel inbox-provided-to-spawn-is-spawned-process-inbox
   (let [done (async/chan)
         inbox (async/chan)
@@ -1409,9 +1280,9 @@
     (await-completion done 50)))
 
 ; TODO:
-;(deftest ^:parallel process-exit-reason-is-proc-fn-return-value)
+;(deftest ^:parallel process-exit-reason-is-proc-fn-return-value) ?
 ;(deftest ^:parallel spawned-process-available-from-within-process-by-reg-name)
-;(deftest ^:parallel there-are-no-residue-of-process-after-proc-fun-threw)
+;(deftest ^:parallel there-are-no-residue-of-process-after-proc-fun-throws)
 
 ;; ====================================================================
 ;; (spawn-link [proc-fun args options])
@@ -1448,6 +1319,46 @@
                (is (thrown? Exception (process/spawn-link pfn [] {})))
                (async/close! done))]
     (process/spawn pfn1 [] {})
+    (await-completion done 200)))
+
+(deftest ^:parallel spawn-link:spawned-process-receives-parent-exit-reason
+  (let [done (async/chan)
+        pfn1 (proc-fn []
+               (is (match (<! (await-message 50))
+                          [:exit [(_ :guard process/pid?) :normal]] :ok)
+                   (str "spawn-link(ed) process must receive exit message"
+                        " with the reason of parent's exit"))
+               (async/close! done))
+        pfn2 (proc-fn []
+               (is (process/spawn-link pfn1 {:flags {:trap-exit true}})
+                   "test failed"))]
+    (process/spawn pfn2)
+    (await-completion done 200))
+  (let [done (async/chan)
+        pfn1 (proc-fn []
+               (is (match (<! (await-message 50))
+                          [:exit [(_ :guard process/pid?) :abnormal]] :ok)
+                   (str "spawn-link(ed) process must receive exit message"
+                        " with the reason of parent's exit"))
+               (async/close! done))
+        pfn2 (proc-fn []
+               (is (process/spawn-link pfn1 {:flags {:trap-exit true}})
+                   "test failed")
+               (process/exit :abnormal))]
+    (process/spawn pfn2)
+    (await-completion done 200))
+  (let [done (async/chan)
+        pfn1 (proc-fn []
+               (is (match (<! (await-message 50))
+                          [:exit [(_ :guard process/pid?) :killed]] :ok)
+                   (str "spawn-link(ed) process must receive exit message"
+                        " with the reason of parent's exit"))
+               (async/close! done))
+        pfn2 (proc-fn []
+               (is (process/spawn-link pfn1 {:flags {:trap-exit true}})
+                   "test failed")
+               (process/exit (process/self) :kill))]
+    (process/spawn pfn2)
     (await-completion done 200)))
 
 ; TODO check if spawn-link works like spawn
@@ -2003,3 +1914,6 @@
                      (async/close! done))
         pid (process/spawn pfn)]
     (await-completion done 150)))
+
+;; ====================================================================
+;; Other

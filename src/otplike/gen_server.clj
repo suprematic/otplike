@@ -220,6 +220,24 @@
 
 ; API functions
 
+(defn- start*
+  ([spawn-fn server args-or-opts]
+   (if (map? args-or-opts)
+     (start* spawn-fn server [] args-or-opts)
+     (start* spawn-fn server args-or-opts {})))
+  ([spawn-fn server args options]
+   (let [gs (->gen-server server)
+         response (async/chan)
+         parent (process/self)
+         pid (spawn-fn gen-server-proc [gs args parent response] options)]
+     ; TODO allow to override timeout passing it as argument
+     (match (async/alts!! [response (async/timeout 1000)])
+            [:ok response] [:ok pid]
+            [[:error reason] response] [:error reason]
+            [nil timeout] (do (process/unlink pid)
+                              (process/exit pid :kill)
+                              [:error :timeout])))))
+
 (defn start
   "Starts the server, passing args to server's init function.
 
@@ -237,23 +255,30 @@
   [:error reason] otherwise.
 
   Throws on illegal arguments."
-  [server-impl args options]
-  (let [gs (->gen-server server-impl)
-        response (async/chan)
-        parent (process/self)
-        pid (process/spawn gen-server-proc [gs args parent response] options)]
-    ; TODO allow to override timeout passing it as argument
-    (match (async/alts!! [response (async/timeout 1000)])
-      [:ok response] [:ok pid]
-      [[:error reason] response] [:error reason]
-      [nil timeout] (do (process/unlink pid)
-                        (process/exit pid :kill)
-                        [:error :timeout]))))
+  ([server]
+   (start* process/spawn server [] {}))
+  ([server args-or-opts]
+   (start* process/spawn server args-or-opts))
+  ([server args options]
+   (start* process/spawn server args options)))
 
-(defmacro start-ns [params options]
+(defn start-link
+  ([server]
+   (start* process/spawn-link server [] {}))
+  ([server args-or-opts]
+   (start* process/spawn-link server args-or-opts))
+  ([server args options]
+   (start* process/spawn-link server args options)))
+
+(defmacro start-ns
   "Starts the server, taking current ns as a implementation source.
   See start for more info."
-  `(start ~*ns* ~params ~options))
+  [args options]
+  `(start ~*ns* ~args ~options))
+
+(defmacro start-link-ns
+  [args options]
+  `(start-link ~*ns* ~args ~options))
 
 (defn cast [server message]
   (! server [:cast message]))

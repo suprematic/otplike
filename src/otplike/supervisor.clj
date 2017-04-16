@@ -583,10 +583,9 @@
   :ret (spec/or :success (spec/tuple ::ok ::process/pid)
                 :failure (spec/tuple ::error ::reason)))
 (defn start-link* [sup-fn args options]
-  ;(printf "parent %s%n" (process/self))
-  (gen-server/start-ns [sup-fn args] (merge options {:link-to (process/self)
-                                                     :flags {:trap-exit true}
-                                                     :name "supervisor"})))
+  (gen-server/start-link-ns [sup-fn args]
+                            (merge options {:flags {:trap-exit true}
+                                            :name "supervisor"})))
 (spec-util/instrument `start-link*)
 
 ;; ====================================================================

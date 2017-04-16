@@ -41,7 +41,7 @@
         server {:init (fn [_]
                         (async/close! server-init-done)
                         [:ok :state])}
-        children-spec [{:id 1 :start [#(gs/start server [] {}) []]}]
+        children-spec [{:id 1 :start [#(gs/start-link server [] {}) []]}]
         sup-spec [sup-flags children-spec]
         init-fn (fn [_]
                   (async/close! sup-init-done)
@@ -69,7 +69,7 @@
         (fn [await-chan done-chan id]
           {:id id
            :start
-           [#(gs/start
+           [#(gs/start-link
                {:init (fn [_]
                         (is (await-completion await-chan 50)
                             "supervisor must start children in spec's order")
@@ -102,7 +102,7 @@
         sup-flags {}
         make-child (fn [id]
                      {:id id
-                      :start [#(gs/start
+                      :start [#(gs/start-link
                                  {:init (fn [_]
                                           (is false "child must not be started")
                                           [:ok :state])}
@@ -139,7 +139,7 @@
         init-fn (fn [_]
                   (async/close! sup-init-done)
                   [:ok [{} [{:start
-                             [#(gs/start
+                             [#(gs/start-link
                                  {:init (fn [_]
                                           (is false "child must not be started")
                                           [:ok :state])}
@@ -176,7 +176,7 @@
 (def-proc-test ^:parallel start-link:bad-return:bad-supervisor-flags
   (let [make-child (fn [id]
                      {:id id
-                      :start [#(gs/start
+                      :start [#(gs/start-link
                                  {:init (fn [_]
                                           (is false "child must not be started")
                                           [:ok :state])}
@@ -245,12 +245,12 @@
   (let [sup-init-done (async/chan)
         sup-flags {}
         children-spec [{:id :child-id
-                        :start [#(gs/start {:init init-fn} [] {}) []]}]
+                        :start [#(gs/start-link {:init init-fn}) []]}]
         sup-spec [sup-flags children-spec]
-        init-fn (fn [_]
+        init-fn (fn []
                   (async/close! sup-init-done)
                   [:ok sup-spec])]
-    (match (sup/start-link init-fn [nil])
+    (match (sup/start-link init-fn)
            [:error [:shutdown [:failed-to-start-child :child-id reason]]]
            (is (await-completion sup-init-done 50)
                "supervisor must call init-fn to get its spec"))))
@@ -287,15 +287,15 @@
                               [:ok :state])
         child-spec (fn [id init-fn]
                      {:id id
-                      :start [#(gs/start {:init init-fn} [] {}) []]})
+                      :start [#(gs/start-link {:init init-fn}) []]})
         children-spec [(child-spec :id1 error-child-init)
                        (child-spec :id2 healthy-child-init)
                        (child-spec :id3 healthy-child-init)]
         sup-spec [sup-flags children-spec]
-        init-fn (fn [_]
+        init-fn (fn []
                   (async/close! sup-init-done)
                   [:ok sup-spec])]
-    (match (sup/start-link init-fn [nil])
+    (match (sup/start-link init-fn)
            [:error [:shutdown [:failed-to-start-child :id1 :abnormal]]]
            (do
              (is (await-completion child1-done 50)
@@ -327,19 +327,18 @@
                               [:ok :state])
         child-spec (fn [id init-fn terminate-fn]
                      {:id id
-                      :start [#(gs/start {:init init-fn
-                                          :terminate terminate-fn}
-                                         []
-                                         {:flags {:trap-exit true}})
+                      :start [#(gs/start-link {:init init-fn
+                                               :terminate terminate-fn}
+                                              {:flags {:trap-exit true}})
                               []]})
         children-spec [(child-spec :id1 healthy-child1-init child1-terminate)
                        (child-spec :id2 error-child-init nil)
                        (child-spec :id3 healthy-child2-init nil)]
         sup-spec [sup-flags children-spec]
-        init-fn (fn [_]
+        init-fn (fn []
                   (async/close! sup-init-done)
                   [:ok sup-spec])]
-    (match (sup/start-link init-fn [nil])
+    (match (sup/start-link init-fn)
            [:error [:shutdown [:failed-to-start-child :id2 :abnormal]]]
            (do
              (is (await-completion child1-init-done 50)
@@ -384,10 +383,9 @@
               "child must be stopped with :shutdown reason"))
         child-spec (fn [id init-fn terminate-fn]
                      {:id id
-                      :start [#(gs/start {:init init-fn
-                                          :terminate terminate-fn}
-                                         []
-                                         {:flags {:trap-exit true}})
+                      :start [#(gs/start-link {:init init-fn
+                                               :terminate terminate-fn}
+                                              {:flags {:trap-exit true}})
                               []]})
         children-spec [(child-spec :id1 healthy-child1-init child1-terminate)
                        (child-spec :id2 healthy-child2-init child2-terminate)
@@ -458,7 +456,7 @@
                                   :terminate (fn [reason _state]
                                                (printf "server %s terminate %s, reason %s%n" sname (rem (System/currentTimeMillis) 10000) reason))}]
                       {:id sname
-                       :start [#(gs/start server [] {:link-to (process/self) :register sname}) []]
+                       :start [#(gs/start-link server {:register sname}) []]
                        :restart restart-type}))
             children-spec [(child done0 done1 :1 :permanent)
                            (child done1 done2 :2 :permanent)

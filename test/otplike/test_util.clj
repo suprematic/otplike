@@ -42,28 +42,6 @@
       [value chan] [:ok value]
       [nil timeout] (throw (Exception. (str "timeout " timeout-ms))))))
 
-(defn await-process-exit
-  "Waits for process to exit. Returns [:ok reason] if process exited
-  during timeout-ms. Otherwise throws."
-  [pid timeout-ms]
-  (let [done (async/chan)]
-    (process/spawn (process/proc-fn []
-                     (process/receive!
-                       [:EXIT pid reason] (async/put! done [:ok reason])
-                       (after timeout-ms :timeout)))
-                   {:link-to pid :flags {:trap-exit true}})
-    (match (await-completion done timeout-ms) [:ok reason] reason)))
-
-(defn notify-on-process-exit
-  "Puts [:ok reason] to chan if process exited during timeout-ms
-  or :timeout if not."
-  [pid chan timeout-ms]
-  (process/spawn (process/proc-fn []
-                   (process/receive!
-                     [:EXIT pid reason] (async/put! chan [:ok reason])
-                     (after timeout-ms (async/put! chan :timeout))))
-                 {:link-to pid :flags {:trap-exit true}}))
-
 (defmacro def-proc-test [name & body]
   `(clojure-test/deftest ~name
      (proc-util/execute-proc!! ~@body)))
