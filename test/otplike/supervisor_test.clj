@@ -3,6 +3,7 @@
             [clojure.core.match :refer [match]]
             [clojure.pprint :as pprint]
             [clojure.core.async :as async :refer [<!! <! >! >!!]]
+            [clojure.math.combinatorics :as combinatorics]
             [otplike.process :as process :refer [!]]
             [otplike.trace :as trace]
             [otplike.test-util :refer :all]
@@ -412,16 +413,363 @@
 ;; one-for-one
 
 ; TODO
-; number of children - 3
-; child restart-type - 3
-; which child exits - 3
-; child exit reason - 3 (normal, abnormal, shutdown)
-; child shutdown type - 2
-; child exit timeout - 2
-; child type - 2
-; allowed restarts number exceeded - 2
-; child start timeout - 2
-;(* 3 3 3 3 2 2 2 2 2)
+; Variables:
+;; number of children - 3
+;; intensity and period
+;; Children exit plan:
+;;; child restart-type - 3
+;;; child shutdown type - 2
+;;; child type - 2
+;;; Child exits:
+;;;; when - 3
+;;;; restart failure - 2
+;;;; reason - 2 (normal, abnormal)
+;;;; restart timeout - 2
+;;;; exit timeout - 2
+
+; Properties to be hold:
+;; Independent of all
+;;; all children must be started before start-link returns
+;;; all children must exit before gen-server exits
+;;; supervisor must be stopped if allowed number of restarts is reached
+;;; children must be started in the same order as in spec
+;;; children must be stopped in order opposite to start order
+;; Strategy-dependent:
+;;; only exited child must be restarted
+;; Depend on child spec
+;;; all terporary children must stay exited after first exit
+;;; all transient children must stay exited after first normal exit
+;;; all permanent children must be restarted until supervisor is alive
+;;; child must be killed if its shutdown type is :brutal-kill
+;;; child must be killed if shutdown timeout occurs
+;;; child must be restarted if restart fails
+
+(defn ms []
+  (rem (System/currentTimeMillis) 1000))
+
+(defn log! [log fmt & args]
+  (async/put! log [(ms) fmt args]))
+
+(defn expect-events [events-chan log timeout-ms expect-in-order other-expected]
+  (let [log! #(apply log! log %&)]
+    (async/go-loop
+      [expect-in-order expect-in-order
+       other-expected other-expected
+       timeout (async/timeout timeout-ms)]
+      (if (or (seq expect-in-order) (seq other-expected))
+        (match
+          (async/alts! [events-chan timeout])
+          [nil timeout]
+          (log! "!ERROR timeout, expected in order %s, other %s"
+                (pr-str expect-in-order) (pr-str other-expected))
+
+          [nil events-chan]
+          (log! "!ERROR log closed")
+
+          [event events-chan]
+          (if (= (first expect-in-order) event)
+            (do
+              (log! "expected in order %s" event)
+              (recur (rest expect-in-order) other-expected timeout))
+            (if (some #{event} other-expected )
+              (do
+                (log! "other expected %s" event)
+                (recur
+                  expect-in-order
+                  (concat (take-while #(not= % event) other-expected)
+                          (rest (drop-while #(not= % event) other-expected)))
+                  timeout))
+              (log! "!ERROR unexpected event %s, expected in order %s, other %s"
+                event (pr-str expect-in-order) (pr-str other-expected)))))))))
+
+(defn report-progress [events-chan msg]
+  (if-not (async/put! events-chan (conj msg))
+    (printf "!ERROR event after test is finished: %s%n" msg)))
+
+(process/proc-defn child-proc
+  [id log {:keys [exit-delay exit-failure] :as problem}]
+  (process/spawn-link
+    (process/proc-fn []
+      (process/receive!
+        [:EXIT _ reason] (report-progress log [id :exit-watcher reason])
+        msg (printf "!!! unexpected message %s%n" msg)))
+    {:flags {:trap-exit true}
+     :name (str "kill_watcher_" id "_")})
+  (report-progress log [id :process-start])
+  (process/receive!
+    [:exit reason] (do
+                     (report-progress log [id :exit-command reason])
+                     (process/exit reason))
+    [:EXIT _ reason] (do
+                       (report-progress log [id :exit reason])
+                       (if exit-delay
+                         (async/<! (async/timeout exit-delay)))
+                       (if exit-failure
+                         (process/exit exit-failure)
+                         (process/exit reason)))))
+
+(defn start-child [{id :id} log problems]
+  (report-progress log [id :start-fn])
+  (let [{:keys [start-failure] :as problem} (first @problems)]
+    (swap! problems rest)
+    (if start-failure
+      [:error start-failure]
+      [:ok (process/spawn-link
+             child-proc [id log problem] {:register id
+                                          :flags {:trap-exit true}
+                                          :name (str "child_" id "_")})])))
+
+(defn expected-exits [children current-problems-map]
+  (let [children-map (reduce #(assoc %1 (:id %2) %2) {} children)]
+    [(->> children
+          (filter #(not= :brutal-kill (:shutdown %)))
+          (map #(vector (:id %) :exit :shutdown)))
+     (map #(let [id (:id %)
+                 current-problem (current-problems-map id)]
+             ;(printf ">> current-problem %s%n" current-problem)
+             (case (:shutdown %)
+               :brutal-kill [id :exit-watcher :killed]
+               (if (:exit-delay current-problem)
+                 (if (= :supervisor (:type (children-map id)))
+                   [id :exit-watcher :shutdown]
+                   [id :exit-watcher :killed])
+                 (if-let [reason (:exit-failure current-problem)]
+                   [id :exit-watcher reason]
+                   [id :exit-watcher :shutdown]))))
+          children)]))
+
+(defn run-test:one-for-one
+  [events-chan
+   log
+   children-map
+   problems-map
+   {:keys [children exits intensity] :as test}]
+  (async/go
+    (let [expect-events (partial expect-events events-chan log)]
+      (<! (expect-events 5000
+                         (map #(vector (:id %) :start-fn) children)
+                         (map #(vector (:id %) :process-start) children)))
+      (loop [exits exits
+             children-map children-map
+             problems-left (reduce-kv #(assoc %1 %2 (rest %3)) {} problems-map)
+             current-problems (reduce-kv #(assoc %1 %2 (first %3)) {} problems-map)
+             restarts 0]
+        ;(printf ">>>> current problems %s%n" current-problems)
+        (if-let [{:keys [id reason]} (first exits)]
+          (let [expected-in-order [[id :exit-command reason]]
+                other-expected [[id :exit-watcher reason]]]
+            (! id [:exit reason])
+            (if (or (= :temporary (:restart (children-map id)))
+                    (and (= :normal reason)
+                         (= :transient (:restart (children-map id)))))
+              (do
+                (<! (expect-events 5000 expected-in-order other-expected))
+                (recur (rest exits)
+                       (dissoc children-map id)
+                       (dissoc problems-left id)
+                       (dissoc current-problems id)
+                       restarts))
+              (let [restarts (inc restarts)]
+                (if (> restarts intensity)
+                  (let [[eio oe]
+                        (expected-exits
+                          (->> (dissoc children-map id) (into (sorted-map)) vals reverse)
+                          (dissoc current-problems id))]
+                    (<! (expect-events 5000
+                                       (concat expected-in-order eio)
+                                       (concat other-expected oe)))
+                    [[] []])
+                  (let [current-problems
+                        (assoc current-problems id (first (problems-left id)))
+                        problems-left
+                        (update problems-left id rest)
+                        [start-failures other-problems]
+                        (split-with :start-failure (problems-left id))
+                        start-failures-count
+                        (if (:start-failure (current-problems id))
+                          (inc (count start-failures))
+                          0)
+                        start-failures-count
+                        (min start-failures-count (inc (- intensity restarts)))
+                        restarts
+                        (+ restarts start-failures-count)
+                        expected-in-order
+                        (concat expected-in-order (repeat start-failures-count [id :start-fn]))]
+                    (if (> restarts intensity)
+                      (let [[eio oe]
+                            (expected-exits
+                              (->> (dissoc children-map id) (into (sorted-map)) vals reverse)
+                              (dissoc current-problems id))]
+                        (<! (expect-events 5000
+                                           (concat expected-in-order eio)
+                                           (concat other-expected oe)))
+                        [[] []])
+                      (let [problems-left
+                            (update problems-left id #(drop (dec start-failures-count) %))]
+                        (<! (expect-events
+                              5000
+                              (concat expected-in-order [[id :start-fn] [id :process-start]])
+                              other-expected))
+                        (recur (rest exits)
+                               children-map
+                               problems-left
+                               (assoc current-problems id (first (problems-left id)))
+                               restarts))))))))
+          (expected-exits (->> children-map (into (sorted-map)) vals reverse)
+                          current-problems))))))
+
+(defn run-test-process
+  [strategy
+   events-chan
+   log
+   children-map
+   problems-map
+   {:keys [children intensity period] :as test}]
+  (async/go
+    (proc-util/execute-proc!
+      (match
+        (sup/start-link
+          (fn []
+            [:ok [{:strategy strategy
+                   :intensity intensity
+                   :period period}
+                  (map #(assoc % :start
+                               [start-child
+                                [% events-chan (atom (problems-map (:id %)))]])
+                       children)]]))
+        [:ok pid] (<! (case strategy
+                        :one-for-one
+                        (run-test:one-for-one
+                          events-chan log children-map problems-map test)))
+        res (do
+              (log! log "!ERROR %s" res)
+              [[] []])))))
+
+(defn run-test [strategy {:keys [children problems] :as test}]
+  (async/go
+    (let [log (async/chan)
+          events-chan (async/chan)
+          problems-map (->> problems
+                            (group-by :id)
+                            (reduce-kv #(assoc %1 %2
+                                               (if (:start-failure (first %3))
+                                                 (cons {} %3)
+                                                 %3))
+                                       {}))
+          children-map (reduce #(assoc %1 (:id %2) %2) {} children)]
+      ;(printf "problems-map %s%n" problems-map)
+      (try
+        (log! log "RUN test%n%s" (clojure.pprint/write test :stream nil))
+        (if-let [[expected-in-order other-expected]
+                 (<! (run-test-process
+                       strategy events-chan log children-map problems-map test))]
+          (<! (expect-events
+                events-chan log 5000 expected-in-order other-expected)))
+        (log! log "DONE run-test")
+        log
+        (catch Throwable t
+          (log! log "!ERROR %s" (pr-str t))
+          log)
+        (finally
+          (async/close! events-chan)
+          (async/close! log))))))
+
+(defn gen-tests []
+  (let [possible-exits [:normal :abnormal]
+        exit-combinations
+        (mapcat #(combinatorics/selections possible-exits %) [1])
+        possible-problems
+        (for [start-failure-reason [nil :abnormal]
+              exit-delay (if start-failure-reason
+                           [nil]
+                           [nil 100])
+              exit-failure-reason (if (or start-failure-reason exit-delay)
+                                    [nil]
+                                    [nil :normal :abnormal])]
+          (cond
+            start-failure-reason {:start-failure start-failure-reason}
+            exit-delay {:exit-delay exit-delay}
+            exit-failure-reason {:exit-failure exit-failure-reason}
+            :else {}))
+        problem-combinations
+        (mapcat #(combinatorics/selections possible-problems %) [0 1])
+        problem-combinations
+        (filter #(or (empty? %) (not (every? empty? %))) problem-combinations)
+        possible-children
+        (for [restart-type [:permanent :transient :temporary]
+              child-type [:worker :supervisor]
+              shutdown (if (= child-type :supervisor)
+                         [nil]
+                         [:brutal-kill 50])]
+          (merge {:restart restart-type
+                  :type child-type}
+                 (if shutdown
+                   {:shutdown shutdown})))
+        add-id
+        (fn [children] (map #(assoc %1 :id %2) children (map inc (range))))
+        children-combinations
+        (mapcat #(combinatorics/selections possible-children %) [1 2 3])
+        children-combinations
+        (map add-id children-combinations)
+        tests
+        (for [intensity [0 1 2]
+              period [1000]
+              cc children-combinations
+              problems problem-combinations
+              exits exit-combinations
+              problem-ids (combinatorics/selections (map :id cc) (count problems))
+              exit-ids (combinatorics/selections (map :id cc) (count exits))]
+          {:children cc
+           :problems (map #(assoc %1 :id %2) problems problem-ids)
+           :exits (map (fn [e id] {:reason e :id id}) exits exit-ids)
+           :intensity intensity
+           :period period})
+        tests
+        (map #(assoc %1 :n %2) tests (map inc (range)))
+        tests
+        (map (fn [t]
+               (let [children (:children t)
+                     ids (map :id children)
+                     uids (->> ids (map #(str % "_")) (map gensym))
+                     id-map (->> (map vector ids uids) (into {}))
+                     update-id #(update % :id id-map)]
+                 (-> t
+                     (update :children #(map update-id %))
+                     (update :problems #(map update-id %))
+                     (update :exits #(map update-id %)))))
+             tests)]
+    ;(println (count possible-exits))
+    ;(clojure.pprint/pprint possible-exits)
+    ;(println (count exit-combinations))
+    ;(clojure.pprint/pprint exit-combinations)
+    ;(println (count possible-problems))
+    ;(clojure.pprint/pprint possible-problems)
+    ;(println (count problem-combinations))
+    ;(clojure.pprint/pprint problem-combinations)
+    ;(println (count possible-children))
+    ;(println (count children-combinations))
+    ;(println (count tests))
+    ;(clojure.pprint/pprint (first tests))
+    tests))
+
+(defn test-one-for-one []
+  (time
+    (binding [*out* (clojure.java.io/writer "sup-test.log")]
+      (<!!
+        (async/go
+          (let [tests (gen-tests)]
+            (doseq [
+                    ;tests (partition 8 8 [] [(nth tests 95446)])
+                    tests (partition 8 8 [] tests)
+                    ;tests (partition 8 8 [] (take 20000 tests))
+                    ]
+              (doseq [res (doall (map (partial run-test :one-for-one) tests))]
+                (println "---")
+                (let [log (async/<! res)]
+                  (loop [x (async/<! log)]
+                    (when-let [[ms fmt args] x]
+                      (println (str "log: " ms " - " (apply format fmt args)))
+                      (recur (async/<! log)))))))))))))
 
 ;; ====================================================================
 ;; one-for-all
@@ -474,3 +822,69 @@
         (printf "call 2 done %s%n" (rem (System/currentTimeMillis) 10000))
         (<! (async/timeout 500))))
     (<!! (async/timeout 1000)))
+
+
+#_(let [trace-ch (trace/console-trace [trace/filter-crashed])]
+    (otplike.proc-util/execute-proc!!
+      (let [buggy-child-name :1
+            sup-flags {:period 200 ;:strategy :one-for-one
+                       :strategy :one-for-all
+                       ;:strategy :rest-for-one
+                       }
+            child (fn [sname restart-type]
+                    (let [server {:init (fn [_]
+                                          (printf "server %s init %s%n" sname (rem (System/currentTimeMillis) 10000))
+                                          [:ok :state])
+                                  :handle-call (fn [req _ state] [:stop :normal state])
+                                  :terminate (fn [reason _state]
+                                               (printf "server %s terminate %s, reason %s%n" sname (rem (System/currentTimeMillis) 10000) reason))}]
+                      {:id sname
+                       :start [#(gs/start-link server {:flags {:trap-exit true} :register sname}) []]
+                       :restart restart-type}))
+            child1 (child :1 :permanent)
+            child2 (child :2 :permanent)
+            child3 (child :3 :transient)
+            child4 (child :4 :transient)
+            sup-spec [sup-flags []]]
+        (match
+          (sup/start-link (fn [_] [:ok sup-spec]) [nil])
+          [:ok pid]
+          (do
+            (printf "server started %s%n" (rem (System/currentTimeMillis) 10000))
+            (match (sup/start-child pid child1) [:ok c1pid] :ok)
+            (match (sup/start-child pid child2) [:ok c2pid] :ok)
+            (match (sup/start-child pid child3) [:ok c3pid] :ok)
+            (printf "call 1 %s%n" (rem (System/currentTimeMillis) 10000))
+            (match (process/ex-catch (gs/call buggy-child-name 1)) [:EXIT _] :ok)
+            (printf "call 1 done %s%n" (rem (System/currentTimeMillis) 10000))
+            (<! (async/timeout 500))
+            (match (sup/delete-child pid :1)
+                   [:error reason] (printf "can't delete child :1 %s%n" reason))
+            (match (sup/delete-child pid :4)
+                   [:error reason] (printf "can't delete child :4 %s%n" reason))
+            (match (sup/terminate-child pid :5)
+                   [:error reason] (printf "can't terminate child :5 %s%n" reason))
+            (match (sup/terminate-child pid :2)
+                   :ok (printf "child :2 terminated%n"))
+            (match (sup/terminate-child pid :2)
+                   :ok (printf "child :2 terminated%n"))
+            (match (sup/restart-child pid :5)
+                   [:error reason] (printf "can't restart child :5 %s%n" reason))
+            (match (sup/restart-child pid :3)
+                   [:error reason] (printf "can't restart child :3 %s%n" reason))
+            (match (sup/restart-child pid :2)
+                   [:ok _] (printf "child :2 restarted%n"))
+            (match (sup/terminate-child pid :2)
+                   :ok (printf "child :2 terminated%n"))
+            (match (sup/delete-child pid :2)
+                   :ok (printf "child :2 deleted%n"))
+            (match (sup/restart-child pid :2)
+                   [:error reason] (printf "can't restart child :2 %s%n" reason))
+            (match (sup/start-child pid child2) [:ok _] :ok)
+            (match (sup/start-child pid child4) [:ok _] :ok)
+            (printf "call 2 %s%n" (rem (System/currentTimeMillis) 10000))
+            (match (process/ex-catch (gs/call buggy-child-name 1)) [:EXIT _] :ok)
+            (printf "call 2 done %s%n" (rem (System/currentTimeMillis) 10000))
+            (<! (async/timeout 500))))))
+    (<!! (async/timeout 1000))
+    (async/close! trace-ch))

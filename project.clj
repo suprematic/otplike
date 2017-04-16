@@ -8,6 +8,7 @@
   :dependencies [[org.clojure/clojure "1.8.0"]
                  [org.clojure/core.async ~core-async-version]
                  [org.clojure/core.match "0.3.0-alpha4"]
+                 [org.clojure/math.combinatorics "0.1.4"]
                  [clojure-future-spec "1.9.0-alpha14"]]
 
   :source-paths  ["src"]
@@ -22,5 +23,7 @@
 
   :test-selectors {:parallel :parallel
                    :serial :serial}
+
+  :jvm-opts  ["-Dclojure.core.async.pool-size=32"]
 
   :plugins [[lein-ancient "0.6.10"]])
