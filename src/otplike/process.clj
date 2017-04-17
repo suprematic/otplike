@@ -535,7 +535,7 @@
       (alter *registered dissoc register)
       (alter *registered-reverse dissoc pid))))
 
-(defn spawn*
+(defn- spawn*
   [link?
    proc-func
    args
