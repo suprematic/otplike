@@ -582,7 +582,7 @@
                   :proc-opts map?)
   :ret (spec/or :success (spec/tuple ::ok ::process/pid)
                 :failure (spec/tuple ::error ::reason)))
-(defn start-link* [sup-fn args options]
+(defn- start-link* [sup-fn args options]
   (gen-server/start-link-ns [sup-fn args]
                             (merge options {:flags {:trap-exit true}
                                             :name "supervisor"})))
