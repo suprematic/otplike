@@ -912,13 +912,13 @@
                   (is (= x 123)
                       "handle-cast must receive message passed to cast")
                   (async/close! done)
-                  [:reply :ok state])}]
+                  [:noreply state])}]
     (match (gs/start server [] {})
       [:ok pid]
       (do
         (gs/cast pid 123)
         (await-completion done 50)
-        (match (process/exit pid :abnormal) true :ok)))))
+        (is (process/exit pid :abnormal))))))
 
 (def-proc-test ^:parallel handle-cast.undefined-callback
   (let [done (async/chan)
@@ -1366,7 +1366,7 @@
 ;; ====================================================================
 ;; (handle-info [message state])
 
-(def-proc-test ^:parallel handle-call.call-delivers-message
+(def-proc-test ^:parallel handle-info.call-delivers-message
   (let [done (async/chan)
         server {:init (fn [_] [:ok :state])
                 :handle-info
@@ -1374,13 +1374,13 @@
                   (is (= x 123)
                       "handle-info must receive message passed to !")
                   (async/close! done)
-                  [:reply :ok state])}]
+                  [:noreply state])}]
     (match (gs/start server [] {})
       [:ok pid]
       (do
-        (! pid 123)
+        (is (! pid 123))
         (await-completion done 50)
-        (match (process/exit pid :abnormal) true :ok)))))
+        (is (process/exit pid :shutdown))))))
 
 (def-proc-test ^:parallel handle-info.undefined-callback
   (let [done (async/chan)
