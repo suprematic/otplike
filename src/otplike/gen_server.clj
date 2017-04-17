@@ -46,7 +46,7 @@
       [:terminate (process/ex->reason t) state])))
 
 (defn- cast-or-info [rqtype impl message state]
-  (let [rqfn (case rqtype :cast handle-cast :info handle-info)]
+  (let [rqfn (case rqtype ::cast handle-cast ::info handle-info)]
     (match (process/ex-catch [:ok (rqfn impl message state)])
       [:ok [:noreply new-state]]
       [:recur new-state]
@@ -97,22 +97,22 @@
 
 (defn- dispatch [impl parent state message]
   (match message
-    [:call from [::get-state]]
+    [::call from [::get-state]]
     (do
       (put!* from [::reply state])
       [:recur state])
 
-    [:call from request]
+    [::call from request]
     (do-handle-call impl from request state)
 
-    [:cast request]
-    (cast-or-info :cast impl request state)
+    [::cast request]
+    (cast-or-info ::cast impl request state)
 
     [:EXIT parent reason]
     (do-terminate impl reason state)
 
     _
-    (cast-or-info :info impl message state)))
+    (cast-or-info ::info impl message state)))
 
 (process/proc-defn gen-server-proc [impl init-args parent response]
   (match (process/ex-catch [:ok (init impl init-args)])
@@ -231,7 +231,7 @@
         timeout (if (= :infinity timeout-ms)
                   (async/chan)
                   (async/timeout timeout-ms))]
-    (if-not (! server [:call reply-to message])
+    (if-not (! server [::call reply-to message])
       [:error :noproc]
       (match (async/alts!! [reply-to timeout]) ;TODO make call to be macro and use alts! ?
         [[::terminated reason] reply-to] [:error reason]
@@ -313,7 +313,7 @@
                        [reason [`call [server message timeout-ms]]]))))
 
 (defn cast [server message]
-  (! server [:cast message]))
+  (! server [::cast message]))
 
 (defn reply [to response]
   (async/put! to [::reply response]))
