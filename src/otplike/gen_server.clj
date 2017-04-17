@@ -9,8 +9,6 @@
     [otplike.util :as u]
     [otplike.process :as process :refer [!]]))
 
-(spec/def ::from any?)
-
 (defprotocol IGenServer
   (init [_ args]
     #_[:ok State]
@@ -31,6 +29,14 @@
     #_[:stop Reason NewState])
 
   (terminate [_ reason state]))
+
+;; ====================================================================
+;; Specs
+
+(spec/def ::from any?)
+
+;; ====================================================================
+;; Internal
 
 (defn- do-terminate [impl reason state]
   (try
@@ -220,6 +226,18 @@
 
 ; API functions
 
+(defn- call* [server message timeout-ms]
+  (let [reply-to (async/chan)
+        timeout (if (= :infinity timeout-ms)
+                  (async/chan)
+                  (async/timeout timeout-ms))]
+    (if-not (! server [:call reply-to message])
+      [:error :noproc]
+      (match (async/alts!! [reply-to timeout]) ;TODO make call to be macro and use alts! ?
+        [[::terminated reason] reply-to] [:error reason]
+        [[::reply value] reply-to] [:ok value]
+        [nil timeout] [:error :timeout]))))
+
 (defn- start*
   ([spawn-fn server args-or-opts]
    (if (map? args-or-opts)
@@ -237,6 +255,9 @@
             [nil timeout] (do (process/unlink pid)
                               (process/exit pid :kill)
                               [:error :timeout])))))
+
+;; ====================================================================
+;; API
 
 (defn start
   "Starts the server, passing args to server's init function.
@@ -280,21 +301,6 @@
   [args options]
   `(start-link ~*ns* ~args ~options))
 
-(defn cast [server message]
-  (! server [:cast message]))
-
-(defn- call* [server message timeout-ms]
-  (let [reply-to (async/chan)
-        timeout (if (= :infinity timeout-ms)
-                  (async/chan)
-                  (async/timeout timeout-ms))]
-    (if-not (! server [:call reply-to message])
-      [:error :noproc]
-      (match (async/alts!! [reply-to timeout]) ;TODO make call to be macro and use alts! ?
-        [[::terminated reason] reply-to] [:error reason]
-        [[::reply value] reply-to] [:ok value]
-        [nil timeout] [:error :timeout]))))
-
 (defn call
   ([server message]
    (match (call* server message 5000)
@@ -305,6 +311,9 @@
      [:ok ret] ret
      [:error reason] (process/exit
                        [reason [`call [server message timeout-ms]]]))))
+
+(defn cast [server message]
+  (! server [:cast message]))
 
 (defn reply [to response]
   (async/put! to [::reply response]))
