@@ -95,12 +95,11 @@
 (defmethod print-method Pid [o w]
   (print-simple (pid->str o) w))
 
-(defrecord ProcessRecord
-  [pid inbox control kill monitors exit outbox linked flags])
+(defrecord ProcessRecord [pid inbox control kill monitors outbox linked flags])
 (alter-meta! #'->ProcessRecord assoc :no-doc true)
 (alter-meta! #'map->ProcessRecord assoc :no-doc true)
 
-(defn- new-process [pid inbox control kill monitors exit outbox linked flags]
+(defn- new-process [pid inbox control kill monitors outbox linked flags]
   {:pre [(pid? pid)
          (satisfies? ap/ReadPort inbox) (satisfies? ap/WritePort inbox)
          (satisfies? ap/ReadPort control) (satisfies? ap/WritePort control)
@@ -111,7 +110,7 @@
          (set? @linked) (every? pid? @linked)
          (map? @flags)]
    :post [(instance? ProcessRecord %)]}
-  (->ProcessRecord pid inbox control kill monitors exit outbox linked flags))
+  (->ProcessRecord pid inbox control kill monitors outbox linked flags))
 
 (defn- self-process
   "Returns the process identifier of the calling process.
@@ -292,7 +291,7 @@
         flags     (ref (or flags {}))
         outbox    (outbox pid inbox)
         process (new-process
-                  pid inbox control kill monitors exit outbox linked flags)]
+                  pid inbox control kill monitors outbox linked flags)]
     (when link?
       (let [s (self)]
         (if-let [{other-linked :linked} (@*processes s)]
