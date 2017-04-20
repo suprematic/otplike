@@ -293,13 +293,11 @@
         process (new-process
                   pid inbox control kill monitors outbox linked flags)]
     (when link?
-      (let [s (self)]
-        (if-let [{other-linked :linked} (@*processes s)]
-          (dosync
-            (alter linked conj s)
-            (or (alter other-linked #(if % (conj % pid)))
-                (throw (Exception. "noproc"))))
-          (throw (Exception. "noproc")))))
+      (let [{other-pid :pid other-linked :linked} (self-process)]
+        (dosync
+          (alter linked conj other-pid)
+          (or (alter other-linked #(if % (conj % pid)))
+              (throw (Exception. "noproc"))))))
     (sync-register pid process register)
     (trace pid [:start (str proc-func) args options])
     ; FIXME bindings from folded binding blocks are stacked, so no values
