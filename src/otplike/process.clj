@@ -244,11 +244,16 @@
     (fn? form) form
     (symbol? form) (some-> form resolve var-get)))
 
-(defn- sync-register [pid process register]
+(defn- sync-register [pid {linked :linked :as process} register link?]
   {:pre [(pid? pid)
          (instance? ProcessRecord process)]
    :post []}
   (dosync
+    (when link?
+      (let [{other-pid :pid other-linked :linked} (self-process)]
+        (alter linked conj other-pid)
+        (or (alter other-linked #(if % (conj % pid)))
+            (throw (Exception. "noproc")))))
     (when (some? register)
       (when (@*registered register)
         (throw (Exception. (str "already registered: " register))))
@@ -292,13 +297,7 @@
         outbox    (outbox pid inbox)
         process (new-process
                   pid inbox control kill monitors outbox linked flags)]
-    (when link?
-      (let [{other-pid :pid other-linked :linked} (self-process)]
-        (dosync
-          (alter linked conj other-pid)
-          (or (alter other-linked #(if % (conj % pid)))
-              (throw (Exception. "noproc"))))))
-    (sync-register pid process register)
+    (sync-register pid process register link?)
     (trace pid [:start (str proc-func) args options])
     ; FIXME bindings from folded binding blocks are stacked, so no values
     ; bound between bottom and top folded binding blocks are garbage
