@@ -366,8 +366,10 @@
       [:ok started-children]
       (assoc state ::children started-children)
 
-      [:error _reason {::id failed-to-start-id} new-children]
-      (do
+      [:error reason ({::id failed-to-start-id} :as child1) new-children]
+      (let [new-children
+           (replace-child new-children (assoc child1 ::pid :restarting))]
+        (report-error [:start-error reason child1])
         (gen-server/cast (process/self) [:restart failed-to-start-id])
         (assoc state ::children new-children)))))
 (spec-util/instrument `restart-child:one-for-all)
@@ -384,9 +386,10 @@
       [:ok started-children]
       (assoc state ::children (concat started-children before))
 
-      [:error reason {::id failed-to-start-id} new-children]
-      (do
-        (report-error [:start-error reason child])
+      [:error reason ({::id failed-to-start-id} :as child1) new-children]
+      (let [new-children
+           (replace-child new-children (assoc child1 ::pid :restarting))]
+        (report-error [:start-error reason child1])
         (gen-server/cast (process/self) [:restart failed-to-start-id])
         (assoc state ::children (concat new-children before))))))
 (spec-util/instrument `restart-child:rest-for-one)
