@@ -444,17 +444,20 @@
 ;;; child must be killed if shutdown timeout occurs
 ;;; child must be restarted if restart fails
 
+(defn map-vals [f m]
+  (reduce-kv #(assoc %1 %2 (f %3)) {} m))
+
 (defn ms []
-  (rem (System/currentTimeMillis) 1000))
+  (rem (System/currentTimeMillis) 10000))
 
 (defn log! [log fmt & args]
   (async/put! log [(ms) fmt args]))
 
-(defn expect-events [events-chan log timeout-ms expect-in-order other-expected]
-  (let [log! #(apply log! log %&)]
+(defn await-events [events-chan log timeout-ms {:keys [in-order unordered]}]
+  (let [log! (partial log! log)]
     (async/go-loop
-      [expect-in-order expect-in-order
-       other-expected other-expected
+      [expect-in-order in-order
+       other-expected unordered
        timeout (async/timeout timeout-ms)]
       (if (or (seq expect-in-order) (seq other-expected))
         (match
@@ -488,14 +491,18 @@
 
 (process/proc-defn child-proc
   [id log {:keys [exit-delay exit-failure] :as problem}]
-  (process/spawn-link
-    (process/proc-fn []
-      (process/receive!
-        [:EXIT _ reason] (report-progress log [id :exit-watcher reason])
-        msg (printf "!!! unexpected message %s%n" msg)))
-    {:flags {:trap-exit true}
-     :name (str "kill_watcher_" id "_")})
   (report-progress log [id :process-start])
+  (try
+    (process/spawn-link
+      (process/proc-fn []
+        (process/receive!
+          [:EXIT _ reason] (report-progress log [id :exit-watcher reason])
+          msg (printf "!!! unexpected message %s%n" msg)))
+      {:flags {:trap-exit true}
+       :name (str "exit-watcher-" id)})
+    (catch Exception e
+      (report-progress log [id :exit-watcher :killed])))
+
   (process/receive!
     [:exit reason] (do
                      (report-progress log [id :exit-command reason])
@@ -517,154 +524,189 @@
       [:ok (process/spawn-link
              child-proc [id log problem] {:register id
                                           :flags {:trap-exit true}
-                                          :name (str "child_" id "_")})])))
+                                          :name (str "child-" id)})])))
 
-(defn expected-exits [children current-problems-map]
-  (let [children-map (reduce #(assoc %1 (:id %2) %2) {} children)]
-    [(->> children
-          (filter #(not= :brutal-kill (:shutdown %)))
-          (map #(vector (:id %) :exit :shutdown)))
-     (map #(let [id (:id %)
-                 current-problem (current-problems-map id)]
-             ;(printf ">> current-problem %s%n" current-problem)
-             (case (:shutdown %)
-               :brutal-kill [id :exit-watcher :killed]
-               (if (:exit-delay current-problem)
-                 (if (= :supervisor (:type (children-map id)))
-                   [id :exit-watcher :shutdown]
-                   [id :exit-watcher :killed])
-                 (if-let [reason (:exit-failure current-problem)]
-                   [id :exit-watcher reason]
-                   [id :exit-watcher :shutdown]))))
-          children)]))
+(defn ->expected-events [in-order unordered]
+  {:in-order in-order
+   :unordered unordered})
 
-(defn run-test:one-for-one
-  [events-chan
-   log
-   children-map
-   problems-map
-   {:keys [children exits intensity] :as test}]
-  (async/go
-    (let [expect-events (partial expect-events events-chan log)]
-      (<! (expect-events 5000
-                         (map #(vector (:id %) :start-fn) children)
-                         (map #(vector (:id %) :process-start) children)))
-      (loop [exits exits
-             children-map children-map
-             problems-left (reduce-kv #(assoc %1 %2 (rest %3)) {} problems-map)
-             current-problems (reduce-kv #(assoc %1 %2 (first %3)) {} problems-map)
-             restarts 0]
-        ;(printf ">>>> current problems %s%n" current-problems)
-        (if-let [{:keys [id reason]} (first exits)]
-          (let [expected-in-order [[id :exit-command reason]]
-                other-expected [[id :exit-watcher reason]]]
-            (! id [:exit reason])
-            (if (or (= :temporary (:restart (children-map id)))
-                    (and (= :normal reason)
-                         (= :transient (:restart (children-map id)))))
+(defn expected-exits [children]
+  (let [children (reverse children)]
+    (->expected-events
+      (->> children
+           (filter #(not= :brutal-kill (:shutdown %)))
+           (map #(vector (:id %) :exit :shutdown)))
+      (map (fn [{:keys [id shutdown type] [current-problem & _] :problems}]
+              (case shutdown
+                :brutal-kill [id :exit-watcher :killed]
+                (if (:exit-delay current-problem)
+                  (if (= :supervisor type)
+                    [id :exit-watcher :shutdown]
+                    [id :exit-watcher :killed])
+                  (if-let [reason (:exit-failure current-problem)]
+                    [id :exit-watcher reason]
+                    [id :exit-watcher :shutdown]))))
+           children))))
+
+(defn exit-command-events [{:keys [id reason]}]
+  (->expected-events [[id :exit-command reason]]
+                     [[id :exit-watcher reason]]))
+
+(defn start-events [children]
+  (->expected-events (map #(vector (:id %) :start-fn) children)
+                     (map #(vector (:id %) :process-start) children)))
+
+(defn concat-events [& events]
+  (apply merge-with concat events))
+
+(defn delete-child [children id]
+  (remove #(= id (:id %)) children))
+
+(defn get-child [children id]
+  (some #(if (= id (:id %)) %) children))
+
+(defn replace-child [children {id :id :as child}]
+  (match (split-with #(not= id (:id %)) children)
+    [before ([_ & after] :seq)] (concat before [child] after)))
+
+(defn survive-exit? [{:keys [restart] :as _child} reason]
+  (or (= :permanent restart)
+      (and (= :transient restart)
+           (not= :normal reason))))
+
+(defn process-restart:one-for-one
+  [id children restarts {:keys [intensity] :as test}]
+  (let [child (update (get-child children id) :problems rest)
+        [start-failures other-problems]
+        (split-with :start-failure (:problems child))
+        ;_ (printf "n: %s, start-failures: %s, other-problems: %s%n" (:n test) (pr-str start-failures) (pr-str other-problems))
+        child (assoc child :problems other-problems)
+        failures-count (count start-failures)
+        extra-restarts-count (min failures-count (- intensity restarts))
+        restarts (+ restarts failures-count)
+        ;_ (printf "restarts %s%n" restarts)
+        expected-restarts (->expected-events
+                            (repeat (inc extra-restarts-count) [id :start-fn]) [])
+        expected (concat-events expected-restarts
+                                (->expected-events [] [[id :process-start]]))]
+    (if (> restarts intensity)
+      [:exit expected-restarts (delete-child children id)]
+      [:ok expected restarts (replace-child children child)])))
+
+(defn process-restart:one-for-all
+  [id children restarts {:keys [intensity] :as test}]
+  (let [expected (expected-exits (delete-child children id))
+        children-left (filter #(survive-exit? % :shutdown) children)
+        children-left (map #(update % :problems rest) children-left)]
+    (loop [restarts restarts
+           children-left children-left
+           expected expected]
+      (let [[started not-started]
+            (split-with #(-> % :problems first :start-failure not) children-left)
+            ;_ (printf "restarts: %s, started: %s, not-started: %s%n" restarts (pr-str started) (pr-str not-started))
+            failed (first not-started)
+            expected (concat-events
+                       expected
+                       (start-events started)
+                       (->expected-events
+                         (if-let [{id :id} failed] [[id :start-fn]] []) []))]
+        (if (seq not-started)
+          (let [restarts (inc restarts)]
+            (if (> restarts intensity)
+              [:exit expected started]
+              (let [expected (concat-events expected (expected-exits started))
+                    new-started (map #(update % :problems rest) started)
+                    new-children
+                    (concat new-started
+                            (if failed [(update failed :problems rest)])
+                            (rest not-started))]
+                (recur restarts new-children expected))))
+          [:ok expected restarts children-left])))))
+
+(defn process-restart:rest-for-one
+  [id children restarts {:keys [intensity] :as test}]
+  (assert false "not implemented"))
+
+(defn execute-test-commands
+  [await-events children {:keys [strategy exits intensity] :as test}]
+  (async/go-loop
+    [exits exits
+     children children
+     restarts 0]
+    (if (or (empty? exits) (empty? children))
+      children
+      (let [process-restart (case strategy
+                              :one-for-one process-restart:one-for-one
+                              :one-for-all process-restart:one-for-all
+                              :rest-for-one process-restart:rest-for-one)
+            {:keys [id reason] :as exit} (first exits)
+            expected (exit-command-events exit)]
+        (! id [:exit reason])
+        (if-not (survive-exit? (get-child children id) reason)
+          (do
+            (<! (await-events 5000 expected))
+            (recur (rest exits) (delete-child children id) restarts))
+          (let [restarts (inc restarts)]
+            (if (> restarts intensity)
               (do
-                (<! (expect-events 5000 expected-in-order other-expected))
-                (recur (rest exits)
-                       (dissoc children-map id)
-                       (dissoc problems-left id)
-                       (dissoc current-problems id)
-                       restarts))
-              (let [restarts (inc restarts)]
-                (if (> restarts intensity)
-                  (let [[eio oe]
-                        (expected-exits
-                          (->> (dissoc children-map id) (into (sorted-map)) vals reverse)
-                          (dissoc current-problems id))]
-                    (<! (expect-events 5000
-                                       (concat expected-in-order eio)
-                                       (concat other-expected oe)))
-                    [[] []])
-                  (let [current-problems
-                        (assoc current-problems id (first (problems-left id)))
-                        problems-left
-                        (update problems-left id rest)
-                        [start-failures other-problems]
-                        (split-with :start-failure (problems-left id))
-                        start-failures-count
-                        (if (:start-failure (current-problems id))
-                          (inc (count start-failures))
-                          0)
-                        start-failures-count
-                        (min start-failures-count (inc (- intensity restarts)))
-                        restarts
-                        (+ restarts start-failures-count)
-                        expected-in-order
-                        (concat expected-in-order (repeat start-failures-count [id :start-fn]))]
-                    (if (> restarts intensity)
-                      (let [[eio oe]
-                            (expected-exits
-                              (->> (dissoc children-map id) (into (sorted-map)) vals reverse)
-                              (dissoc current-problems id))]
-                        (<! (expect-events 5000
-                                           (concat expected-in-order eio)
-                                           (concat other-expected oe)))
-                        [[] []])
-                      (let [problems-left
-                            (update problems-left id #(drop (dec start-failures-count) %))]
-                        (<! (expect-events
-                              5000
-                              (concat expected-in-order [[id :start-fn] [id :process-start]])
-                              other-expected))
-                        (recur (rest exits)
-                               children-map
-                               problems-left
-                               (assoc current-problems id (first (problems-left id)))
-                               restarts))))))))
-          (expected-exits (->> children-map (into (sorted-map)) vals reverse)
-                          current-problems))))))
+                (<! (await-events
+                      5000
+                      (concat-events
+                        expected
+                        (expected-exits (delete-child children id)))))
+                [])
+              (match (process-restart id children restarts test)
+                [:exit expected-1 children-left]
+                (do
+                  (<! (await-events
+                        5000
+                        (concat-events expected
+                                       expected-1
+                                       (expected-exits children-left))))
+                  [])
+                [:ok expected-1 new-restarts children-left]
+                (do
+                  (<! (await-events
+                        5000 (concat-events expected expected-1)))
+                  (recur (rest exits) children-left new-restarts))))))))))
 
 (defn run-test-process
-  [strategy
-   events-chan
-   log
-   children-map
-   problems-map
-   {:keys [children intensity period] :as test}]
-  (async/go
-    (proc-util/execute-proc!
-      (match
-        (sup/start-link
-          (fn []
-            [:ok [{:strategy strategy
+  [events-chan log children {:keys [strategy intensity period] :as test}]
+  (let [await-events (partial await-events events-chan log)
+        sup-flags {:strategy strategy
                    :intensity intensity
                    :period period}
-                  (map #(assoc % :start
-                               [start-child
-                                [% events-chan (atom (problems-map (:id %)))]])
-                       children)]]))
-        [:ok pid] (<! (case strategy
-                        :one-for-one
-                        (run-test:one-for-one
-                          events-chan log children-map problems-map test)))
-        res (do
-              (log! log "!ERROR %s" res)
-              [[] []])))))
+        add-start
+        #(assoc % :start [start-child [% events-chan (atom (:problems %))]])
+        children-spec (map add-start children)]
+    (async/go
+      (proc-util/execute-proc!
+        (process/flag :trap-exit true)
+        (match (sup/start-link (constantly [:ok [sup-flags children-spec]]))
+          [:ok pid]
+          (do
+            (<! (await-events 5000 (start-events children)))
+            (let [children-left
+                  (<! (execute-test-commands await-events children test))]
+              (process/exit pid :normal)
+              (<! (await-events 5000 (expected-exits children-left)))))
+          res
+          (log! log "!ERROR %s" res))))))
 
 (defn run-test [strategy {:keys [children problems] :as test}]
   (async/go
-    (let [log (async/chan)
+    (let [test (assoc test :strategy strategy)
+          log (async/chan)
           events-chan (async/chan)
           problems-map (->> problems
                             (group-by :id)
-                            (reduce-kv #(assoc %1 %2
-                                               (if (:start-failure (first %3))
-                                                 (cons {} %3)
-                                                 %3))
-                                       {}))
-          children-map (reduce #(assoc %1 (:id %2) %2) {} children)]
+                            (map-vals #(if (:start-failure (first %)) (cons {} %) %)))
+          children (map #(assoc % :problems (problems-map (:id %))) children)]
       ;(printf "problems-map %s%n" problems-map)
+      ;(printf "children: %s%n" (pr-str children))
       (try
         (log! log "RUN test%n%s" (clojure.pprint/write test :stream nil))
-        (if-let [[expected-in-order other-expected]
-                 (<! (run-test-process
-                       strategy events-chan log children-map problems-map test))]
-          (<! (expect-events
-                events-chan log 5000 expected-in-order other-expected)))
+        (<! (run-test-process events-chan log children test))
         (log! log "DONE run-test")
         log
         (catch Throwable t
@@ -759,17 +801,20 @@
         (async/go
           (let [tests (gen-tests)]
             (doseq [
-                    ;tests (partition 8 8 [] [(nth tests 95446)])
+                    ;tests (partition 8 8 [] [(nth tests (dec 51482))])
                     tests (partition 8 8 [] tests)
                     ;tests (partition 8 8 [] (take 20000 tests))
                     ]
-              (doseq [res (doall (map (partial run-test :one-for-one) tests))]
+              ;(doseq [res (doall (map (partial run-test :rest-for-one) tests))]
+              (doseq [res (doall (map (partial run-test :one-for-all) tests))]
+              ;(doseq [res (doall (map (partial run-test :one-for-one) tests))]
                 (println "---")
                 (let [log (async/<! res)]
                   (loop [x (async/<! log)]
                     (when-let [[ms fmt args] x]
-                      (println (str "log: " ms " - " (apply format fmt args)))
-                      (recur (async/<! log)))))))))))))
+                      (printf "log: %05d - %s%n" ms (apply format fmt args))
+                      (recur (async/<! log))))))))))
+      (flush))))
 
 ;; ====================================================================
 ;; one-for-all
