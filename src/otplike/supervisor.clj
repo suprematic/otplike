@@ -241,7 +241,9 @@
                            ::error
                            (spec/tuple #{:failed-to-start-child} ::id ::reason)
                            ::child
-                           ::children)))
+                           ::children))
+  :fn #(or (-> % :ret :failure)
+           (= (-> % :args :children count) (-> % :ret :success second count))))
 (defn- start-children [children]
   (loop [to-start children
          started []]
@@ -253,7 +255,7 @@
           (recur (rest to-start) (cons started-child started)))
         [:error reason]
         (let [stopped-child (assoc child ::pid nil)
-              new-children (concat (reverse to-start)
+              new-children (concat (reverse (rest to-start))
                                    (cons stopped-child started))]
           (report-error [:start-error reason child])
           ;(printf "sup start-child error, reason: %s%n" (pprint/write reason :length 3 :level 3 :stream nil))
