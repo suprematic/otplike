@@ -625,7 +625,32 @@
 
 (defn process-restart:rest-for-one
   [id children restarts {:keys [intensity] :as test}]
-  (assert false "not implemented"))
+  (let [[running [child & rest-children]]
+        (split-with #(not= (:id %) id) children)
+        events (expected-exits rest-children)
+        rest-children-left (filter #(survive-exit? % :shutdown) rest-children)
+        to-start (cons child rest-children-left)
+        to-start (map #(update % :problems rest) to-start)]
+    (loop [restarts restarts
+           to-start to-start
+           running running
+           events events]
+      (let [[started [failed & not-started]]
+            (split-with #(-> % :problems first :start-failure not) to-start)
+            events (concat-events
+                     events
+                     (start-events started)
+                     (->expected-events
+                       (if-let [{id :id} failed] [[id :start-fn]] []) []))
+            running (concat running started)
+            failed (if failed (update failed :problems rest))
+            to-start (if failed (cons failed not-started))]
+        (if failed
+          (let [restarts (inc restarts)]
+            (if (> restarts intensity)
+              [:exit events running]
+              (recur restarts to-start running events)))
+          [:ok events restarts running])))))
 
 (defn execute-test-commands
   [await-events children {:keys [strategy exits intensity] :as test}]
@@ -805,16 +830,16 @@
                     tests (partition 8 8 [] tests)
                     ;tests (partition 8 8 [] (take 20000 tests))
                     ]
-              ;(doseq [res (doall (map (partial run-test :rest-for-one) tests))]
-              (doseq [res (doall (map (partial run-test :one-for-all) tests))]
+              (doseq [res (doall (map (partial run-test :rest-for-one) tests))]
+              ;(doseq [res (doall (map (partial run-test :one-for-all) tests))]
               ;(doseq [res (doall (map (partial run-test :one-for-one) tests))]
                 (println "---")
                 (let [log (async/<! res)]
                   (loop [x (async/<! log)]
                     (when-let [[ms fmt args] x]
                       (printf "log: %05d - %s%n" ms (apply format fmt args))
-                      (recur (async/<! log))))))))))
-      (flush))))
+                      (recur (async/<! log)))))
+                (flush)))))))))
 
 ;; ====================================================================
 ;; one-for-all
