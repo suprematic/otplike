@@ -710,9 +710,10 @@
           (format "Variadic arguments are not supported" args))
   (let [arg-names (vec (repeatedly (count args) #(gensym "argname")))]
     `(fn ~arg-names
-       (go-loop ~(vec (interleave args arg-names))
+       (go
          (try
-           ~@body
+           (loop ~(vec (interleave args arg-names))
+             ~@body)
            :normal
            (catch Throwable t#
              (ex->reason t#)))))))
