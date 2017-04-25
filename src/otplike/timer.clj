@@ -27,7 +27,7 @@
   [msecs pid f]
   (let [tref (new-tref)]
     (swap! *timers assoc tref
-           (process/spawn
+           (process/spawn-opt
              (process/proc-fn []
                (process/monitor pid)
                (process/receive!
@@ -70,7 +70,7 @@
   ([msecs pid message]
     (let [tref (new-tref)]
       (swap! *timers assoc tref
-             (process/spawn
+             (process/spawn-opt
                (process/proc-fn []
                  (process/monitor pid)
                  (loop []
