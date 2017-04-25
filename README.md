@@ -33,9 +33,9 @@ alternative.
 
 ## Echo Server
 ```clojure
-(:require [otplike.process :as process :refer [!]])
+(require '[otplike.process :as process :refer [!]])
 
-(process/defproc server []
+(process/proc-defn server []
   (println "server: waiting for messages...")
   ; wait for messages
   (process/receive!
@@ -49,9 +49,9 @@ alternative.
     ; do nothing, and exit message loop
     (println "server: stopped")))
 
-(process/defproc client []
+(process/proc-defn client []
   ; spawn process
-  (let [pid (process/spawn server [] {})]
+  (let [pid (process/spawn server)]
     ; send message to it
     (! pid [(process/self) :hello])
 
@@ -63,7 +63,7 @@ alternative.
     ; ask spawned process to stop
     (! pid :stop)))
 
-(process/spawn client [] {})
+(process/spawn client)
 ```
 
 More examples are available under the /examples directory.
