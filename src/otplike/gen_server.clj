@@ -239,22 +239,19 @@
         [nil timeout] [:error :timeout]))))
 
 (defn- start*
-  ([spawn-fn server args-or-opts]
-   (if (map? args-or-opts)
-     (start* spawn-fn server [] args-or-opts)
-     (start* spawn-fn server args-or-opts {})))
-  ([spawn-fn server args options]
-   (let [gs (->gen-server server)
-         response (async/chan)
-         parent (process/self)
-         pid (spawn-fn gen-server-proc [gs args parent response] options)]
-     ; TODO allow to override timeout passing it as argument
-     (match (async/alts!! [response (async/timeout 1000)])
-            [:ok response] [:ok pid]
-            [[:error reason] response] [:error reason]
-            [nil timeout] (do (process/unlink pid)
-                              (process/exit pid :kill)
-                              [:error :timeout])))))
+  [server args options]
+  (let [gs (->gen-server server)
+        response (async/chan)
+        parent (process/self)
+        pid (process/spawn-opt
+              gen-server-proc [gs args parent response] options)]
+    ; TODO allow to override timeout passing it as argument
+    (match (async/alts!! [response (async/timeout 1000)])
+           [:ok response] [:ok pid]
+           [[:error reason] response] [:error reason]
+           [nil timeout] (do (process/unlink pid)
+                             (process/exit pid :kill)
+                             [:error :timeout]))))
 
 ;; ====================================================================
 ;; API
@@ -277,29 +274,47 @@
 
   Throws on illegal arguments."
   ([server]
-   (start* process/spawn server [] {}))
-  ([server args-or-opts]
-   (start* process/spawn server args-or-opts))
+   (start server [] {}))
+  ([server args]
+   (start server args {}))
   ([server args options]
-   (start* process/spawn server args options)))
+   (start* server args options))
+  ([reg-name server args options]
+   (start* server args (assoc options :register reg-name))))
 
 (defn start-link
   ([server]
-   (start* process/spawn-link server [] {}))
-  ([server args-or-opts]
-   (start* process/spawn-link server args-or-opts))
+   (start-link server [] {}))
+  ([server args]
+   (start-link server args {}))
   ([server args options]
-   (start* process/spawn-link server args options)))
+   (start* server args (assoc options :link true)))
+  ([reg-name server args options]
+   (start* server args (assoc options
+                              :link true
+                              :register reg-name))))
 
 (defmacro start-ns
   "Starts the server, taking current ns as a implementation source.
   See start for more info."
-  [args options]
-  `(start ~*ns* ~args ~options))
+  ([]
+   `(start-ns [] {}))
+  ([args]
+   `(start-ns ~args {}))
+  ([args options]
+   `(start ~*ns* ~args ~options))
+  ([reg-name args options]
+   `(start reg-name ~*ns* ~args ~options)))
 
 (defmacro start-link-ns
-  [args options]
-  `(start-link ~*ns* ~args ~options))
+  ([]
+   `(start-link-ns [] {}))
+  ([args]
+   `(start-link-ns ~args {}))
+  ([args options]
+   `(start-link ~*ns* ~args ~options))
+  ([reg-name args options]
+   `(start-link reg-name ~*ns* ~args ~options)))
 
 (defn call
   ([server message]

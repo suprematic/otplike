@@ -32,7 +32,7 @@
 
 (def-proc-test gen-server-ns
   (let [done (async/chan)]
-    (match (gs/start-ns [0 done] {})
+    (match (gs/start-ns [0 done])
       [:ok pid]
       (do
         (gs/cast pid :inc)

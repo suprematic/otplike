@@ -10,7 +10,7 @@
   "Executes body in newly created process context."
   [& body]
   `(let [done# (async/chan)]
-     (process/spawn
+     (process/spawn-opt
        (process/proc-fn
          []
          (try
@@ -18,7 +18,6 @@
              (async/put! done# [:ok res#]))
            (catch Throwable t#
              (async/put! done# [:ex t#]))))
-       []
        {:name (str "execute-proc:" (.getName *ns*) ":" (current-line-number))})
      done#))
 
@@ -49,7 +48,5 @@
              (let [res# (do ~@body)]
                (when (some? res#) (async/>! done# res#)))
              (finally
-               (async/close! done#))))
-         []
-         {})
+               (async/close! done#)))))
        (async/<!! done#))))

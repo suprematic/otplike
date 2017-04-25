@@ -717,7 +717,7 @@
   "Supervisor always links to calling process.
   Thus it can not be started from nonprocess context."
   ([sup-fn]
-   (start-link* sup-fn [] {}))
+   (start-link sup-fn []))
   ([sup-fn args]
    (start-link* sup-fn args {}))
   ([sup-name sup-fn args]

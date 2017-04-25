@@ -271,15 +271,14 @@
       (alter *registered-reverse dissoc pid))))
 
 (defn- spawn*
-  [link?
-   proc-func
+  [proc-func
    args
-   {:keys [inbox flags register] pname :name :as options}]
+   {:keys [inbox flags link register] pname :name :as options}]
   {:post [(pid? %)]}
-  (u/check-args [(boolean? link?)
-                 (or (fn? proc-func) (symbol? proc-func))
+  (u/check-args [(or (fn? proc-func) (symbol? proc-func))
                  (sequential? args)
                  (map? options) ;FIXME check for unknown options
+                 (or (nil? link) (boolean? link))
                  (or (nil? inbox)
                      (and (satisfies? ap/ReadPort inbox)
                           (satisfies? ap/WritePort inbox)))
@@ -297,7 +296,7 @@
         outbox    (outbox pid inbox)
         process (new-process
                   pid inbox control kill monitors outbox linked flags)]
-    (sync-register pid process register link?)
+    (sync-register pid process register link)
     (trace pid [:start (str proc-func) args options])
     ; FIXME bindings from folded binding blocks are stacked, so no values
     ; bound between bottom and top folded binding blocks are garbage
@@ -657,7 +656,7 @@
       (dosync (alter monitors dissoc mref))))
   true)
 
-(defn spawn
+(defn spawn-opt
   "Returns the process identifier of a new process started by the
   application of proc-fun to args.
   options argument is a map of option names (keyword) to its values.
@@ -667,17 +666,22 @@
 
   The following options are allowed:
   :flags - a map of process' flags (e.g. {:trap-exit true})
+  :link - if true, sets a link to the parent process
   :register - name to register the process, can not be pid, if name is
     nil process will not be registered
   :inbox - the channel to be used as a process' inbox"
+  ([proc-func opts]
+   (spawn-opt proc-func [] opts))
+  ([proc-func args opts]
+   (spawn* proc-func args opts)))
+
+(defn spawn
+  "Returns the process identifier of a new process started by the
+  application of proc-fun to args."
   ([proc-func]
-   (spawn proc-func [] {}))
-  ([proc-func args-or-opts]
-   (if (map? args-or-opts)
-     (spawn proc-func [] args-or-opts)
-     (spawn proc-func args-or-opts {})))
-  ([proc-func args options]
-   (spawn* false proc-func args options)))
+   (spawn proc-func []))
+  ([proc-func args]
+   (spawn-opt proc-func args {})))
 
 (defn spawn-link
   "Returns the process identifier of a new process started by the
@@ -687,13 +691,9 @@
 
   Throws when called not in process context."
   ([proc-func]
-   (spawn-link proc-func [] {}))
-  ([proc-func args-or-opts]
-   (if (map? args-or-opts)
-     (spawn-link proc-func [] args-or-opts)
-     (spawn-link proc-func args-or-opts {})))
-  ([proc-func args opts]
-   (spawn* true proc-func args opts)))
+   (spawn-link proc-func []))
+  ([proc-func args]
+   (spawn-opt proc-func args {:link true})))
 
 (defmacro receive! [& clauses]
   `(receive* true ~clauses))
