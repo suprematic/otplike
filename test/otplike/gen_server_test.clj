@@ -31,7 +31,7 @@
 
 (deftest ^:parallel start.no-trap-exit.linked-parent-exits-abnormally
   (let [done (async/chan)
-        server {:init (fn [_]
+        server {:init (fn []
                         (is (spawn-exit-watcher done 50))
                         [:ok :state])
                 :handle-info
@@ -51,7 +51,7 @@
 (deftest ^:parallel start.trap-exit.linked-parent-exits-normally
   (let [terminate-chan (async/chan)
         done (async/chan)
-        server {:init (fn [_]
+        server {:init (fn []
                         (is (spawn-exit-watcher done 150))
                         [:ok :state])
                 :handle-info
@@ -74,7 +74,7 @@
 (deftest ^:parallel start.trap-exit.linked-parent-exits-abnormally
   (let [terminate-chan (async/chan)
         done (async/chan)
-        server {:init (fn [_]
+        server {:init (fn []
                         (is (spawn-exit-watcher done 150))
                         [:ok :state])
                 :handle-info
@@ -101,7 +101,7 @@
   (is (thrown? Exception (gs/start [] [] {})))
   (is (thrown? Exception (gs/start #{} [] {})))
   (let [done (async/chan)
-        server {:init (fn [args] [:ok args])
+        server {:init (fn [] [:ok nil])
                 :terminate (fn [_ _] (async/close! done))}]
     (is (thrown? Exception (gs/start server [] {:inbox "inbox"})))
     (is (thrown? Exception (await-completion done 50))
@@ -109,14 +109,14 @@
              " to start"))))
 
 (def-proc-test ^:parallel start.start-returns-pid
-  (let [server {:init (fn [args] [:ok args])}]
+  (let [server {:init (fn [] [:ok nil])}]
     (match (gs/start server)
       [:ok (pid :guard process/pid?)]
       (match (process/exit pid :abnormal) true :ok))))
 
 (def-proc-test ^:parallel init.start-calls-init
   (let [done (async/chan)
-        server {:init (fn [_] (async/close! done) [:ok nil])}]
+        server {:init (fn [] (async/close! done) [:ok nil])}]
     (match (gs/start server)
       [:ok pid]
       (do
@@ -126,7 +126,7 @@
 (def-proc-test ^:parallel init.start-passes-arguments
   (let [done (async/chan)
         server {:init
-                (fn [args]
+                (fn [& args]
                   (is (= [:a 1 "str" {:a 1 :b 2} '()] args)
                       "args passed to init must be the same as passed to start")
                   (async/close! done)
@@ -143,7 +143,7 @@
                       "args passed to init must be the same as passed to start")
                   (async/close! done)
                   [:ok args])}]
-    (match (gs/start server nil {})
+    (match (gs/start server [nil] {})
       [:ok pid]
       (do
         (await-completion done 50)
@@ -160,7 +160,7 @@
 
 (def-proc-test ^:parallel init.callback-throws
   (let [done (async/chan)
-        server {:init (fn [_] (throw (Exception. "TEST")))
+        server {:init (fn [] (throw (Exception. "TEST")))
                 :terminate (fn [_ _] (async/put! done :val))}]
     (is (match (gs/start server)
           [:error [:exception {:message "TEST" :class "java.lang.Exception"}]]
@@ -171,7 +171,7 @@
 
 (def-proc-test ^:parallel init.bad-return
   (let [done (async/chan)
-        server {:init (fn [_] :bad-return)
+        server {:init (fn [] :bad-return)
                 :terminate (fn [_ _] (async/put! done :val))}]
     (is (match (gs/start server)
           [:error [:bad-return-value :bad-return]] :ok)
@@ -182,7 +182,7 @@
 (def-proc-test ^:parallel init.timeout.not-linked-to-parent
   (let [done (async/chan)
         done1 (async/chan)
-        server {:init (fn [_]
+        server {:init (fn []
                         (spawn-exit-watcher done 2000)
                         (<!! (async/timeout 1100))
                         [:ok nil])
@@ -195,7 +195,7 @@
         "terminate must not be called if init returns bad value")))
 
 (def-proc-test ^:parallel init.timeout.linked-to-parent
-  (let [server {:init (fn [_]
+  (let [server {:init (fn []
                         (<!! (async/timeout 1100))
                         [:ok nil])}]
     (is (match (gs/start-link server) [:error :timeout] :ok)
@@ -210,7 +210,7 @@
 ; TODO test process exit reason
 
 (def-proc-test ^:parallel handle-call.call-delivers-message
-  (let [server {:init (fn [_] [:ok :state])
+  (let [server {:init (fn [] [:ok :state])
                 :handle-call
                 (fn [x _  state]
                   (is (= x 123)
@@ -225,7 +225,7 @@
 (def-proc-test ^:parallel handle-call.undefined-callback
   (let [done1 (async/chan)
         done2 (async/chan)
-        server {:init (fn [_]
+        server {:init (fn []
                         (process/spawn-opt
                           (process/proc-fn []
                             (process/receive!
@@ -256,7 +256,7 @@
 (def-proc-test ^:parallel handle-call.bad-return
   (process/flag :trap-exit true)
   (let [done (async/chan)
-        server {:init (fn [_] [:ok nil])
+        server {:init (fn [] [:ok nil])
                 :handle-call (fn [_ _ _] :bad-return)
                 :terminate (fn [reason _]
                              (is (= [:bad-return-value :bad-return] reason)
@@ -278,7 +278,7 @@
 (def-proc-test ^:parallel handle-call.callback-throws
   (let [done1 (async/chan)
         done2 (async/chan)
-        server {:init (fn [_]
+        server {:init (fn []
                         (spawn-exit-watcher done2 50)
                         [:ok nil])
                 :handle-call (fn [_ _ _] (throw (ex-info "TEST" {:test 1})))
@@ -306,7 +306,7 @@
 
 (def-proc-test ^:parallel handle-call.exit-abnormal
   (let [done1 (async/chan) done2 (async/chan)
-        server {:init (fn [_]
+        server {:init (fn []
                         (spawn-exit-watcher done2 50)
                         [:ok nil])
                 :handle-call (fn [_ _ _] (process/exit :abnormal))
@@ -330,7 +330,7 @@
 (def-proc-test ^:parallel handle-call.exit-normal
   (let [done1 (async/chan)
         done2 (async/chan)
-        server {:init (fn [_]
+        server {:init (fn []
                         (spawn-exit-watcher done2 50)
                         [:ok nil])
                 :handle-call (fn [_ _ _] (process/exit :normal))
@@ -354,7 +354,7 @@
 (def-proc-test ^:parallel handle-call.stop-normal
   (let [done1 (async/chan)
         done2 (async/chan)
-        server {:init (fn [_]
+        server {:init (fn []
                         (spawn-exit-watcher done2 50)
                         [:ok nil])
                 :handle-call (fn [_ _ state] [:stop :normal state])
@@ -378,7 +378,7 @@
 (def-proc-test ^:parallel handle-call.stop-abnormal
   (let [done1 (async/chan)
         done2 (async/chan)
-        server {:init (fn [_]
+        server {:init (fn []
                         (spawn-exit-watcher done2 50)
                         [:ok nil])
                 :handle-call (fn [_ _ state] [:stop :abnormal state])
@@ -400,7 +400,7 @@
             "gen-server must exit after :stop returned by handle-call")))))
 
 (def-proc-test ^:parallel handle-call.return-reply
-  (let [server {:init (fn [_] [:ok nil])
+  (let [server {:init (fn [] [:ok nil])
                 :handle-call (fn [x _from state] [:reply (inc x) state])}]
     (match (gs/start server)
       [:ok pid]
@@ -410,7 +410,7 @@
         (match (process/exit pid :abnormal) true :ok)))))
 
 (def-proc-test ^:parallel handle-call.nil-return-reply
-  (let [server {:init (fn [_] [:ok nil])
+  (let [server {:init (fn [] [:ok nil])
                 :handle-call (fn [_ _from state] [:reply nil state])}]
     (match (gs/start server)
       [:ok pid]
@@ -420,7 +420,7 @@
         (match (process/exit pid :abnormal) true :ok)))))
 
 (def-proc-test ^:parallel handle-call.delayed-reply-before-return
-  (let [server {:init (fn [_] [:ok nil])
+  (let [server {:init (fn [] [:ok nil])
                 :handle-call (fn [_ from state]
                                (gs/reply from :ok)
                                [:noreply state])}]
@@ -432,7 +432,7 @@
         (match (process/exit pid :abnormal) true :ok)))))
 
 (def-proc-test ^:parallel handle-call.return-reply-after-delayed-reply
-  (let [server {:init (fn [_] [:ok nil])
+  (let [server {:init (fn [] [:ok nil])
                 :handle-call (fn [_ from state]
                                (gs/reply from :ok)
                                [:reply :error state])}]
@@ -446,7 +446,7 @@
         (match (process/exit pid :abnormal) true :ok)))))
 
 (def-proc-test ^:parallel handle-call.nil-delayed-reply
-  (let [server {:init (fn [_] [:ok nil])
+  (let [server {:init (fn [] [:ok nil])
                 :handle-call (fn [_ from state]
                                (gs/reply from nil)
                                [:noreply state])}]
@@ -460,7 +460,7 @@
 (def-proc-test ^:parallel handle-call.delayed-reply-after-return
   (let [done (async/chan)
         done1 (async/chan)
-        server {:init (fn [_] [:ok nil])
+        server {:init (fn [] [:ok nil])
                 :handle-call (fn [x from state]
                                (match [x state]
                                  [1 nil] (do (async/close! done)
@@ -484,7 +484,7 @@
 (def-proc-test ^:parallel handle-call.stop-normal-reply
   (let [done1 (async/chan)
         done2 (async/chan)
-        server {:init (fn [_]
+        server {:init (fn []
                         (spawn-exit-watcher done2 100)
                         [:ok nil])
                 :handle-call (fn [x _ state] [:stop :normal (inc x) state])
@@ -505,7 +505,7 @@
 (def-proc-test ^:parallel handle-call.stop-abnormal-reply
   (let [done (async/chan)
         done2 (async/chan)
-        server {:init (fn [_]
+        server {:init (fn []
                         (spawn-exit-watcher done2 100)
                         [:ok nil])
                 :handle-call (fn [x _ state] [:stop :abnormal (inc x) state])
@@ -526,7 +526,7 @@
 (def-proc-test ^:parallel handle-call.call-to-exited-pid
   (let [done (async/chan)
         done2 (async/chan)
-        server {:init (fn [_]
+        server {:init (fn []
                         (spawn-exit-watcher done2 100)
                         [:ok nil])
                 :handle-call (fn [x _ state] [:stop :normal :ok state])}]
@@ -541,7 +541,7 @@
 
 (def-proc-test ^:parallel handle-call.timeout
   (let [done (async/chan)
-        server {:init (fn [_] [:ok nil])
+        server {:init (fn [] [:ok nil])
                 :handle-call (fn [x _ state] (<!! (async/timeout 50)))}]
     (match (gs/start server)
       [:ok pid]
@@ -552,7 +552,7 @@
         (match (process/exit pid :abnormal) true :ok)))))
 
 (def-proc-test ^:parallel handle-call.update-state
-  (let [server {:init (fn [_] [:ok 1])
+  (let [server {:init (fn [] [:ok 1])
                 :handle-call
                 (fn [[old-state new-state] _from state]
                   (is (= old-state state)
@@ -571,7 +571,7 @@
 
 (def-proc-test ^:parallel handle-call.bad-return.terminate-throws
   (let [done2 (async/chan)
-        server {:init (fn [_]
+        server {:init (fn []
                         (spawn-exit-watcher done2 100)
                         [:ok nil])
                 :handle-call (fn [_ _ _] :bad-return)
@@ -595,7 +595,7 @@
 
 (def-proc-test ^:parallel handle-call.callback-throws.terminate-throws
   (let [done2 (async/chan)
-        server {:init (fn [_]
+        server {:init (fn []
                         (spawn-exit-watcher done2 100)
                         [:ok nil])
                 :handle-call (fn [_ _ _] (throw (ex-info "TEST" {:a 1})))
@@ -619,7 +619,7 @@
 
 (def-proc-test ^:parallel handle-call.exit-abnormal.terminate-throws
   (let [done2 (async/chan)
-        server {:init (fn [_]
+        server {:init (fn []
                         (spawn-exit-watcher done2 100)
                         [:ok nil])
                 :handle-call (fn [_ _ _] (process/exit :abnormal))
@@ -642,7 +642,7 @@
             "gen-server must exit on bad return from handle-call")))))
 
 (def-proc-test ^:parallel handle-call.exit-normal.terminate-throws
-  (let [server {:init (fn [_] [:ok nil])
+  (let [server {:init (fn [] [:ok nil])
                 :handle-call (fn [_ _ _] (process/exit :normal))
                 :terminate (fn [_reason _] (throw (ex-info "TEST" {:a 1})))}]
     (process/flag :trap-exit true)
@@ -662,7 +662,7 @@
             "gen-server must exit on bad return from handle-call")))))
 
 (def-proc-test ^:parallel handle-call.stop-normal.terminate-throws
-  (let [done2 (async/chan) server {:init (fn [_]
+  (let [done2 (async/chan) server {:init (fn []
                         (spawn-exit-watcher done2 100)
                         [:ok nil])
                 :handle-call (fn [_ _ state] [:stop :normal state])
@@ -686,7 +686,7 @@
 
 (def-proc-test ^:parallel handle-call.stop-abnormal.terminate-throws
   (let [done2 (async/chan)
-        server {:init (fn [_]
+        server {:init (fn []
                         (spawn-exit-watcher done2 100)
                         [:ok nil])
                 :handle-call (fn [_ _ state] [:stop :abnormal state])
@@ -710,7 +710,7 @@
 
 (def-proc-test ^:parallel handle-call.stop-normal-reply.terminate-throws
   (let [done2 (async/chan)
-        server {:init (fn [_]
+        server {:init (fn []
                         (spawn-exit-watcher done2 100)
                         [:ok nil])
                 :handle-call (fn [x _ state] [:stop :normal (inc x) state])
@@ -727,7 +727,7 @@
 
 (def-proc-test ^:parallel handle-call.stop-abnormal-reply.terminate-throws
   (let [done2 (async/chan)
-        server {:init (fn [_]
+        server {:init (fn []
                         (spawn-exit-watcher done2 100)
                         [:ok nil])
                 :handle-call (fn [x _ state] [:stop :abnormal (inc x) state])
@@ -744,7 +744,7 @@
 
 (def-proc-test ^:parallel handle-call.undefined-callback.terminate-throws
   (let [done2 (async/chan)
-        server {:init (fn [_]
+        server {:init (fn []
                         (spawn-exit-watcher done2 100)
                         [:ok :state])
                 :terminate (fn [_reason _] (throw (ex-info "TEST" {:a 1})))}]
@@ -768,7 +768,7 @@
 (def-proc-test ^:parallel handle-call.bad-return.terminate-undefined
   (let [done (async/chan)
         server {:init
-                (fn [_]
+                (fn []
                   (process/spawn-opt
                     (process/proc-fn []
                       (process/receive!
@@ -791,7 +791,7 @@
 
 (def-proc-test ^:parallel handle-call.callback-throws.terminate-undefined
   (let [done (async/chan)
-        server {:init (fn [_]
+        server {:init (fn []
                         (spawn-exit-watcher done 50)
                         [:ok :state])
                 :handle-call (fn [_ _ _] (throw (ex-info "TEST" {:b 2})))}]
@@ -817,7 +817,7 @@
 
 (def-proc-test ^:parallel handle-call.exit-abnormal.terminate-undefined
   (let [done (async/chan)
-        server {:init (fn [_]
+        server {:init (fn []
                         (spawn-exit-watcher done 50)
                         [:ok :state])
                 :handle-call (fn [_ _ _] (process/exit :abnormal))}]
@@ -834,7 +834,7 @@
 
 (def-proc-test ^:parallel handle-call.exit-normal.terminate-undefined
   (let [done (async/chan)
-        server {:init (fn [_]
+        server {:init (fn []
                         (spawn-exit-watcher done 50)
                         [:ok :state])
                 :handle-call (fn [_ _ _] (process/exit :normal))}]
@@ -851,7 +851,7 @@
 
 (def-proc-test ^:parallel handle-call.stop-normal.terminate-undefined
   (let [done (async/chan)
-        server {:init (fn [_]
+        server {:init (fn []
                         (spawn-exit-watcher done 50)
                         [:ok :state])
                 :handle-call (fn [_ _ state] [:stop :normal state])}]
@@ -868,7 +868,7 @@
 (def-proc-test ^:parallel handle-call.stop-abnormal.terminate-undefined
   (let [done (async/chan)
         server {:init
-                (fn [_]
+                (fn []
                   (spawn-exit-watcher done 50)
                   [:ok :state])
                 :handle-call (fn [_ _ state] [:stop :abnormal state])}]
@@ -885,7 +885,7 @@
 (def-proc-test ^:parallel handle-call.undefined-callback.terminate-undefined
   (let [done (async/chan)
         server {:init
-                (fn [_]
+                (fn []
                   (spawn-exit-watcher done 50)
                   [:ok :state])}]
     (match (gs/start server)
@@ -906,7 +906,7 @@
 
 (def-proc-test ^:parallel handle-cast.cast-delivers-message
   (let [done (async/chan)
-        server {:init (fn [_] [:ok :state])
+        server {:init (fn [] [:ok :state])
                 :handle-cast
                 (fn [x state]
                   (is (= x 123)
@@ -923,7 +923,7 @@
 (def-proc-test ^:parallel handle-cast.undefined-callback
   (let [done (async/chan)
         done2 (async/chan)
-        server {:init (fn [_]
+        server {:init (fn []
                         (spawn-exit-watcher done2 100)
                         [:ok :state])
                 :terminate (fn [reason _]
@@ -946,7 +946,7 @@
   (process/flag :trap-exit true)
   (let [done (async/chan)
         done2 (async/chan)
-        server {:init (fn [_]
+        server {:init (fn []
                         (spawn-exit-watcher done2 100)
                         [:ok nil])
                 :handle-cast (fn [_ _] :bad-return)
@@ -969,7 +969,7 @@
 (def-proc-test ^:parallel handle-cast.callback-throws
   (let [done (async/chan)
         done2 (async/chan)
-        server {:init (fn [_]
+        server {:init (fn []
                         (spawn-exit-watcher done2 100)
                         [:ok nil])
                 :handle-cast (fn [_ _] (throw (ex-info "TEST" {:test 1})))
@@ -997,7 +997,7 @@
 (def-proc-test ^:parallel handle-cast.exit-abnormal
   (let [done (async/chan)
         done2 (async/chan)
-        server {:init (fn [_]
+        server {:init (fn []
                         (spawn-exit-watcher done2 100)
                         [:ok nil])
                 :handle-cast (fn [_ _] (process/exit :abnormal))
@@ -1019,7 +1019,7 @@
 (def-proc-test ^:parallel handle-cast.exit-normal
   (let [done (async/chan)
         done2 (async/chan)
-        server {:init (fn [_]
+        server {:init (fn []
                         (spawn-exit-watcher done2 100)
                         [:ok nil])
                 :handle-cast (fn [_ _] (process/exit :normal))
@@ -1041,7 +1041,7 @@
 (def-proc-test ^:parallel handle-cast.stop-normal
   (let [done (async/chan)
         done2 (async/chan)
-        server {:init (fn [_]
+        server {:init (fn []
                         (spawn-exit-watcher done2 100)
                         [:ok nil])
                 :handle-cast (fn [_ state] [:stop :normal state])
@@ -1063,7 +1063,7 @@
 (def-proc-test ^:parallel handle-cast.stop-abnormal
   (let [done (async/chan)
         done2 (async/chan)
-        server {:init (fn [_]
+        server {:init (fn []
                         (spawn-exit-watcher done2 100)
                         [:ok nil])
                 :handle-cast (fn [_ state] [:stop :abnormal state])
@@ -1085,7 +1085,7 @@
 (def-proc-test ^:parallel handle-cast.cast-to-exited-pid
   (let [done (async/chan)
         done2 (async/chan)
-        server {:init (fn [_]
+        server {:init (fn []
                         (spawn-exit-watcher done2 100)
                         [:ok nil])
                 :handle-cast (fn [_ state] [:stop :normal state])}]
@@ -1099,7 +1099,7 @@
             "cast must return false if server is not alive")))))
 
 (def-proc-test ^:parallel handle-cast.update-state
-  (let [server {:init (fn [_] [:ok 1])
+  (let [server {:init (fn [] [:ok 1])
                 :handle-cast
                 (fn [[old-state new-state] state]
                   (is (= old-state state)
@@ -1118,7 +1118,7 @@
 
 (def-proc-test ^:parallel handle-cast.bad-return.terminate-throws
   (let [done (async/chan)
-        server {:init (fn [_]
+        server {:init (fn []
                         (spawn-exit-watcher done 50)
                         [:ok :state])
                 :handle-cast (fn [_ _] :bad-return)
@@ -1138,7 +1138,7 @@
 
 (def-proc-test ^:parallel handle-cast.callback-throws.terminate-throws
   (let [done (async/chan)
-        server {:init (fn [_]
+        server {:init (fn []
                         (spawn-exit-watcher done 50)
                         [:ok :state])
                 :handle-cast (fn [_ _] (throw (ex-info "TEST" {:b 2})))
@@ -1158,7 +1158,7 @@
 
 (def-proc-test ^:parallel handle-cast.exit-abnormal.terminate-throws
   (let [done (async/chan)
-        server {:init (fn [_]
+        server {:init (fn []
                         (spawn-exit-watcher done 50)
                         [:ok :state])
                 :handle-cast (fn [_ _] (process/exit :abnormal))
@@ -1178,7 +1178,7 @@
 
 (def-proc-test ^:parallel handle-cast.exit-normal.terminate-throws
   (let [done (async/chan)
-        server {:init (fn [_]
+        server {:init (fn []
                         (spawn-exit-watcher done 50)
                         [:ok :state])
                 :handle-cast (fn [_ _] (process/exit :normal))
@@ -1198,7 +1198,7 @@
 
 (def-proc-test ^:parallel handle-cast.stop-normal.terminate-throws
   (let [done (async/chan)
-        server {:init (fn [_]
+        server {:init (fn []
                         (spawn-exit-watcher done 50)
                         [:ok :state])
                 :handle-cast (fn [_ state] [:stop :normal state])
@@ -1218,7 +1218,7 @@
 
 (def-proc-test ^:parallel handle-cast.stop-abnormal.terminate-throws
   (let [done (async/chan)
-        server {:init (fn [_]
+        server {:init (fn []
                         (spawn-exit-watcher done 50)
                         [:ok :state])
                 :handle-cast (fn [_ state] [:stop :abnormal state])
@@ -1238,7 +1238,7 @@
 
 (def-proc-test ^:parallel handle-cast.undefined-callback.terminate-throws
   (let [done (async/chan)
-        server {:init (fn [_]
+        server {:init (fn []
                         (spawn-exit-watcher done 50)
                         [:ok :state])
                 :terminate (fn [reason _] (throw (ex-info "TEST" {:a 1})))}]
@@ -1257,7 +1257,7 @@
 
 (def-proc-test ^:parallel handle-cast.bad-return.terminate-undefined
   (let [done (async/chan)
-        server {:init (fn [_]
+        server {:init (fn []
                         (spawn-exit-watcher done 50)
                         [:ok :state])
                 :handle-cast (fn [_ _] :bad-return)}]
@@ -1273,7 +1273,7 @@
 
 (def-proc-test ^:parallel handle-cast.callback-throws.terminate-undefined
   (let [done (async/chan)
-        server {:init (fn [_]
+        server {:init (fn []
                         (spawn-exit-watcher done 50)
                         [:ok :state])
                 :handle-cast (fn [_ _] (throw (ex-info "TEST" {:b 2})))}]
@@ -1292,7 +1292,7 @@
 
 (def-proc-test ^:parallel handle-cast.exit-abnormal.terminate-undefined
   (let [done (async/chan)
-        server {:init (fn [_]
+        server {:init (fn []
                         (spawn-exit-watcher done 50)
                         [:ok :state])
                 :handle-cast (fn [_ _] (process/exit :abnormal))}]
@@ -1307,7 +1307,7 @@
 
 (def-proc-test ^:parallel handle-cast.exit-normal.terminate-undefined
   (let [done (async/chan)
-        server {:init (fn [_]
+        server {:init (fn []
                         (spawn-exit-watcher done 50)
                         [:ok :state])
                 :handle-cast (fn [_ _] (process/exit :normal))}]
@@ -1322,7 +1322,7 @@
 
 (def-proc-test ^:parallel handle-cast.stop-normal.terminate-undefined
   (let [done (async/chan)
-        server {:init (fn [_]
+        server {:init (fn []
                         (spawn-exit-watcher done 50)
                         [:ok :state])
                 :handle-cast (fn [_ state] [:stop :normal state])}]
@@ -1336,7 +1336,7 @@
 
 (def-proc-test ^:parallel handle-cast.stop-abnormal.terminate-undefined
   (let [done (async/chan)
-        server {:init (fn [_]
+        server {:init (fn []
                         (spawn-exit-watcher done 50)
                         [:ok :state])
                 :handle-cast (fn [_ state] [:stop :abnormal state])}]
@@ -1350,7 +1350,7 @@
 
 (def-proc-test ^:parallel handle-cast.undefined-callback.terminate-undefined
   (let [done (async/chan)
-        server {:init (fn [_]
+        server {:init (fn []
                         (spawn-exit-watcher done 50)
                         [:ok :state])}]
     (match (gs/start server)
@@ -1368,7 +1368,7 @@
 
 (def-proc-test ^:parallel handle-info.call-delivers-message
   (let [done (async/chan)
-        server {:init (fn [_] [:ok :state])
+        server {:init (fn [] [:ok :state])
                 :handle-info
                 (fn [x state]
                   (is (= x 123)
@@ -1385,7 +1385,7 @@
 (def-proc-test ^:parallel handle-info.undefined-callback
   (let [done (async/chan)
         done2 (async/chan)
-        server {:init (fn [_]
+        server {:init (fn []
                         (spawn-exit-watcher done2 100)
                         [:ok :state])
                 :terminate (fn [reason _]
@@ -1406,7 +1406,7 @@
 (def-proc-test ^:parallel handle-info.bad-return
   (let [done (async/chan)
         done2 (async/chan)
-        server {:init (fn [_]
+        server {:init (fn []
                         (spawn-exit-watcher done2 100)
                         [:ok nil])
                 :handle-info (fn [_ _] :bad-return)
@@ -1428,7 +1428,7 @@
 (def-proc-test ^:parallel handle-info.callback-throws
   (let [done (async/chan)
         done2 (async/chan)
-        server {:init (fn [_]
+        server {:init (fn []
                         (spawn-exit-watcher done2 100)
                         [:ok nil])
                 :handle-info (fn [_ _] (throw (ex-info "TEST" {:test 1})))
@@ -1455,7 +1455,7 @@
 (def-proc-test ^:parallel handle-info.exit-abnormal
   (let [done (async/chan)
         done2 (async/chan)
-        server {:init (fn [_]
+        server {:init (fn []
                         (spawn-exit-watcher done2 100)
                         [:ok nil])
                 :handle-info (fn [_ _] (process/exit :abnormal))
@@ -1476,7 +1476,7 @@
 (def-proc-test ^:parallel handle-info.exit-normal
   (let [done (async/chan)
         done2 (async/chan)
-        server {:init (fn [_]
+        server {:init (fn []
                         (spawn-exit-watcher done2 100)
                         [:ok nil])
                 :handle-info (fn [_ _] (process/exit :normal))
@@ -1497,7 +1497,7 @@
 (def-proc-test ^:parallel handle-info.stop-normal
   (let [done (async/chan)
         done2 (async/chan)
-        server {:init (fn [_]
+        server {:init (fn []
                         (spawn-exit-watcher done2 100)
                         [:ok nil])
                 :handle-info (fn [_ state] [:stop :normal state])
@@ -1518,7 +1518,7 @@
 (def-proc-test ^:parallel handle-info.stop-abnormal
   (let [done (async/chan)
         done2 (async/chan)
-        server {:init (fn [_]
+        server {:init (fn []
                         (spawn-exit-watcher done2 100)
                         [:ok nil])
                 :handle-info (fn [_ state] [:stop :abnormal state])
@@ -1537,7 +1537,7 @@
             "gen-server must exit after :stop returned by handle-info")))))
 
 (def-proc-test ^:parallel handle-info.update-state
-  (let [server {:init (fn [_] [:ok 1])
+  (let [server {:init (fn [] [:ok 1])
                 :handle-info
                 (fn [[old-state new-state] state]
                   (is (= old-state state)
@@ -1553,7 +1553,7 @@
 
 (def-proc-test ^:parallel handle-info.bad-return.terminate-throws
   (let [done (async/chan)
-        server {:init (fn [_]
+        server {:init (fn []
                         (spawn-exit-watcher done 50)
                         [:ok :state])
                 :handle-info (fn [_ _] :bad-return)
@@ -1572,7 +1572,7 @@
 
 (def-proc-test ^:parallel handle-info.callback-throws.terminate-throws
   (let [done (async/chan)
-        server {:init (fn [_]
+        server {:init (fn []
                         (spawn-exit-watcher done 50)
                         [:ok :state])
                 :handle-info (fn [_ _] (throw (ex-info "TEST" {:b 2})))
@@ -1591,7 +1591,7 @@
 
 (def-proc-test ^:parallel handle-info.exit-abnormal.terminate-throws
   (let [done (async/chan)
-        server {:init (fn [_]
+        server {:init (fn []
                         (spawn-exit-watcher done 50)
                         [:ok :state])
                 :handle-info (fn [_ _] (process/exit :abnormal))
@@ -1610,7 +1610,7 @@
 
 (def-proc-test ^:parallel handle-info.exit-normal.terminate-throws
   (let [done (async/chan)
-        server {:init (fn [_]
+        server {:init (fn []
                         (spawn-exit-watcher done 50)
                         [:ok :state])
                 :handle-info (fn [_ _] (process/exit :normal))
@@ -1629,7 +1629,7 @@
 
 (def-proc-test ^:parallel handle-info.stop-normal.terminate-throws
   (let [done (async/chan)
-        server {:init (fn [_]
+        server {:init (fn []
                         (spawn-exit-watcher done 50)
                         [:ok :state])
                 :handle-info (fn [_ state] [:stop :normal state])
@@ -1648,7 +1648,7 @@
 
 (def-proc-test ^:parallel handle-info.stop-abnormal.terminate-throws
   (let [done (async/chan)
-        server {:init (fn [_]
+        server {:init (fn []
                         (spawn-exit-watcher done 50)
                         [:ok :state])
                 :handle-info (fn [_ state] [:stop :abnormal state])
@@ -1667,7 +1667,7 @@
 
 (def-proc-test ^:parallel handle-info.undefined-callback.terminate-throws
   (let [done (async/chan)
-        server {:init (fn [_]
+        server {:init (fn []
                         (spawn-exit-watcher done 50)
                         [:ok :state])
                 :terminate (fn [reason _] (throw (ex-info "TEST" {:a 1})))}]
@@ -1685,7 +1685,7 @@
 
 (def-proc-test ^:parallel handle-info.bad-return.terminate-undefined
   (let [done (async/chan)
-        server {:init (fn [_]
+        server {:init (fn []
                         (spawn-exit-watcher done 50)
                         [:ok :state])
                 :handle-info (fn [_ _] :bad-return)}]
@@ -1700,7 +1700,7 @@
 
 (def-proc-test ^:parallel handle-info.callback-throws.terminate-undefined
   (let [done (async/chan)
-        server {:init (fn [_]
+        server {:init (fn []
                         (spawn-exit-watcher done 50)
                         [:ok :state])
                 :handle-info (fn [_ _] (throw (ex-info "TEST" {:b 2})))}]
@@ -1718,7 +1718,7 @@
 
 (def-proc-test ^:parallel handle-info.exit-abnormal.terminate-undefined
   (let [done (async/chan)
-        server {:init (fn [_]
+        server {:init (fn []
                         (spawn-exit-watcher done 50)
                         [:ok :state])
                 :handle-info (fn [_ _] (process/exit :abnormal))}]
@@ -1732,7 +1732,7 @@
 
 (def-proc-test ^:parallel handle-info.exit-normal.terminate-undefined
   (let [done (async/chan)
-        server {:init (fn [_]
+        server {:init (fn []
                         (spawn-exit-watcher done 50)
                         [:ok :state])
                 :handle-info (fn [_ _] (process/exit :normal))}]
@@ -1746,7 +1746,7 @@
 
 (def-proc-test ^:parallel handle-info.stop-normal.terminate-undefined
   (let [done (async/chan)
-        server {:init (fn [_]
+        server {:init (fn []
                         (spawn-exit-watcher done 50)
                         [:ok :state])
                 :handle-info (fn [_ state] [:stop :normal state])}]
@@ -1759,7 +1759,7 @@
 
 (def-proc-test ^:parallel handle-info.stop-abnormal.terminate-undefined
   (let [done (async/chan)
-        server {:init (fn [_]
+        server {:init (fn []
                         (spawn-exit-watcher done 50)
                         [:ok :state])
                 :handle-info (fn [_ state] [:stop :abnormal state])}]
@@ -1772,7 +1772,7 @@
 
 (def-proc-test ^:parallel handle-info.undefined-callback.terminate-undefined
   (let [done (async/chan)
-        server {:init (fn [_]
+        server {:init (fn []
                         (spawn-exit-watcher done 50)
                         [:ok :state])}]
     (match (gs/start server)

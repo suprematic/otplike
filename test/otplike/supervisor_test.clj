@@ -39,7 +39,7 @@
   (let [sup-init-done (async/chan)
         server-init-done (async/chan)
         sup-flags {}
-        server {:init (fn [_]
+        server {:init (fn []
                         (async/close! server-init-done)
                         [:ok :state])}
         children-spec [{:id 1 :start [#(gs/start-link server) []]}]
@@ -71,7 +71,7 @@
           {:id id
            :start
            [#(gs/start-link
-               {:init (fn [_]
+               {:init (fn []
                         (is (await-completion await-chan 50)
                             "supervisor must start children in spec's order")
                         (async/close! done-chan)
@@ -102,7 +102,7 @@
         make-child (fn [id]
                      {:id id
                       :start [#(gs/start-link
-                                 {:init (fn [_]
+                                 {:init (fn []
                                           (is false "child must not be started")
                                           [:ok :state])})
                               []]})
@@ -137,7 +137,7 @@
                   (async/close! sup-init-done)
                   [:ok [{} [{:start
                              [#(gs/start-link
-                                 {:init (fn [_]
+                                 {:init (fn []
                                           (is false "child must not be started")
                                           [:ok :state])})
                               []]}]]])]
@@ -172,7 +172,7 @@
   (let [make-child (fn [id]
                      {:id id
                       :start [#(gs/start-link
-                                 {:init (fn [_]
+                                 {:init (fn []
                                           (is false "child must not be started")
                                           [:ok :state])})
                               []]})]
@@ -251,19 +251,19 @@
 ;(otplike.proc-util/execute-proc
 (def-proc-test ^:parallel start-link:child-init-returns-error:exit-normal
   (test-start-link:child-init-returns-error
-    (fn [_] (process/exit :normal))
+    (fn [] (process/exit :normal))
     :normal))
 
 ;(otplike.proc-util/execute-proc
 (def-proc-test ^:parallel start-link:child-init-returns-error:exit-abnormal
   (test-start-link:child-init-returns-error
-    (fn [_] (process/exit :abnormal))
+    (fn [] (process/exit :abnormal))
     :abnormal))
 
 ;(otplike.proc-util/execute-proc
 (def-proc-test ^:parallel start-link:child-init-returns-error:stop-with-reason
   (test-start-link:child-init-returns-error
-    (fn [_] [:stop :some-reason])
+    (fn [] [:stop :some-reason])
     :some-reason))
 
 (def-proc-test ^:parallel
@@ -272,10 +272,10 @@
   (let [child1-done (async/chan)
         sup-init-done (async/chan)
         sup-flags {}
-        error-child-init (fn [_]
+        error-child-init (fn []
                            (async/close! child1-done)
                            [:stop :abnormal])
-        healthy-child-init (fn [_]
+        healthy-child-init (fn []
                               (is false "child must not be started")
                               [:ok :state])
         child-spec (fn [id init-fn]
@@ -304,7 +304,7 @@
         error-child-done (async/chan)
         sup-init-done (async/chan)
         sup-flags {}
-        healthy-child1-init (fn [_]
+        healthy-child1-init (fn []
                               (async/close! child1-init-done)
                               [:ok :state])
         child1-terminate
@@ -312,10 +312,10 @@
           (async/close! child1-terminate-done)
           (is (= :shutdown reason)
               "child must be stopped with :shutdown reason"))
-        error-child-init (fn [_]
+        error-child-init (fn []
                            (async/close! error-child-done)
                            [:stop :abnormal])
-        healthy-child2-init (fn [_]
+        healthy-child2-init (fn []
                               (is false "child must not be started")
                               [:ok :state])
         child-spec (fn [id init-fn terminate-fn]
@@ -354,7 +354,7 @@
         error-child-done (async/chan)
         sup-init-done (async/chan)
         sup-flags {}
-        healthy-child1-init (fn [_]
+        healthy-child1-init (fn []
                               (async/close! child1-init-done)
                               [:ok :state])
         child1-terminate
@@ -364,10 +364,10 @@
           (async/close! child1-terminate-done)
           (is (= :shutdown reason)
               "child must be stopped with :shutdown reason"))
-        error-child-init (fn [_]
+        error-child-init (fn []
                            (async/close! error-child-done)
                            [:stop :abnormal])
-        healthy-child2-init (fn [_]
+        healthy-child2-init (fn []
                               (async/close! child2-init-done)
                               [:ok :state])
         child2-terminate
@@ -861,7 +861,7 @@
                        ;:strategy :rest-for-one
                        }
             child (fn [await-chan done sname restart-type]
-                    (let [server {:init (fn [_]
+                    (let [server {:init (fn []
                                           (printf "server %s init %s%n" sname (rem (System/currentTimeMillis) 10000))
                                           (await-completion await-chan 50)
                                           (async/close! done)
@@ -898,7 +898,7 @@
                        ;:strategy :rest-for-one
                        }
             child (fn [sname restart-type]
-                    (let [server {:init (fn [_]
+                    (let [server {:init (fn []
                                           (printf "server %s init %s%n" sname (rem (System/currentTimeMillis) 10000))
                                           [:ok :state])
                                   :handle-call (fn [req _ state] [:stop :normal state])

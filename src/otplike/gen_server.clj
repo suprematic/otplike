@@ -145,7 +145,7 @@
 
 (defn- call-init [init args]
   (if init
-    (init args)
+    (apply init args)
     (process/exit [:undef ['init [args]]])))
 
 (defn- call-handle-call [handle-call request from state]

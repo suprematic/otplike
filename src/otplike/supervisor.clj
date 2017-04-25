@@ -597,10 +597,10 @@
 ;; gen-server callbacks
 
 (spec/fdef init
-  :args (spec/cat :fargs (spec/tuple fn? (spec/nilable (spec/coll-of any?))))
+  :args (spec/cat :fn fn? :args (spec/nilable (spec/coll-of any?)))
   :ret (spec/or :success (spec/tuple ::ok ::state)
                 :failure (spec/tuple #{:stop} ::reason)))
-(defn init [[sup-fn args]]
+(defn init [sup-fn args]
   ;(printf "sup init: %s%n" args)
   (match (apply sup-fn args)
     [:ok [sup-spec child-specs]]
