@@ -1,30 +1,56 @@
 (ns otplike.example.benchmark-ring
-  "Creates n processes. Exits when all created processes exited.
-  Each process (except the last one):
-  1. Creates next process.
-  2. Sends message to created process.
-  3. Waits for message (from parent process).
-  4. Exits normally.
-  The last process created does the same but sends message to the first
-  process so the first process could exit."
   (:require [otplike.process :as process :refer [!]]
-            [clojure.core.async :as async :refer [<! <!!]]))
+            [otplike.proc-util :as proc-util]))
 
-(process/proc-defn proc [n pid]
+(process/proc-defn proc [n root-pid]
   (if (= 0 n)
-    (! pid :ok)
-    (let [npid (process/spawn proc [(dec n) pid] {})]
+    (! root-pid :ok)
+    (let [npid (process/spawn proc [(dec n) root-pid])]
       (! npid :ok)
       (process/receive! :ok :ok))))
 
 (defn start [n]
-  (let [done (async/chan)]
-    (process/spawn (process/proc-fn []
-                     (let [pid (process/spawn proc [n (process/self)] {})]
-                       (! pid :ok)
-                       (process/receive! :ok :ok)
-                       (println "done" n)
-                       (async/close! done)))
-                 []
-                 {})
-    (<!! done)))
+  (proc-util/execute-proc!!
+    (let [pid (process/spawn proc [n (process/self)])]
+      (! pid :ok)
+      (process/receive! :ok :ok)
+      (println "done" n))))
+
+;(time (start 1000000))
+
+;---
+
+(process/proc-defn proc1 [n done]
+  (if (= 0 n)
+    (clojure.core.async/close! done)
+    (let [npid (process/spawn proc1 [(dec n) done])]
+      (! npid :ok)
+      (process/receive! :ok :ok))))
+
+(defn start1 [n]
+  (let [done (clojure.core.async/chan)
+        pid (process/spawn proc1 [n done])]
+    (! pid :ok)
+    (clojure.core.async/<!! done)
+    (println "done" n)))
+
+;(time (start1 1000000))
+
+;---
+
+(process/proc-defn proc2 []
+  (process/receive! pid (! pid :ok)))
+
+(defn start2 [n]
+  (proc-util/execute-proc!!
+    (let [self (process/self)]
+      (dotimes [_ n]
+        (let [pid (process/spawn
+                    (process/proc-fn []
+                      (process/receive! pid (! pid :ok))))]
+          (! pid self)
+          (process/receive! :ok :ok))))
+    (println "done" n)))
+
+;(time (start2 10))
+;(time (start2 10000000))
