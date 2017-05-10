@@ -375,6 +375,22 @@
 
 (alter-meta! #'receive* assoc :no-doc true)
 
+(defmacro proc-fn*
+  [fname args & body]
+  (assert (vector? args)
+          (format "Parameter declaration %s should be a vector" args))
+  (assert (not (some #{'&} args))
+          (format "Variadic arguments are not supported" args))
+  (let [arg-names (vec (repeatedly (count args) #(gensym "argname")))]
+    `(fn ~@(if fname [fname arg-names] [arg-names])
+       (go
+         (try
+           (loop ~(vec (interleave args arg-names))
+             ~@body)
+           :normal
+           (catch Throwable t#
+             (ex->reason t#)))))))
+
 ;; ====================================================================
 ;; API
 
@@ -704,24 +720,12 @@
 (defmacro proc-fn
   "Creates process function which can be passed to spawn."
   [args & body]
-  (assert (vector? args)
-          (format "Parameter declaration %s should be a vector" args))
-  (assert (not (some #{'&} args))
-          (format "Variadic arguments are not supported" args))
-  (let [arg-names (vec (repeatedly (count args) #(gensym "argname")))]
-    `(fn ~arg-names
-       (go
-         (try
-           (loop ~(vec (interleave args arg-names))
-             ~@body)
-           :normal
-           (catch Throwable t#
-             (ex->reason t#)))))))
+  `(proc-fn* nil ~args ~@body))
 
 (defmacro proc-defn
   "The same as proc-fn but also binds created function to a var with
   the name fname."
-  [fname & args-body]
-  `(let [f# (proc-fn ~@args-body)]
+  [fname args & body]
+  `(let [f# (proc-fn* ~fname ~args ~@body)]
      (def ~fname f#)
      f#))
