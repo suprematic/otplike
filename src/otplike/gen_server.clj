@@ -239,14 +239,15 @@
         [nil timeout] [:error :timeout]))))
 
 (defn- start*
-  [server args options]
+  [server args {:keys [timeout spawn-opt] :or {timeout 1000 spawn-opt {}}}]
   (let [gs (->gen-server server)
         response (async/chan)
         parent (process/self)
+        timeout (u/timeout-chan timeout)
         pid (process/spawn-opt
-              gen-server-proc [gs args parent response] options)]
+              gen-server-proc [gs args parent response] spawn-opt)]
     ; TODO allow to override timeout passing it as argument
-    (match (async/alts!! [response (async/timeout 1000)])
+    (match (async/alts!! [response timeout])
            [:ok response] [:ok pid]
            [[:error reason] response] [:error reason]
            [nil timeout] (do (process/unlink pid)
@@ -262,8 +263,13 @@
   Arguments:
   server-impl - IGenServer implementation, or map, or namespace.
   args - any form that is passed as the argument to init function.
-  options - options argument of process/spawn passed when starting
-  a server process.
+
+  Options:
+  :timeout - time in milliseconds gen-server is allowed to spend
+    initializing  or it is terminated and the start function returns
+    [:error :timeout].
+  :spawn-opt - options used to spawn the gen-server process (see
+    process/spawn-opt)
 
   Returns:
   [:ok pid] if server started successfully,
@@ -280,7 +286,7 @@
   ([server args options]
    (start* server args options))
   ([reg-name server args options]
-   (start* server args (assoc options :register reg-name))))
+   (start* server args (assoc-in options [:spawn-opt :register] reg-name))))
 
 (defn start-link
   ([server]
@@ -288,11 +294,10 @@
   ([server args]
    (start-link server args {}))
   ([server args options]
-   (start* server args (assoc options :link true)))
+   (start* server args (assoc-in options [:spawn-opt :link] true)))
   ([reg-name server args options]
-   (start* server args (assoc options
-                              :link true
-                              :register reg-name))))
+   (start-link
+     server args (assoc-in options [:spawn-opt :register] reg-name))))
 
 (defmacro start-ns
   "Starts the server, taking current ns as a implementation source.

@@ -348,29 +348,12 @@
       (['after timeout & body] :seq)
       (let [clauses1 (butlast clauses)]
         `(if *inbox*
-           (match ~timeout
-             :infinity
-             (receive* ~park? ~clauses1)
-
-             (ms# :guard integer?)
-             (let [inbox# *inbox*
-                   timeout# (async/timeout ms#)]
-               (match (~(if park? `async/alts! `async/alts!!) [inbox# timeout#])
-                      [nil timeout#] (do ~@body)
-                      [nil inbox#] (throw (Exception. "noproc"))
-                      [msg# inbox#] (match msg# ~@(butlast clauses))))
-
-             (ch# :guard #(satisfies? ap/ReadPort %))
-             (let [inbox# *inbox*
-                   timeout# ch#]
-               (match (~(if park? `async/alts! `async/alts!!) [inbox# timeout#])
-                      [nil timeout#] (do ~@body)
-                      [nil inbox#] (throw (Exception. "noproc"))
-                      [msg# inbox#] (match msg# ~@(butlast clauses))))
-
-             other#
-             (throw (Exception.
-                      (str "unsupported receive timeout " (pr-str other#)))))
+           (let [inbox# *inbox*
+                 timeout# (u/timeout-chan ~timeout)]
+             (match (~(if park? `async/alts! `async/alts!!) [inbox# timeout#])
+                    [nil timeout#] (do ~@body)
+                    [nil inbox#] (throw (Exception. "noproc"))
+                    [msg# inbox#] (match msg# ~@(butlast clauses))))
            (throw (Exception. "noproc")))))))
 
 (alter-meta! #'receive* assoc :no-doc true)

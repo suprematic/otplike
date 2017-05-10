@@ -320,10 +320,10 @@
                               [:ok :state])
         child-spec (fn [id init-fn terminate-fn]
                      {:id id
-                      :start [#(gs/start-link {:init init-fn
-                                               :terminate terminate-fn}
-                                              []
-                                              {:flags {:trap-exit true}})
+                      :start [#(gs/start-link
+                                 {:init init-fn :terminate terminate-fn}
+                                 []
+                                 {:spawn-opt {:flags {:trap-exit true}}})
                               []]})
         children-spec [(child-spec :id1 healthy-child1-init child1-terminate)
                        (child-spec :id2 error-child-init nil)
@@ -377,10 +377,10 @@
               "child must be stopped with :shutdown reason"))
         child-spec (fn [id init-fn terminate-fn]
                      {:id id
-                      :start [#(gs/start-link {:init init-fn
-                                               :terminate terminate-fn}
-                                              []
-                                              {:flags {:trap-exit true}})
+                      :start [#(gs/start-link
+                                 {:init init-fn :terminate terminate-fn}
+                                 []
+                                 {:spawn-opt {:flags {:trap-exit true}}})
                               []]})
         children-spec [(child-spec :id1 healthy-child1-init child1-terminate)
                        (child-spec :id2 healthy-child2-init child2-terminate)
@@ -905,7 +905,7 @@
                                   :terminate (fn [reason _state]
                                                (printf "server %s terminate %s, reason %s%n" sname (rem (System/currentTimeMillis) 10000) reason))}]
                       {:id sname
-                       :start [#(gs/start-link sname server [] {:flags {:trap-exit true}}) []]
+                       :start [#(gs/start-link sname server [] {:spawn-opt {:flags {:trap-exit true}}}) []]
                        :restart restart-type}))
             child1 (child :1 :permanent)
             child2 (child :2 :permanent)

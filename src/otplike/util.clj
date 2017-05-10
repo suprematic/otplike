@@ -1,4 +1,7 @@
-(ns ^:no-doc otplike.util)
+(ns ^:no-doc otplike.util
+  (:require [clojure.future :refer :all]
+            [clojure.core.async.impl.protocols :as ap]
+            [clojure.core.async :as async]))
 
 (defmacro check-args [exprs]
   (assert (sequential? exprs))
@@ -21,3 +24,12 @@
                              (if (instance? clojure.lang.ExceptionInfo e)
                                {:data (ex-data e)}))))
      acc)))
+
+
+(defn timeout-chan [timeout]
+  (cond
+    (= :infinity timeout) (async/chan)
+    (nat-int? timeout) (async/timeout timeout)
+    (satisfies? ap/ReadPort timeout) timeout
+    :else (throw (Exception.
+                   (str "unsupported receive timeout " (pr-str timeout))))))

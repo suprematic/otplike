@@ -584,13 +584,13 @@
 (spec/fdef start-link*
   :args (spec/cat :sup-fn fn?
                   :args (spec/nilable (spec/coll-of any?))
-                  :proc-opts map?)
+                  :spawn-opts map?)
   :ret (spec/or :success (spec/tuple ::ok ::process/pid)
                 :failure (spec/tuple ::error ::reason)))
-(defn- start-link* [sup-fn args options]
-  (gen-server/start-link-ns [sup-fn args]
-                            (merge options {:flags {:trap-exit true}
-                                            :name "supervisor"})))
+(defn- start-link* [sup-fn args spawn-opts]
+  (gen-server/start-link-ns
+    [sup-fn args] {:spawn-opt (merge spawn-opts {:flags {:trap-exit true}
+                                                 :name "supervisor"})} ))
 (spec-util/instrument `start-link*)
 
 ;; ====================================================================

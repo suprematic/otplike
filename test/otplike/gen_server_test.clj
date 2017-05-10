@@ -64,7 +64,8 @@
                                       " the value returned from handle-call"))
                              (async/close! terminate-chan))}
         parent (process/proc-fn []
-                 (gs/start-link server [] {:flags {:trap-exit true}}))]
+                 (gs/start-link
+                   server [] {:spawn-opt {:flags {:trap-exit true}}}))]
     (process/spawn parent)
     (is (await-completion terminate-chan 500)
         "reason passed to terminate must be the same as parent's exit reason")
@@ -87,7 +88,8 @@
                                       " the value returned from handle-call"))
                              (async/close! terminate-chan))}
         parent (process/proc-fn []
-                 (gs/start-link server [] {:flags {:trap-exit true}})
+                 (gs/start-link
+                   server [] {:spawn-opt {:flags {:trap-exit true}}})
                  (process/exit :abnormal))]
     (process/spawn parent)
     (is (await-completion terminate-chan 500)
@@ -103,7 +105,7 @@
   (let [done (async/chan)
         server {:init (fn [] [:ok nil])
                 :terminate (fn [_ _] (async/close! done))}]
-    (is (thrown? Exception (gs/start server [] {:inbox "inbox"})))
+    (is (thrown? Exception (gs/start server [] {:spawn-opt {:inbox "inbox"}})))
     (is (thrown? Exception (await-completion done 50))
         (str "terminate must not be called when illegal arguments were passed"
              " to start"))))
@@ -179,26 +181,53 @@
     (is (= nil (async/poll! done))
         "terminate must not be called if init returns bad value")))
 
+(def-proc-test ^:parallel init.default-timeout
+  (let [server {:init (fn [timeout]
+                        (<!! (async/timeout timeout))
+                        [:ok nil])}]
+    (is (match (gs/start-link server [900]) [:ok _pid] :ok)
+        "default timeout must be 1000 ms")
+    (is (match (gs/start server [1100]) [:error :timeout] :ok)
+        "default timeout must be 1000 ms")))
+
+(def-proc-test ^:parallel init.invalid-timeout
+  (let [server {:init (fn [] [:ok nil])}]
+    (is (thrown? Exception (gs/start server [] {:timeout -1}))
+        "start must throw on invali timeout")
+    (is (thrown? Exception (gs/start server [] {:timeout :t}))
+        "start must throw on invali timeout")))
+
+(def-proc-test ^:parallel init.infinite-timeout
+  (let [done (async/chan)
+        server {:init (fn []
+                        (async/close! done)
+                        [:ok nil])
+                :terminate (fn [_ _] :ok)}]
+    (is (match (gs/start-link server [] {:timeout :infinity}) [:ok _pid] :ok)
+        "error returned by start must contain :timeout")
+    (is (await-completion done 100)
+        "gen-server process must be started")))
+
 (def-proc-test ^:parallel init.timeout.not-linked-to-parent
   (let [done (async/chan)
         done1 (async/chan)
         server {:init (fn []
-                        (spawn-exit-watcher done 2000)
-                        (<!! (async/timeout 1100))
+                        (spawn-exit-watcher done 200)
+                        (<!! (async/timeout 100))
                         [:ok nil])
                 :terminate (fn [_ _] (async/put! done1 :val))}]
-    (is (match (gs/start server) [:error :timeout] :ok)
+    (is (match (gs/start server [] {:timeout 50}) [:error :timeout] :ok)
         "error returned by start must contain :timeout")
-    (is (= (await-completion done 2000) [:ok [:reason :killed]])
+    (is (= (await-completion done 200) [:ok [:reason :killed]])
         "gen-server process must be killed after init timeout")
     (is (= nil (async/poll! done1))
         "terminate must not be called if init returns bad value")))
 
 (def-proc-test ^:parallel init.timeout.linked-to-parent
   (let [server {:init (fn []
-                        (<!! (async/timeout 1100))
+                        (<!! (async/timeout 100))
                         [:ok nil])}]
-    (is (match (gs/start-link server) [:error :timeout] :ok)
+    (is (match (gs/start-link server [] {:timeout 50}) [:error :timeout] :ok)
         "error returned by start must contain :timeout")
     (is (= :timeout (<! (await-message 200)))
         (str "process must stay alive after gen-server/start-link fails"
