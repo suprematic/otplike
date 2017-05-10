@@ -181,15 +181,6 @@
     (is (= nil (async/poll! done))
         "terminate must not be called if init returns bad value")))
 
-(def-proc-test ^:parallel init.default-timeout
-  (let [server {:init (fn [timeout]
-                        (<!! (async/timeout timeout))
-                        [:ok nil])}]
-    (is (match (gs/start-link server [900]) [:ok _pid] :ok)
-        "default timeout must be 1000 ms")
-    (is (match (gs/start server [1100]) [:error :timeout] :ok)
-        "default timeout must be 1000 ms")))
-
 (def-proc-test ^:parallel init.invalid-timeout
   (let [server {:init (fn [] [:ok nil])}]
     (is (thrown? Exception (gs/start server [] {:timeout -1}))

@@ -239,7 +239,7 @@
         [nil timeout] [:error :timeout]))))
 
 (defn- start*
-  [server args {:keys [timeout spawn-opt] :or {timeout 1000 spawn-opt {}}}]
+  [server args {:keys [timeout spawn-opt] :or {timeout :infinity spawn-opt {}}}]
   (let [gs (->gen-server server)
         response (async/chan)
         parent (process/self)
