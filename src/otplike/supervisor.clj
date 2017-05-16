@@ -600,7 +600,7 @@
   :args (spec/cat :fn fn? :args (spec/nilable (spec/coll-of any?)))
   :ret (spec/or :success (spec/tuple ::ok ::state)
                 :failure (spec/tuple #{:stop} ::reason)))
-(defn init [sup-fn args]
+(defn ^:no-doc init [sup-fn args]
   ;(printf "sup init: %s%n" args)
   (match (apply sup-fn args)
     [:ok [sup-spec child-specs]]
@@ -638,7 +638,7 @@
                 :noreply (spec/tuple #{:noreply} ::state)
                 :stop-reply (spec/tuple #{:stop} ::reason any? ::state)
                 :stop (spec/tuple #{:stop} ::reason ::state)))
-(defn handle-call [request from {children ::children :as state}]
+(defn ^:no-doc handle-call [request from {children ::children :as state}]
   ;(printf "sup call: %s%n" request)
   (match request
     [:start-child child-spec]
@@ -663,7 +663,7 @@
                   :state ::state)
   :ret (spec/or :noreply (spec/tuple #{:noreply} ::state)
                 :stop (spec/tuple #{:stop} ::reason ::state)))
-(defn handle-cast [request {children ::children :as state}]
+(defn ^:no-doc handle-cast [request {children ::children :as state}]
   ;(printf "sup cast: %s%n" request)
   (match request
     [:restart id]
@@ -681,7 +681,7 @@
                   :state ::state)
   :ret (spec/or :noreply (spec/tuple #{:noreply} ::state)
                 :stop (spec/tuple #{:stop} ::reason ::state)))
-(defn handle-info [request state]
+(defn ^:no-doc handle-info [request state]
   ;(printf "sup info: %s%n" request)
   (match request
     [:EXIT pid reason]
@@ -696,7 +696,7 @@
 (spec/fdef terminate
   :args (spec/cat :reason ::reason :state ::state)
   :ret any?)
-(defn terminate [reason {children ::children}]
+(defn ^:no-doc terminate [reason {children ::children}]
   ;(printf "sup %s terminate, reason=%s, children: %s%n" (process/self) reason (pprint/write children :level 3 :stream nil))
   (terminate-children children))
 (spec-util/instrument `terminate)

@@ -19,7 +19,8 @@
              :repl
              {:source-paths  ["src" "examples"]}}
 
-  :codox {:source-paths ["src"]}
+  :codox {:source-paths ["src"]
+          :namespaces [#"^(?!otplike.spec-util)"]}
 
   :test-selectors {:parallel :parallel
                    :serial :serial}

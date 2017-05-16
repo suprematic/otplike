@@ -3,7 +3,7 @@
             [clojure.core.match :refer [match]]
             [otplike.process :as process]))
 
-(defmacro current-line-number []
+(defmacro ^:no-doc current-line-number []
   (:line (meta &form)))
 
 (defmacro execute-proc

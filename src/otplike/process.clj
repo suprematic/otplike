@@ -352,7 +352,7 @@
 
 (alter-meta! #'receive* assoc :no-doc true)
 
-(defmacro proc-fn*
+(defmacro ^:no-doc proc-fn*
   [fname args & body]
   (assert (vector? args)
           (format "Parameter declaration %s should be a vector" args))

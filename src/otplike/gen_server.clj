@@ -338,5 +338,5 @@
 (defn reply [to response]
   (async/put! to [::reply response]))
 
-(defn get [server]
+(defn ^:no-doc get [server]
   (call server [::get-state]))
