@@ -22,14 +22,14 @@
   (let [done (async/chan)
         start (System/nanoTime)]
     (timer/apply-after 50 async/close! [done])
-    (is (match (await-completion done 60)
+    (is (match (await-completion done 70)
                :closed (is (>= (ms-diff start) 50)
                            "fn must not be applied before timeout"))
         "fn must be applied just after timeout"))
   (let [done (async/chan)
         start (System/nanoTime)]
     (timer/apply-after 50 #(async/close! done) [])
-    (is (match (await-completion done 60)
+    (is (match (await-completion done 70)
                :closed (is (>= (ms-diff start) 50)
                            "fn must not be applied before timeout"))
         "fn must be applied just after timeout")))
@@ -176,7 +176,7 @@
     (let [tref (timer/send-interval 50 (process/self) :msg)]
       (process/receive!
         :msg :ok
-        (after 60
+        (after 70
           (is false "message must be sent if timer has not been canceled")))
       (timer/cancel tref)
       (process/receive!
@@ -242,7 +242,7 @@
         pid (process/spawn pfn)
         start (System/nanoTime)]
     (timer/send-after 50 pid :msg)
-    (is (= :closed (await-completion done 60))
+    (is (= :closed (await-completion done 70))
         "message must be sent just after timeout")
     (is (>= (ms-diff start) 50) "message must not be sent before timeout"))
   (proc-util/execute-proc!!
@@ -251,7 +251,7 @@
       (process/receive!
         :msg (is (>= (ms-diff start) 50)
                  "message must not be sent before timeout")
-        (after 60 (is false "message must be sent just after timeout"))))))
+        (after 70 (is false "message must be sent just after timeout"))))))
 
 (deftest ^:parallel send-after.send-to-not-existing-process
   (proc-util/execute-proc!!
@@ -261,7 +261,7 @@
       (process/receive!
         :msg2 (is (>= (ms-diff start) 50)
                  "message must not be sent before timeout")
-        (after 60 (is false "message must be sent just after timeout")))))
+        (after 70 (is false "message must be sent just after timeout")))))
   (proc-util/execute-proc!!
     (let [pid (process/spawn (process/proc-fn [] :ok))
           _ (timer/send-after 20 pid :msg1)
@@ -270,7 +270,7 @@
       (process/receive!
         :msg2 (is (>= (ms-diff start) 50)
                  "message must not be sent before timeout")
-        (after 60 (is false "message must be sent just after timeout"))))))
+        (after 70 (is false "message must be sent just after timeout"))))))
 
 (def-proc-test ^:parallel send-after.bad-args
 ;(proc-util/execute-proc!!
@@ -299,7 +299,7 @@
       (process/receive!
         [:EXIT pid :test] (is (>= (ms-diff start) 50)
                             "exit must not be sent before timeout")
-        (after 60 (is false "exit must be sent just after timeout")))))
+        (after 70 (is false "exit must be sent just after timeout")))))
   (proc-util/execute-proc!!
     (process/flag :trap-exit true)
     (let [pfn (process/proc-fn [] (process/receive! _ :ok))
@@ -309,7 +309,7 @@
       (process/receive!
         [:EXIT pid :test] (is (>= (ms-diff start) 50)
                             "exit must not be sent before timeout")
-        (after 60 (is false "exit must be sent just after timeout")))))
+        (after 70 (is false "exit must be sent just after timeout")))))
   (proc-util/execute-proc!!
     (process/flag :trap-exit true)
     (let [start (System/nanoTime)]
@@ -317,7 +317,7 @@
       (process/receive!
         [:EXIT _ :test] (is (>= (ms-diff start) 50)
                             "exit must not be sent before timeout")
-        (after 60 (is false "exit must be sent just after timeout"))))))
+        (after 70 (is false "exit must be sent just after timeout"))))))
 
 (deftest ^:parallel exit-after.exit-not-existing-process
   (proc-util/execute-proc!!
@@ -328,7 +328,7 @@
       (process/receive!
         [:EXIT _ :test2] (is (>= (ms-diff start) 50)
                              "exit must not be sent before timeout")
-        (after 60 (is false "exit must be sent just after timeout")))))
+        (after 70 (is false "exit must be sent just after timeout")))))
   (proc-util/execute-proc!!
     (process/flag :trap-exit true)
     (let [pid (process/spawn (process/proc-fn [] :ok))
@@ -338,7 +338,7 @@
       (process/receive!
         [:EXIT _ :test2] (is (>= (ms-diff start) 50)
                              "exit must not be sent before timeout")
-        (after 60 (is false "exit must be sent just after timeout"))))))
+        (after 70 (is false "exit must be sent just after timeout"))))))
 
 (def-proc-test ^:parallel exit-after.bad-args
 ;(proc-util/execute-proc!!
@@ -372,7 +372,7 @@
       (process/receive!
         [:EXIT pid :killed] (is (>= (ms-diff start) 50)
                             "kill must not be sent before timeout")
-        (after 60 (is false "kill must be sent just after timeout")))))
+        (after 70 (is false "kill must be sent just after timeout")))))
   (proc-util/execute-proc!!
     (process/flag :trap-exit true)
     (let [pfn (process/proc-fn [] (process/receive! _ :ok))
@@ -382,7 +382,7 @@
       (process/receive!
         [:EXIT pid :killed] (is (>= (ms-diff start) 50)
                             "kill must not be sent before timeout")
-        (after 60 (is false "kill must be sent just after timeout")))))
+        (after 70 (is false "kill must be sent just after timeout")))))
   (proc-util/execute-proc!!
     (process/flag :trap-exit true)
     (let [pfn (process/proc-fn []
@@ -406,7 +406,7 @@
       (process/receive!
         [:EXIT pid :killed] (is (>= (ms-diff start) 50)
                                 "kill must not be sent before timeout")
-        (after 60 (is false "kill must be sent just after timeout")))))
+        (after 70 (is false "kill must be sent just after timeout")))))
   (proc-util/execute-proc!!
     (process/flag :trap-exit true)
     (let [pfn1 (process/proc-fn [] :ok)
@@ -419,7 +419,7 @@
       (process/receive!
         [:EXIT pid :killed] (is (>= (ms-diff start) 50)
                                 "kill must not be sent before timeout")
-        (after 60 (is false "kill must be sent just after timeout"))))))
+        (after 70 (is false "kill must be sent just after timeout"))))))
 
 (def-proc-test ^:parallel kill-after.bad-args
   (is (thrown? Exception (timer/kill-after 1 nil)))
@@ -436,26 +436,20 @@
     (let [parent (process/self)
           f #(! parent :msg)]
       (timer/apply-interval 0 f)
-      (loop [n 1]
+      (dotimes [_ 3]
         (process/receive!
-          :msg (case n
-                 3 :ok
-                 (recur (inc n)))
+          :msg :ok
           (after 20 (is false "fn must be applied just after timeout"))))))
   (proc-util/execute-proc!!
     (let [parent (process/self)
-          f #(! parent %)]
+          f #(! parent %)
+          start (System/nanoTime)]
       (timer/apply-interval 50 f [:msg])
-      (loop [n 1
-             start (System/nanoTime)]
+      (dotimes [n 3]
         (process/receive!
-          :msg (do
-              (is (>= (ms-diff start) 50)
-                  "fn must not be applied before timeout")
-              (case n
-                3 :ok
-                (recur (inc n) (System/nanoTime))))
-          (after 60 (is false "fn must be applied just after timeout")))))))
+          :msg (is (>= (ms-diff start) (* 50 (inc n)))
+                   "fn must not be applied before timeout")
+          (after 70 (is false "fn must be applied just after timeout")))))))
 
 (deftest ^:parallel apply-interval.apply-in-process-context
   (proc-util/execute-proc!!
@@ -464,11 +458,9 @@
               (is (process/self) "fn must be applied in process context")
               (! parent msg))]
       (timer/apply-interval 0 f [:msg])
-      (loop [n 1]
+      (dotimes [n 3]
         (process/receive!
-          :msg (case n
-                 3 :ok
-                 (recur (inc n)))
+          :msg :ok
           (after 20 (is false "fn must be applied just after timeout")))))))
 
 (deftest ^:parallel apply-interval.fn-exit
@@ -478,11 +470,9 @@
               (! parent msg)
               (throw (Exception.)))]
       (timer/apply-interval 0 f [:msg])
-      (loop [n 1]
+      (dotimes [n 3]
         (process/receive!
-          :msg (case n
-                 3 :ok
-                 (recur (inc n)))
+          :msg :ok
           (after 20 (is false "fn must be applied just after timeout"))))))
   (proc-util/execute-proc!!
     (let [parent (process/self)
@@ -490,11 +480,9 @@
               (! parent msg)
               (process/exit :abnormal))]
       (timer/apply-interval 0 f [:msg])
-      (loop [n 1]
+      (dotimes [n 3]
         (process/receive!
-          :msg (case n
-                 3 :ok
-                 (recur (inc n)))
+          :msg :ok
           (after 20 (is false "fn must be applied just after timeout"))))))
   (proc-util/execute-proc!!
     (let [parent (process/self)
@@ -502,11 +490,9 @@
               (! parent msg)
               (process/exit (process/self) :kill))]
       (timer/apply-interval 0 f [:msg])
-      (loop [n 1]
+      (dotimes [n 3]
         (process/receive!
-          :msg (case n
-                 3 :ok
-                 (recur (inc n)))
+          :msg :ok
           (after 20 (is false "fn must be applied just after timeout")))))))
 
 (def-proc-test ^:parallel apply-interval.bad-args
@@ -532,11 +518,9 @@
                 (process/receive!
                   _ :ok))
           pid (process/spawn pfn)]
-      (loop [n 1]
+      (dotimes [n 3]
         (process/receive!
-          :msg (case n
-                 3 :ok
-                 (recur (inc n)))
+          :msg :ok
           (after 70 (is false "fn must be applied just after timeout"))))
       (process/exit pid :stop)
       (process/receive!
@@ -549,11 +533,9 @@
 (deftest ^:parallel send-interval.correct-time
   (proc-util/execute-proc!!
     (timer/send-interval 0 :msg)
-    (loop [n 1]
+    (dotimes [n 3]
       (process/receive!
-        :msg (case n
-               3 :ok
-               (recur (inc n)))
+        :msg :ok
         (after 20 (is false "message must be sent just after timeout")))))
   (proc-util/execute-proc!!
     (let [parent (process/self)
@@ -562,18 +544,14 @@
                   :msg1 (do
                           (! parent :msg2)
                           (recur))))
-          pid (process/spawn pfn)]
+          pid (process/spawn pfn)
+          start (System/nanoTime)]
       (timer/send-interval 50 pid :msg1)
-      (loop [n 1
-             start (System/nanoTime)]
+      (dotimes [n 3]
         (process/receive!
-          :msg2 (do
-                  (is (>= (ms-diff start) 50)
-                      "message must not be sent before timeout")
-                  (case n
-                    3 :ok
-                    (recur (inc n) (System/nanoTime))))
-          (after 60 (is false "message must be sent just after timeout")))))))
+          :msg2 (is (>= (ms-diff start) (* 50 (inc n)))
+                    "message must not be sent before timeout")
+          (after 70 (is false "message must be sent just after timeout")))))))
 
 (def-proc-test ^:parallel send-interval.bad-args
 ;(proc-util/execute-proc!!
@@ -596,11 +574,9 @@
                     :msg1 (! parent :msg2))
                   (recur)))
           pid (process/spawn pfn)]
-      (loop [n 1]
+      (dotimes [n 3]
         (process/receive!
-          :msg2 (case n
-                  3 :ok
-                  (recur (inc n)))
+          :msg2 :ok
           (after 70 (is false "message must be sent just after timeout"))))
       (process/exit pid :stop)
       (process/receive!
