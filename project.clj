@@ -1,6 +1,6 @@
 (def core-async-version "0.3.441")
 
-(defproject otplike/otplike "0.2.0-alpha-SNAPSHOT"
+(defproject otplike/otplike "0.2.0-alpha"
   :description "Erlang/OTP like processes and behaviours on top of core.async"
   :license {:name "Eclipse Public License - v1.0"
             :url  "https://www.eclipse.org/legal/epl-v10.html"}
