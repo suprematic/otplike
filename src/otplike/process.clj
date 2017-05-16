@@ -150,12 +150,6 @@
   {:pre [(monitor-ref? mref)]}
   [:DOWN mref :process object reason])
 
-(defn- resolve-pid [pid-or-name]
-  {:post [(or (nil? %) (pid? %))]}
-  (if (pid? pid-or-name)
-    pid-or-name
-    (whereis pid-or-name)))
-
 ; TODO return new process and exit code
 (defn- dispatch-control [{:keys [flags pid linked] :as process} message]
   {:pre [(instance? ProcessRecord process)]
@@ -400,6 +394,17 @@
   "Returns true if term is a process identifier, false otherwise."
   [pid]
   (pid?* pid))
+
+(defn resolve-pid
+  "If pid-or-name is
+    pid - returns pid,
+    registered name - returns the pid of registered process,
+  else returns nil."
+  [pid-or-name]
+  {:post [(or (nil? %) (pid? %))]}
+  (if (pid? pid-or-name)
+    pid-or-name
+    (whereis pid-or-name)))
 
 (defn pid->str
   "Returns a string corresponding to the text representation of pid.

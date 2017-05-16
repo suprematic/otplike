@@ -1,91 +1,123 @@
 (ns otplike.timer
   "This namespace contains helper functions to perform process-related
   actions (like sending a message, or exit signal) with a delay."
-  (:require [otplike.process :as process :refer [!]]
+  (:require [clojure.future :refer :all]
             [clojure.core.match :refer [match]]
             [clojure.core.async :as async :refer [<! >! put! go go-loop]]
-            [otplike.gen-server :as gs]))
+            [clojure.core.async.impl.protocols :as ap]
+            [otplike.process :as process :refer [!]]
+            [otplike.util :as u]))
 
-(defrecord TRef [id]
-  Object
-  (toString [_this] (str "timer_" id)))
+(declare cancel)
 
-(alter-meta! #'->TRef assoc :no-doc true)
-(alter-meta! #'map->TRef assoc :no-doc true)
+;; ====================================================================
+;; Internal
 
-(def ^:no-doc *tcount
-  (atom 0))
+(defn- apply-interval*
+  [msecs pid f args]
+   (u/check-args [(nat-int? msecs)
+                  (process/pid? pid)
+                  (fn? f)
+                  (vector? args)])
+  (let [cancel-chan (async/chan)]
+     (process/spawn-opt
+       (process/proc-fn []
+         (let [self (process/self)]
+           (process/link pid)
+           (go
+             (async/<! cancel-chan)
+             (! self :cancel)))
+         (loop []
+           (process/receive!
+             :cancel :ok
+             [:EXIT _ _] (cancel cancel-chan)
+             (after msecs
+               (process/spawn (process/proc-fn [] (apply f args)))
+               (recur)))))
+       []
+       {:flags {:trap-exit true} :name "timer-interval"})
+      cancel-chan))
 
-(def ^:no-doc *timers
-  (atom {}))
+;; ====================================================================
+;; API
 
-(defn- new-tref []
-  (TRef. (swap! *tcount inc)))
+(defn apply-after
+  "Applies f to args after msecs.
+  Returns the timer reference.
+  Throws on bad arguments."
+  ([msecs f]
+   (apply-after msecs f []))
+  ([msecs f args]
+   (u/check-args [(nat-int? msecs)
+                  (fn? f)
+                  (vector? args)])
+   (let [cancel (async/chan)
+         timeout (async/timeout msecs)]
+     (go
+       (match (async/alts! [cancel timeout])
+         [nil cancel]
+         :ok
+         [nil timeout]
+         (process/spawn-opt
+           (process/proc-fn []
+             (try (apply f args) (catch Throwable t :ok)))
+           []
+           {:name "timer-action"})))
+     cancel)))
 
-(defn- action-after
-  "Calls f after msecs. Returns the timer reference."
-  [msecs pid f]
-  (let [tref (new-tref)]
-    (swap! *timers assoc tref
-           (process/spawn-opt
-             (process/proc-fn []
-               (process/monitor pid)
-               (process/receive!
-                 [:DOWN _ _ _ _] :normal
-                 (after msecs
-                   (f)))
-               (swap! *timers dissoc tref))
-             []
-             {:name (str tref)}))
-    tref))
+(defn cancel
+  "Cancels a previously requested timeout. tref is a unique timer
+  reference returned by the related timer function.
+  Throws if tref is not a timer reference."
+  [tref]
+  (u/check-args [(satisfies? ap/ReadPort tref)])
+  (async/close! tref))
 
 (defn send-after
-  "Sends message to process with pid after msecs. Returns the timer
-  reference."
+  "Evaluates (! pid message) after msecs.
+  Returns the timer reference.
+  Throws on bad arguments."
   ([msecs message]
     (send-after msecs (process/self) message))
   ([msecs pid message]
-    (action-after msecs pid #(! pid message))))
+   (u/check-args [(some? pid)])
+   (apply-after msecs #(! pid message))))
 
 (defn exit-after
-  "Exits process with pid with reason after msecs. Returns the timer
-  reference."
+  "Sends an exit signal with reason to pid after msecs. Pid can be a pid
+  or a registered name.
+  Returns the timer reference.
+  Throws on bad arguments."
   ([msecs reason]
-    (exit-after msecs (process/self) reason))
+   (exit-after msecs (process/self) reason))
   ([msecs pid reason]
-    (action-after msecs pid #(process/exit pid reason))))
+   (u/check-args [(some? pid)])
+   (apply-after msecs #(process/exit (process/resolve-pid pid) reason))))
 
 (defn kill-after
-  "Kills process with pid after msecs. Returns the timer reference."
+  "The same as exit-after called with reason :kill."
   ([msecs]
    (kill-after msecs (process/self)))
   ([msecs pid]
     (exit-after msecs pid :kill)))
 
+(defn apply-interval
+  "Evaluates (! pid message) repeatedly at intervals of msecs.
+  Returns the timer reference.
+  Throws on bad arguments."
+  ([msecs f]
+   (apply-interval msecs f []))
+  ([msecs f args]
+   (apply-interval* msecs (process/self) f args)))
+
 (defn send-interval
-  "Sends message to process with pid repeatedly at intervals of msecs.
-  Returns the timer reference."
+  "Evaluates (! pid message) repeatedly at intervals of msecs.
+  Returns the timer reference.
+  Throws on bad arguments."
   ([msecs message]
    (send-interval msecs (process/self) message))
   ([msecs pid message]
-    (let [tref (new-tref)]
-      (swap! *timers assoc tref
-             (process/spawn-opt
-               (process/proc-fn []
-                 (process/monitor pid)
-                 (loop []
-                   (process/receive!
-                     [:DOWN _ _ _ _] (swap! *timers dissoc tref)
-                     (after msecs
-                       (! pid message)
-                       (recur)))))
-               []
-               {:name (str tref)}))
-      tref)))
-
-(defn cancel
-  "Cancels a previously requested timeout. tref is a unique timer
-  reference returned by the timer function in question."
-  [tref]
-  (when-let [pid (@*timers tref)]
-    (process/exit pid :normal)))
+   (u/check-args [(nat-int? msecs) (some? pid)])
+   (if-let [pid (process/resolve-pid pid)]
+     (apply-interval* msecs pid ! [pid message])
+     (async/chan))))
