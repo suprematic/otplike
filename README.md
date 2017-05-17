@@ -122,5 +122,5 @@ the same as Clojure. License file is available under the project root.
 
 ## Changelog
 
+* Release 0.2.0-alpha on 17.05.2017 [NOTES](https://github.com/suprematic/otplike/releases/tag/0.2.0)
 * Release 0.1.0-SNAPSHOT on 15.08.2016
-* Release 0.2.0-alpha on 17.05.2017
