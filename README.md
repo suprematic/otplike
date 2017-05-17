@@ -115,7 +115,7 @@ contributors.
 
 ## License
 
-Copyright © 2016 [SUPREMATIC](http://suprematic.net/) and contributors.
+Copyright © 2017 [SUPREMATIC](http://suprematic.net/) and contributors.
 
 Distributed under the Eclipse Public License v1.0,
 the same as Clojure. License file is available under the project root.
