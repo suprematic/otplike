@@ -76,7 +76,7 @@ More examples are available under the /examples directory.
 
 _Leiningen_ dependency information:
 
-    [otplike "0.1.0-SNAPSHOT"]
+    [otplike "0.2.0-alpha"]
 
 # Documentation
 
@@ -123,3 +123,4 @@ the same as Clojure. License file is available under the project root.
 ## Changelog
 
 * Release 0.1.0-SNAPSHOT on 15.08.2016
+* Release 0.2.0-alpha on 17.05.2017
