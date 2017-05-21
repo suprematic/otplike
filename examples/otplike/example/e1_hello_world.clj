@@ -6,5 +6,5 @@
     msg (println msg)))
 
 (defn run []
-  (let [pid (process/spawn hello-world [] {})]
+  (let [pid (process/spawn hello-world)]
     (! pid "hello, world")))

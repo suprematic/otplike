@@ -5,24 +5,23 @@
 ;; Try it:
 ; > lein repl
 ; => (require '[otplike.example.e7-bike-rent :as e7])
-; => (require '[otplike.process :as process])
+; => (require '[otplike.proc-util :as proc-util])
 ; => (e7/start [1 2 3])
-; => (proc-util/defn-proc p []
+; => (proc-util/execute-proc!!
 ;      (let [[_ bike] (e7/rent)]
-;        (e7/return bike)
-;        (e7/rent)
-;        (e7/rent)
-;        (e7/rent)
-;        (e7/rent)
-;        (e7/stop)))
-; => (p)
+;        (println (e7/return bike))
+;        (println (e7/rent))
+;        (println (e7/rent))
+;        (println (e7/rent))
+;        (println (e7/rent))
+;        (println (e7/stop)))
 
 (declare bike-rent reply call)
 
 ; API
 
 (defn start [bikes]
-  (process/spawn bike-rent [bikes] {:register :bike-rent}))
+  (process/spawn-opt bike-rent [bikes] {:register :bike-rent}))
 
 (defn stop []
   (call :stop))
@@ -36,17 +35,17 @@
 ; Loop
 
 (process/proc-defn bike-rent [bikes]
-  (println "server starting with bikes" bikes)
+  (printf "server starting with bikes %s%n" bikes)
   (process/flag :trap-exit true)
   (println "server trapping exits")
   (loop [rented #{} available bikes]
-    (println (str "waiting for rent request, rented " rented
-                  ", available " available))
+    (printf "waiting for rent request, rented %s, available %s%n"
+            rented available)
     (process/receive!
       [:request pid :rent]
       (do
-        (println (str "rent request from " pid ", rented " rented
-                      ", available " available))
+        (printf "rent request from %s, rented %s, available %s%n"
+                pid rented available)
         (match available
           ([] :seq)
           (do
@@ -55,14 +54,14 @@
           ([bike & bikes-left] :seq)
           (do
             (process/link pid)
-            (println (str "bike " bike " rented"))
+            (printf "bike %s rented%n" bike)
             (reply pid [:ok bike])
-            (println (str "rent response sent, bikes left " bikes-left))
+            (printf "rent response sent, bikes left %s%n" bikes-left)
             (recur (conj rented [pid bike]) bikes-left))))
       [:request pid [:return record]]
       (do
-        (println (str "return request from " pid ", record " record
-                      ", rented " rented ", available " available))
+        (printf "return request from %s, record %s, rented %s, available %s%n"
+                pid record rented available)
         (match (get rented record)
           [pid bike]
           (do
@@ -71,28 +70,29 @@
             (recur (disj rented record) (conj available bike)))))
       [:EXIT pid reason]
       (do
-        (println (str "client exit, pid " pid ", reason " reason
-                      ", rented " rented ", available " available))
+        (printf "client exit, pid %s, reason %s, rented %s, available %s%n"
+                pid reason rented available)
         (let [{rented-by-pid true other false} (group-by
                                                  #(= (first %) pid) rented)]
-          (println (str "rented by pid " rented-by-pid ", other " other))
+          (printf "rented by pid %s, other %s%n" rented-by-pid other)
           (recur (set other) (concat available (map second rented-by-pid)))))
       [:request pid :stop]
       (do
-        (println (str "stop request form " pid))
+        (printf "stop request form %s%n" pid)
         (reply pid :ok))
       msg
-      (println (str "unexpected " msg))))
+      (printf "unexpected %s%n" msg)))
   (println "exiting"))
 
 ; Internal
 
 (defn- call [msg]
-  (! :bike-rent [:request (process/self) msg])
-  (process/receive!!
-    [:reply r] r
-    (after 1000
-      (throw (Exception. "timeout 1000")))))
+  (if (! :bike-rent [:request (process/self) msg])
+    (process/receive!!
+      [:reply r] r
+      (after 1000
+        (process/exit :timeout)))
+    (process/exit :noproc)))
 
 (defn- reply [pid msg]
   (! pid [:reply msg]))
