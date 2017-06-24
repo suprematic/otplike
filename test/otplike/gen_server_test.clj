@@ -176,7 +176,7 @@
         server {:init (fn [] :bad-return)
                 :terminate (fn [_ _] (async/put! done :val))}]
     (is (match (gs/start! server)
-          [:error [:bad-return-value :bad-return]] :ok)
+          [:error [:bad-return-value 'init :bad-return]] :ok)
         "error returned by start must contain value returned by callback")
     (is (= nil (async/poll! done))
         "terminate must not be called if init returns bad value")))
@@ -279,7 +279,7 @@
         server {:init (fn [] [:ok nil])
                 :handle-call (fn [_ _ _] :bad-return)
                 :terminate (fn [reason _]
-                             (is (= [:bad-return-value :bad-return]
+                             (is (= [:bad-return-value 'handle-call :bad-return]
                                     reason)
                                  (str "reason passed to terminate must contain"
                                       " the value returned from handle-call"))
@@ -287,13 +287,15 @@
     (match (gs/start-link! server)
       [:ok pid]
       (do
-        (is (= [:EXIT [[:bad-return-value :bad-return] [`gs/call [pid nil 50]]]]
+        (is (= [:EXIT [[:bad-return-value 'handle-call :bad-return]
+                       [`gs/call [pid nil 50]]]]
                (process/ex-catch [:ok (gs/call! pid nil 50)]))
             "call must exit on bad return from handle-call")
         (is (await-completion done 50)
             "terminate must be called on bad return from handle-call")
         (is (match (<! (await-message 50))
-                   [:exit [pid [:bad-return-value :bad-return]]] :ok))))))
+                   [:exit [pid [:bad-return-value 'handle-call :bad-return]]]
+                   :ok))))))
 
 (def-proc-test ^:parallel handle-call.callback-throws
   (let [done1 (async/chan)
@@ -800,12 +802,13 @@
     (match (gs/start! server)
       [:ok pid]
       (do
-        (is (= [:EXIT [[:bad-return-value :bad-return] [`gs/call [pid nil 50]]]]
+        (is (= [:EXIT [[:bad-return-value 'handle-call :bad-return]
+                       [`gs/call [pid nil 50]]]]
                (process/ex-catch [:ok (gs/call! pid nil 50)]))
             (str "call must exit with reason containing bad-value returned from"
                  " handle-call"))
         (is (match (await-completion done 50)
-              [:ok [:reason [:bad-return-value :bad-return]]] :ok)
+              [:ok [:reason [:bad-return-value 'handle-call :bad-return]]] :ok)
             (str "gen-server must exit with reason containing bad value"
                  "returned from handle-call"))))))
 
@@ -971,7 +974,8 @@
                         [:ok nil])
                 :handle-cast (fn [_ _] :bad-return)
                 :terminate (fn [reason _]
-                             (is (= [:bad-return-value :bad-return] reason)
+                             (is (= [:bad-return-value 'handle-cast :bad-return]
+                                    reason)
                                  (str "reason passed to terminate must contain"
                                       " the value returned from handle-cast"))
                              (async/close! done))}]
@@ -983,7 +987,7 @@
         (is (await-completion done 50)
             "terminate must be called on bad return from handle-cast")
         (is (match (await-completion done2 50)
-              [:ok [:reason [:bad-return-value :bad-return]]] :ok)
+              [:ok [:reason [:bad-return-value 'handle-cast :bad-return]]] :ok)
             "gen-server must exit on bad return from handle-cast")))))
 
 (def-proc-test ^:parallel handle-cast.callback-throws
@@ -1287,7 +1291,7 @@
         (is (= true (gs/cast pid nil))
             "cast must return true if server is alive")
         (is (match (await-completion done 50)
-              [:ok [:reason [:bad-return-value :bad-return]]] :ok)
+              [:ok [:reason [:bad-return-value 'handle-cast :bad-return]]] :ok)
             (str "gen-server must exit with reason containing bad value"
                  "returned from handle-cast"))))))
 
@@ -1431,7 +1435,8 @@
                         [:ok nil])
                 :handle-info (fn [_ _] :bad-return)
                 :terminate (fn [reason _]
-                             (is (= [:bad-return-value :bad-return] reason)
+                             (is (= [:bad-return-value 'handle-info :bad-return]
+                                    reason)
                                  (str "reason passed to terminate must contain"
                                       " the value returned from handle-info"))
                              (async/close! done))}]
@@ -1442,7 +1447,8 @@
         (is (await-completion done 50)
             "terminate must be called on bad return from handle-info")
         (is (match (await-completion done2 50)
-                   [:ok [:reason [:bad-return-value :bad-return]]] :ok)
+                   [:ok [:reason [:bad-return-value 'handle-info :bad-return]]]
+                   :ok)
             "gen-server must exit on bad return from handle-info")))))
 
 (def-proc-test ^:parallel handle-info.callback-throws
@@ -1714,7 +1720,7 @@
       (do
         (match (! pid 1) true :ok)
         (is (match (await-completion done 50)
-              [:ok [:reason [:bad-return-value :bad-return]]] :ok)
+              [:ok [:reason [:bad-return-value 'handle-info :bad-return]]] :ok)
             (str "gen-server must exit with reason containing bad value"
                  "returned from handle-info"))))))
 

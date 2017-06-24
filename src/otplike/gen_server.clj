@@ -47,7 +47,9 @@
 
 (defn- cast-or-info [rqtype impl message state]
   (process/async
-    (let [rqfn (case rqtype ::cast handle-cast ::info handle-info)]
+    (let [[rqfn rqtype] (case rqtype
+                          ::cast [handle-cast 'handle-cast]
+                          ::info [handle-info 'handle-info])]
       (match (process/ex-catch
                [:ok (process/async?-value! (rqfn impl message state))])
         [:ok [:noreply new-state]]
@@ -58,7 +60,7 @@
 
         [:ok other]
         (process/await!
-          (do-terminate impl [:bad-return-value other] state))
+          (do-terminate impl [:bad-return-value rqtype other] state))
 
         [:EXIT reason]
         (process/await! (do-terminate impl reason state))))))
@@ -88,7 +90,7 @@
         ret)
 
       [:ok other]
-      (let [reason [:bad-return-value other]
+      (let [reason [:bad-return-value 'handle-call other]
             [_ reason _ :as ret]
             (process/await! (do-terminate impl reason state))]
         (async/put! from [::terminated reason])
@@ -141,7 +143,7 @@
       (process/exit reason))
 
     [:ok other]
-    (let [reason [:bad-return-value other]]
+    (let [reason [:bad-return-value 'init other]]
       (put!* response [:error reason])
       (process/exit reason))
 
