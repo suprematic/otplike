@@ -4,7 +4,7 @@
             [otplike.proc-util :as proc-util]))
 
 ; abnormal
-(proc-util/execute-proc!!
+#_(proc-util/execute-proc!!
   (process/flag :trap-exit true)
   (let [parent (process/self)
         pfn (process/proc-fn []
@@ -19,7 +19,7 @@
       :alive (println "alive"))))
 
 ; normal
-(proc-util/execute-proc!!
+#_(proc-util/execute-proc!!
   (process/flag :trap-exit true)
   (let [parent (process/self)
         pfn (process/proc-fn []
@@ -34,7 +34,7 @@
     :alive (println "alive")))
 
 ; abnormal trap-exit
-(proc-util/execute-proc!!
+#_(proc-util/execute-proc!!
   (process/flag :trap-exit true)
   (let [parent (process/self)
         pfn (process/proc-fn []
@@ -46,7 +46,7 @@
       :alive (println "alive"))))
 
 ; normal trap-exit
-(proc-util/execute-proc!!
+#_(proc-util/execute-proc!!
   (process/flag :trap-exit true)
   (let [parent (process/self)
         pfn (process/proc-fn []
@@ -58,7 +58,7 @@
       :alive (println "alive"))))
 
 ; kill trap-exit
-(proc-util/execute-proc!!
+#_(proc-util/execute-proc!!
   (process/flag :trap-exit true)
   (let [parent (process/self)
         pfn (process/proc-fn []

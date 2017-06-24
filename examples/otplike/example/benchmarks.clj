@@ -1,6 +1,7 @@
 (ns otplike.example.benchmarks
   (:require [otplike.process :as process :refer [!]]
-            [otplike.proc-util :as proc-util]))
+            [otplike.proc-util :as proc-util])
+  (:gen-class))
 
 (process/proc-defn proc [n root-pid]
   (if (= 0 n)
@@ -16,7 +17,7 @@
       (process/receive! :ok :ok)
       (println "done" n))))
 
-;(time (start-ring 100000))
+#_(time (start-ring 100000))
 
 ;---
 
@@ -34,7 +35,7 @@
     (clojure.core.async/<!! done)
     (println "done" n)))
 
-;(time (start-ring.no-parent 100000))
+#_(time (start-ring.no-parent 100000))
 
 ;---
 
@@ -45,14 +46,14 @@
     (process/spawn proc2))
   (println "done" n))
 
-;(time (start-spawn 100000))
+#_(time (start-spawn 100000))
 
 ;---
 
 (process/proc-defn proc3 []
   (process/receive! pid (! pid :ok)))
 
-(defn start-spawn.ping-pong [n]
+(defn start-spawn:ping-pong [n]
   (proc-util/execute-proc!!
     (let [self (process/self)]
       (dotimes [_ n]
@@ -61,7 +62,7 @@
           (process/receive! :ok :ok))))
     (println "done" n)))
 
-;(time (start-spawn.ping-pong 100000))
+#_(time (start-spawn:ping-pong 100000))
 
 ;---
 
@@ -81,7 +82,7 @@
           1 (println "done" n0)
           n (recur (dec n)))))))
 
-;(time (start-ping-pong 100000))
+#_(time (start-ping-pong 100000))
 
 ;---
 
@@ -103,4 +104,7 @@
     (process/receive!
       [:result r] [:nodes (inc r)])))
 
-(time (start-process-tree 18))
+#_(time (start-process-tree 18))
+
+(defn -main [& args]
+  (time (start-process-tree 18)))

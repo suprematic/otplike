@@ -17,3 +17,5 @@
     (process/receive!
       [pid msg] (println "client: receive" msg))
     (! pid :stop)))
+
+#_(run)
