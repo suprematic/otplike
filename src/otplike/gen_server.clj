@@ -39,57 +39,66 @@
 ;; Internal
 
 (defn- do-terminate [impl reason state]
-  (try
-    (terminate impl reason state)
-    [:terminate reason state]
-    (catch Throwable t
-      [:terminate (process/ex->reason t) state])))
+  (process/async
+    (match (process/ex-catch
+             [:ok (process/async?-value! (terminate impl reason state))])
+      [:ok _] [:terminate reason state]
+      [:EXIT exit-reason] [:terminate exit-reason state])))
 
 (defn- cast-or-info [rqtype impl message state]
-  (let [rqfn (case rqtype ::cast handle-cast ::info handle-info)]
-    (match (process/ex-catch [:ok (rqfn impl message state)])
+  (process/async
+    (let [rqfn (case rqtype ::cast handle-cast ::info handle-info)]
+      (match (process/ex-catch
+               [:ok (process/async?-value! (rqfn impl message state))])
+        [:ok [:noreply new-state]]
+        [:recur new-state]
+
+        [:ok [:stop reason new-state]]
+        (process/await! (do-terminate impl reason new-state))
+
+        [:ok other]
+        (process/await!
+          (do-terminate impl [:bad-return-value other] state))
+
+        [:EXIT reason]
+        (process/await! (do-terminate impl reason state))))))
+
+(defn- do-handle-call [impl from request state]
+  (process/async
+    (match (process/ex-catch
+             [:ok (process/async?-value!
+                    (handle-call impl request from state))])
+      [:ok [:reply reply new-state]]
+      (do
+        (async/put! from [::reply reply])
+        [:recur new-state])
+
       [:ok [:noreply new-state]]
       [:recur new-state]
 
+      [:ok [:stop reason reply new-state]]
+      (let [ret (process/await! (do-terminate impl reason new-state))]
+        (async/put! from [::reply reply])
+        ret)
+
       [:ok [:stop reason new-state]]
-      (do-terminate impl reason new-state)
+      (let [[_ reason _ :as ret]
+            (process/await! (do-terminate impl reason new-state))]
+        (async/put! from [::terminated reason])
+        ret)
 
       [:ok other]
-      (do-terminate impl [:bad-return-value other] state)
+      (let [reason [:bad-return-value other]
+            [_ reason _ :as ret]
+            (process/await! (do-terminate impl reason state))]
+        (async/put! from [::terminated reason])
+        ret)
 
       [:EXIT reason]
-      (do-terminate impl reason state))))
-
-(defn- do-handle-call [impl from request state]
-  (match (process/ex-catch [:ok (handle-call impl request from state)])
-    [:ok [:reply reply new-state]]
-    (do
-      (async/put! from [::reply reply])
-      [:recur new-state])
-
-    [:ok [:noreply new-state]]
-    [:recur new-state]
-
-    [:ok [:stop reason reply new-state]]
-    (let [ret (do-terminate impl reason new-state)]
-      (async/put! from [::reply reply])
-      ret)
-
-    [:ok [:stop reason new-state]]
-    (let [[_ reason _ :as ret] (do-terminate impl reason new-state)]
-      (async/put! from [::terminated reason])
-      ret)
-
-    [:ok other]
-    (let [reason [:bad-return-value other]
-          [_ reason _ :as ret] (do-terminate impl reason state)]
-      (async/put! from [::terminated reason])
-      ret)
-
-    [:EXIT reason]
-    (let [[_ reason _ :as ret] (do-terminate impl reason state)]
-      (async/put! from [::terminated reason])
-      ret)))
+      (let [[_ reason _ :as ret]
+            (process/await! (do-terminate impl reason state))]
+        (async/put! from [::terminated reason])
+        ret))))
 
 (defn- put!* [chan value]
   (async/put! chan value)
@@ -98,7 +107,7 @@
 (defn- dispatch [impl parent state message]
   (match message
     [::call from [::get-state]]
-    (do
+    (process/async
       (put!* from [::reply state])
       [:recur state])
 
@@ -115,13 +124,13 @@
     (cast-or-info ::info impl message state)))
 
 (process/proc-defn gen-server-proc [impl init-args parent response]
-  (match (process/ex-catch [:ok (init impl init-args)])
+  (match (process/ex-catch [:ok (process/async?-value! (init impl init-args))])
     [:ok [:ok initial-state]]
     (do
       (put!* response :ok)
       (loop [state initial-state]
         (process/receive!
-          message (match (dispatch impl parent state message)
+          message (match (process/await! (dispatch impl parent state message))
                     [:recur new-state] (recur new-state)
                     [:terminate :normal _new-state] :ok
                     [:terminate reason _new-state] (process/exit reason)))))
@@ -224,40 +233,39 @@
     (impl-ns :guard #(instance? clojure.lang.Namespace %))
     (coerce-ns impl-ns)))
 
-; API functions
+(defn ^:no-doc call* [server message timeout-ms]
+  (process/async
+    (let [reply-to (async/chan)
+          timeout (if (= :infinity timeout-ms)
+                    (async/chan)
+                    (async/timeout timeout-ms))]
+      (if-not (! server [::call reply-to message])
+        [:error :noproc]
+        (match (async/alts! [reply-to timeout])
+          [[::terminated reason] reply-to] [:error reason]
+          [[::reply value] reply-to] [:ok value]
+          [nil timeout] [:error :timeout])))))
 
-(defn- call* [server message timeout-ms]
-  (let [reply-to (async/chan)
-        timeout (if (= :infinity timeout-ms)
-                  (async/chan)
-                  (async/timeout timeout-ms))]
-    (if-not (! server [::call reply-to message])
-      [:error :noproc]
-      (match (async/alts!! [reply-to timeout]) ;TODO make call to be macro and use alts! ?
-        [[::terminated reason] reply-to] [:error reason]
-        [[::reply value] reply-to] [:ok value]
-        [nil timeout] [:error :timeout]))))
-
-(defn- start*
+(defn ^:no-doc start*
   [server args {:keys [timeout spawn-opt] :or {timeout :infinity spawn-opt {}}}]
-  (let [gs (->gen-server server)
-        response (async/chan)
-        parent (process/self)
-        timeout (u/timeout-chan timeout)
-        pid (process/spawn-opt
-              gen-server-proc [gs args parent response] spawn-opt)]
-    ; TODO allow to override timeout passing it as argument
-    (match (async/alts!! [response timeout])
-           [:ok response] [:ok pid]
-           [[:error reason] response] [:error reason]
-           [nil timeout] (do (process/unlink pid)
-                             (process/exit pid :kill)
-                             [:error :timeout]))))
+  (process/async
+    (let [gs (->gen-server server)
+          response (async/chan)
+          parent (process/self)
+          timeout (u/timeout-chan timeout)
+          pid (process/spawn-opt
+                gen-server-proc [gs args parent response] spawn-opt)]
+      (match (async/alts! [response timeout])
+             [:ok response] [:ok pid]
+             [[:error reason] response] [:error reason]
+             [nil timeout] (do (process/unlink pid)
+                               (process/exit pid :kill)
+                               [:error :timeout])))))
 
 ;; ====================================================================
 ;; API
 
-(defn start
+(defmacro start!
   "Starts the server, passing args to server's init function.
 
   Arguments:
@@ -280,57 +288,59 @@
 
   Throws on illegal arguments."
   ([server]
-   (start server [] {}))
+   `(start! ~server [] {}))
   ([server args]
-   (start server args {}))
+   `(start! ~server ~args {}))
   ([server args options]
-   (start* server args options))
+   `(process/await! (start* ~server ~args ~options)))
   ([reg-name server args options]
-   (start* server args (assoc-in options [:spawn-opt :register] reg-name))))
+   `(start!
+      ~server ~args (assoc-in ~options [:spawn-opt :register] ~reg-name))))
 
-(defn start-link
+(defmacro start-link!
   ([server]
-   (start-link server [] {}))
+   `(start-link! ~server [] {}))
   ([server args]
-   (start-link server args {}))
+   `(start-link! ~server ~args {}))
   ([server args options]
-   (start* server args (assoc-in options [:spawn-opt :link] true)))
+   `(process/await!
+      (start* ~server ~args (assoc-in ~options [:spawn-opt :link] true))))
   ([reg-name server args options]
-   (start-link
-     server args (assoc-in options [:spawn-opt :register] reg-name))))
+   `(start-link!
+      ~server ~args (assoc-in ~options [:spawn-opt :register] ~reg-name))))
 
-(defmacro start-ns
+(defmacro start-ns!
   "Starts the server, taking current ns as a implementation source.
   See start for more info."
   ([]
-   `(start-ns [] {}))
+   `(start-ns! [] {}))
   ([args]
-   `(start-ns ~args {}))
+   `(start-ns! ~args {}))
   ([args options]
-   `(start ~*ns* ~args ~options))
+   `(start! ~*ns* ~args ~options))
   ([reg-name args options]
-   `(start reg-name ~*ns* ~args ~options)))
+   `(start! reg-name ~*ns* ~args ~options)))
 
-(defmacro start-link-ns
+(defmacro start-link-ns!
   ([]
-   `(start-link-ns [] {}))
+   `(start-link-ns! [] {}))
   ([args]
-   `(start-link-ns ~args {}))
+   `(start-link-ns! ~args {}))
   ([args options]
-   `(start-link ~*ns* ~args ~options))
+   `(start-link! ~*ns* ~args ~options))
   ([reg-name args options]
-   `(start-link reg-name ~*ns* ~args ~options)))
+   `(start-link! reg-name ~*ns* ~args ~options)))
 
-(defn call
+(defmacro call!
   ([server message]
-   (match (call* server message 5000)
-     [:ok ret] ret
-     [:error reason] (process/exit [reason [`call [server message]]])))
+   `(match (process/await! (call* ~server ~message 5000))
+      [:ok ret#] ret#
+      [:error reason#] (process/exit [reason# ['call [~server ~message]]])))
   ([server message timeout-ms]
-   (match (call* server message timeout-ms)
-     [:ok ret] ret
-     [:error reason] (process/exit
-                       [reason [`call [server message timeout-ms]]]))))
+   `(match (process/await! (call* ~server ~message ~timeout-ms))
+      [:ok ret#] ret#
+      [:error reason#] (process/exit
+                         [reason# ['call [~server ~message ~timeout-ms]]]))))
 
 (defn cast [server message]
   (! server [::cast message]))
@@ -338,5 +348,5 @@
 (defn reply [to response]
   (async/put! to [::reply response]))
 
-(defn ^:no-doc get [server]
-  (call server [::get-state]))
+(defmacro ^:no-doc get! [server]
+  `(call! ~server [::get-state]))

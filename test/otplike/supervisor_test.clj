@@ -18,13 +18,13 @@
 ;; (start-link [sup-fn args])
 
 ; TODO try different supervisor flags
-;(otplike.proc-util/execute-proc
+;(otplike.proc-util/execute-proc!!
 (def-proc-test ^:parallel start-link:no-children
   (let [done (async/chan)
         init-fn (fn []
                   (async/close! done)
                   [:ok [{} []]])]
-    (match (sup/start-link init-fn)
+    (match (sup/start-link! init-fn)
       [:ok pid]
       (do
         (is (process/pid? pid)
@@ -34,20 +34,21 @@
 
 ; TODO try different child spec
 ; TODO try different supervisor flags
-;(otplike.proc-util/execute-proc
-(def-proc-test ^:parallel start-link:single-child
+(otplike.proc-util/execute-proc!!
+;(def-proc-test ^:parallel start-link:single-child
   (let [sup-init-done (async/chan)
         server-init-done (async/chan)
         sup-flags {}
         server {:init (fn []
                         (async/close! server-init-done)
                         [:ok :state])}
-        children-spec [{:id 1 :start [#(gs/start-link server) []]}]
+        children-spec [{:id 1
+                        :start [#(process/async (gs/start-link! server)) []]}]
         sup-spec [sup-flags children-spec]
         init-fn (fn []
                   (async/close! sup-init-done)
                   [:ok sup-spec])]
-    (match (sup/start-link init-fn)
+    (match (sup/start-link! init-fn)
       [:ok pid]
       (do
         (is (process/pid? pid)
@@ -59,7 +60,7 @@
 
 ; TODO try different child spec
 ; TODO try different supervisor flags
-;(otplike.proc-util/execute-proc
+;(otplike.proc-util/execute-proc!!
 (def-proc-test ^:parallel start-link:multiple-children
   (let [sup-init-done (async/chan)
         s1-init-done (async/chan)
@@ -70,12 +71,13 @@
         (fn [await-chan done-chan id]
           {:id id
            :start
-           [#(gs/start-link
-               {:init (fn []
-                        (is (await-completion await-chan 50)
-                            "supervisor must start children in spec's order")
-                        (async/close! done-chan)
-                        [:ok :state])})
+           [#(process/async
+               (gs/start-link!
+                 {:init (fn []
+                          (is (await-completion await-chan 50)
+                              "supervisor must start children in spec's order")
+                          (async/close! done-chan)
+                          [:ok :state])}))
             []]})
         children-spec (map make-child
                            [sup-init-done s1-init-done s2-init-done]
@@ -85,7 +87,7 @@
         init-fn (fn []
                   (async/close! sup-init-done)
                   [:ok sup-spec])]
-    (match (sup/start-link init-fn)
+    (match (sup/start-link! init-fn)
       [:ok pid]
       (do
         (is (process/pid? pid)
@@ -101,17 +103,18 @@
         sup-flags {}
         make-child (fn [id]
                      {:id id
-                      :start [#(gs/start-link
-                                 {:init (fn []
-                                          (is false "child must not be started")
-                                          [:ok :state])})
+                      :start [#(process/async
+                                 (gs/start-link!
+                                   {:init (fn []
+                                            (is false "child must not be started")
+                                            [:ok :state])}))
                               []]})
         children-spec (map make-child [:id1 :id2 :id2])
         sup-spec [sup-flags children-spec]
         init-fn (fn []
                   (async/close! sup-init-done)
                   [:ok sup-spec])]
-    (match (process/ex-catch (sup/start-link init-fn))
+    (match (process/ex-catch (sup/start-link! init-fn))
       [:error [:bad-child-specs [:duplicate-child-id :id2]]]
       (is (await-completion sup-init-done 50)
           "supervisor must call init-fn to get its spec"))))
@@ -122,7 +125,7 @@
         init-fn (fn []
                   (async/close! sup-init-done)
                   {:ok []})]
-    (match (sup/start-link init-fn)
+    (match (sup/start-link! init-fn)
            [:error [:bad-return _]]
            (do
              (is (thrown? Exception (process/self))
@@ -136,13 +139,14 @@
         init-fn (fn []
                   (async/close! sup-init-done)
                   [:ok [{} [{:start
-                             [#(gs/start-link
-                                 {:init (fn []
-                                          (is false "child must not be started")
-                                          [:ok :state])})
+                             [#(process/async
+                                 (gs/start-link!
+                                   {:init (fn []
+                                            (is false "child must not be started")
+                                            [:ok :state])}))
                               []]}]]])]
     (process/flag :trap-exit true)
-    (match (sup/start-link init-fn)
+    (match (sup/start-link! init-fn)
            [:error [:bad-child-specs _]]
            (do
              (is (match (<! (await-message 50))
@@ -159,7 +163,7 @@
                   [:ok [{} [{:id :child1
                              :start ["not a function" []]}]]])]
     (process/flag :trap-exit true)
-    (match (sup/start-link init-fn)
+    (match (sup/start-link! init-fn)
            [:error [:bad-child-specs _]]
            (do
              (is (match (<! (await-message 50))
@@ -171,10 +175,11 @@
 (def-proc-test ^:parallel start-link:bad-return:bad-supervisor-flags
   (let [make-child (fn [id]
                      {:id id
-                      :start [#(gs/start-link
-                                 {:init (fn []
-                                          (is false "child must not be started")
-                                          [:ok :state])})
+                      :start [#(process/async
+                                 (gs/start-link!
+                                   {:init (fn []
+                                            (is false "child must not be started")
+                                            [:ok :state])}))
                               []]})]
     (otplike.proc-util/execute-proc!
       (let [sup-init-done (async/chan)
@@ -184,7 +189,7 @@
             init-fn (fn []
                       (async/close! sup-init-done)
                       [:ok sup-spec])]
-        (match (is (sup/start-link init-fn))
+        (match (is (sup/start-link! init-fn))
                [:error [:bad-supervisor-flags _]]
                (is (await-completion sup-init-done 50)
                    "supervisor must call init-fn to get its spec"))))
@@ -196,7 +201,7 @@
             init-fn (fn []
                       (async/close! sup-init-done)
                       [:ok sup-spec])]
-        (match (is (sup/start-link init-fn))
+        (match (is (sup/start-link! init-fn))
                [:error [:bad-supervisor-flags _]]
                (is (await-completion sup-init-done 50)
                    "supervisor must call init-fn to get its spec"))))
@@ -208,7 +213,7 @@
             init-fn (fn []
                       (async/close! sup-init-done)
                       [:ok sup-spec])]
-        (match (is (sup/start-link init-fn))
+        (match (is (sup/start-link! init-fn))
                [:error [:bad-supervisor-flags _]]
                (is (await-completion sup-init-done 50)
                    "supervisor must call init-fn to get its spec"))))
@@ -222,31 +227,33 @@
             init-fn (fn []
                       (async/close! sup-init-done)
                       [:ok sup-spec])]
-        (match (is (sup/start-link init-fn))
+        (match (is (sup/start-link! init-fn))
                [:error [:bad-supervisor-flags _]]
                (is (await-completion sup-init-done 50)
                    "supervisor must call init-fn to get its spec"))))))
 
 ;(otplike.proc-util/execute-proc
 (def-proc-test ^:parallel start-link:invalid-arguments
-  (is (thrown? Exception (sup/start-link "not-fn"))
+  (is (thrown? Exception (sup/start-link! "not-fn"))
       "start-link must throw on invalid arguments")
-  (is (thrown? Exception (sup/start-link (fn [_] [:ok [{} []]]) :arg1))
+  (is (thrown? Exception (sup/start-link! (fn [_] [:ok [{} []]]) :arg1))
       "start-link must throw on invalid arguments"))
 
 (defn test-start-link:child-init-returns-error [init-fn reason]
-  (let [sup-init-done (async/chan)
-        sup-flags {}
-        children-spec [{:id :child-id
-                        :start [#(gs/start-link {:init init-fn}) []]}]
-        sup-spec [sup-flags children-spec]
-        init-fn (fn []
-                  (async/close! sup-init-done)
-                  [:ok sup-spec])]
-    (match (sup/start-link init-fn)
-           [:error [:shutdown [:failed-to-start-child :child-id reason]]]
-           (is (await-completion sup-init-done 50)
-               "supervisor must call init-fn to get its spec"))))
+  (proc-util/execute-proc!!
+    (let [sup-init-done (async/chan)
+          sup-flags {}
+          children-spec [{:id :child-id
+                          :start [#(process/async
+                                     (gs/start-link! {:init init-fn})) []]}]
+          sup-spec [sup-flags children-spec]
+          init-fn (fn []
+                    (async/close! sup-init-done)
+                    [:ok sup-spec])]
+      (match (sup/start-link! init-fn)
+             [:error [:shutdown [:failed-to-start-child :child-id reason]]]
+             (is (await-completion sup-init-done 50)
+                 "supervisor must call init-fn to get its spec")))))
 
 ;(otplike.proc-util/execute-proc
 (def-proc-test ^:parallel start-link:child-init-returns-error:exit-normal
@@ -280,7 +287,8 @@
                               [:ok :state])
         child-spec (fn [id init-fn]
                      {:id id
-                      :start [#(gs/start-link {:init init-fn}) []]})
+                      :start [#(process/async
+                                 (gs/start-link! {:init init-fn})) []]})
         children-spec [(child-spec :id1 error-child-init)
                        (child-spec :id2 healthy-child-init)
                        (child-spec :id3 healthy-child-init)]
@@ -288,7 +296,7 @@
         init-fn (fn []
                   (async/close! sup-init-done)
                   [:ok sup-spec])]
-    (match (sup/start-link init-fn)
+    (match (sup/start-link! init-fn)
            [:error [:shutdown [:failed-to-start-child :id1 :abnormal]]]
            (do
              (is (await-completion child1-done 50)
@@ -320,10 +328,11 @@
                               [:ok :state])
         child-spec (fn [id init-fn terminate-fn]
                      {:id id
-                      :start [#(gs/start-link
-                                 {:init init-fn :terminate terminate-fn}
-                                 []
-                                 {:spawn-opt {:flags {:trap-exit true}}})
+                      :start [#(process/async
+                                 (gs/start-link!
+                                   {:init init-fn :terminate terminate-fn}
+                                   []
+                                   {:spawn-opt {:flags {:trap-exit true}}}))
                               []]})
         children-spec [(child-spec :id1 healthy-child1-init child1-terminate)
                        (child-spec :id2 error-child-init nil)
@@ -332,7 +341,7 @@
         init-fn (fn []
                   (async/close! sup-init-done)
                   [:ok sup-spec])]
-    (match (sup/start-link init-fn)
+    (match (sup/start-link! init-fn)
            [:error [:shutdown [:failed-to-start-child :id2 :abnormal]]]
            (do
              (is (await-completion child1-init-done 50)
@@ -377,10 +386,11 @@
               "child must be stopped with :shutdown reason"))
         child-spec (fn [id init-fn terminate-fn]
                      {:id id
-                      :start [#(gs/start-link
-                                 {:init init-fn :terminate terminate-fn}
-                                 []
-                                 {:spawn-opt {:flags {:trap-exit true}}})
+                      :start [#(process/async
+                                 (gs/start-link!
+                                   {:init init-fn :terminate terminate-fn}
+                                   []
+                                   {:spawn-opt {:flags {:trap-exit true}}}))
                               []]})
         children-spec [(child-spec :id1 healthy-child1-init child1-terminate)
                        (child-spec :id2 healthy-child2-init child2-terminate)
@@ -389,7 +399,7 @@
         init-fn (fn []
                   (async/close! sup-init-done)
                   [:ok sup-spec])]
-    (match (sup/start-link init-fn)
+    (match (sup/start-link! init-fn)
            [:error [:shutdown [:failed-to-start-child :id3 :abnormal]]]
            (do
              (is (await-completion child1-init-done 50)
@@ -403,8 +413,8 @@
              (is (await-completion sup-init-done 50)
                  "supervisor must call init-fn to get its spec")))))
 
-;; ====================================================================
-;; one-for-one
+;; ####################################################################
+;; Test strategies
 
 ; TODO
 ; Variables:
@@ -703,7 +713,7 @@
     (async/go
       (proc-util/execute-proc!
         (process/flag :trap-exit true)
-        (match (sup/start-link (constantly [:ok [sup-flags children-spec]]))
+        (match (sup/start-link! (constantly [:ok [sup-flags children-spec]]))
           [:ok pid]
           (do
             (<! (await-events 5000 (start-events children)))
@@ -815,33 +825,50 @@
     ;(clojure.pprint/pprint (first tests))
     tests))
 
-(defn test-one-for-one []
+(defn test-strategy [strategy tests]
   (time
     (binding [*out* (clojure.java.io/writer "sup-test.log")]
       (<!!
         (async/go
-          (let [tests (gen-tests)]
-            (doseq [
-                    ;tests (partition 8 8 [] [(nth tests (dec 51482))])
-                    tests (partition 8 8 [] tests)
-                    ;tests (partition 8 8 [] (take 20000 tests))
-                    ]
-              (doseq [res (doall (map (partial run-test :rest-for-one) tests))]
-              ;(doseq [res (doall (map (partial run-test :one-for-all) tests))]
-              ;(doseq [res (doall (map (partial run-test :one-for-one) tests))]
-                (println "---")
-                (let [log (async/<! res)]
-                  (loop [x (async/<! log)]
-                    (when-let [[ms fmt args] x]
-                      (printf "log: %05d - %s%n" ms (apply format fmt args))
-                      (recur (async/<! log)))))
-                (flush)))))))))
+          (doseq [tests (partition 512 512 [] tests)]
+            (doseq [res (doall (map (partial run-test strategy) tests))]
+              (println "---")
+              (let [log (async/<! res)]
+                (loop [x (async/<! log)]
+                  (when-let [[ms fmt args] x]
+                    (printf "log: %05d - %s%n" ms (apply format fmt args))
+                    (recur (async/<! log)))))
+              (flush))))))))
+
+;; ====================================================================
+;; one-for-one
+
+(defn test-one-for-one []
+  (let [tests (gen-tests)
+        ;tests [(nth tests (dec 179370))]
+        ;tests (take 20000 tests)
+        ]
+    (test-strategy :one-for-one tests)))
 
 ;; ====================================================================
 ;; one-for-all
 
+(defn test-one-for-all []
+  (let [tests (gen-tests)
+        ;tests [(nth tests (dec 51482))]
+        ;tests (take 20000 tests)
+        ]
+    (test-strategy :one-for-all tests)))
+
 ;; ====================================================================
 ;; rest-for-one
+
+(defn test-rest-for-one []
+  (let [tests (gen-tests)
+        ;tests [(nth tests (dec 51482))]
+        ;tests (take 20000 tests)
+        ]
+    (test-strategy :rest-for-one tests)))
 
 ;; ====================================================================
 ;; exit message
@@ -870,21 +897,21 @@
                                   :terminate (fn [reason _state]
                                                (printf "server %s terminate %s, reason %s%n" sname (rem (System/currentTimeMillis) 10000) reason))}]
                       {:id sname
-                       :start [#(gs/start-link sname server [] {}) []]
+                       :start [#(process/async (gs/start-link! sname server [] {})) []]
                        :restart restart-type}))
             children-spec [(child done0 done1 :1 :permanent)
                            (child done1 done2 :2 :permanent)
                            (child done2 done3 :3 :transient)]
             sup-spec [sup-flags children-spec]]
-        (match (sup/start-link (fn [] [:ok sup-spec])) [:ok pid] :ok)
+        (match (sup/start-link! (fn [] [:ok sup-spec])) [:ok pid] :ok)
         (await-completion done3 100)
         (printf "server started %s%n" (rem (System/currentTimeMillis) 10000))
         (printf "call 1 %s%n" (rem (System/currentTimeMillis) 10000))
-        (match (process/ex-catch (gs/call buggy-child-name 1)) [:EXIT _] :ok)
+        (match (process/ex-catch (gs/call! buggy-child-name 1)) [:EXIT _] :ok)
         (printf "call 1 done %s%n" (rem (System/currentTimeMillis) 10000))
         (<! (async/timeout 500))
         (printf "call 2 %s%n" (rem (System/currentTimeMillis) 10000))
-        (match (process/ex-catch (gs/call buggy-child-name 1)) [:EXIT _] :ok)
+        (match (process/ex-catch (gs/call! buggy-child-name 1)) [:EXIT _] :ok)
         (printf "call 2 done %s%n" (rem (System/currentTimeMillis) 10000))
         (<! (async/timeout 500))))
     (<!! (async/timeout 1000)))
@@ -905,7 +932,7 @@
                                   :terminate (fn [reason _state]
                                                (printf "server %s terminate %s, reason %s%n" sname (rem (System/currentTimeMillis) 10000) reason))}]
                       {:id sname
-                       :start [#(gs/start-link sname server [] {:spawn-opt {:flags {:trap-exit true}}}) []]
+                       :start [#(process/async (gs/start-link! sname server [] {:spawn-opt {:flags {:trap-exit true}}})) []]
                        :restart restart-type}))
             child1 (child :1 :permanent)
             child2 (child :2 :permanent)
@@ -913,43 +940,43 @@
             child4 (child :4 :transient)
             sup-spec [sup-flags []]]
         (match
-          (sup/start-link (fn [] [:ok sup-spec]))
+          (sup/start-link! (fn [] [:ok sup-spec]))
           [:ok pid]
           (do
-            (printf "server started %s%n" (rem (System/currentTimeMillis) 10000))
-            (match (sup/start-child pid child1) [:ok c1pid] :ok)
-            (match (sup/start-child pid child2) [:ok c2pid] :ok)
-            (match (sup/start-child pid child3) [:ok c3pid] :ok)
+            (printf "supervisor started %s%n" (rem (System/currentTimeMillis) 10000))
+            (match (sup/start-child! pid child1) [:ok c1pid] :ok)
+            (match (sup/start-child! pid child2) [:ok c2pid] :ok)
+            (match (sup/start-child! pid child3) [:ok c3pid] :ok)
             (printf "call 1 %s%n" (rem (System/currentTimeMillis) 10000))
-            (match (process/ex-catch (gs/call buggy-child-name 1)) [:EXIT _] :ok)
+            (match (process/ex-catch (gs/call! buggy-child-name 1)) [:EXIT _] :ok)
             (printf "call 1 done %s%n" (rem (System/currentTimeMillis) 10000))
             (<! (async/timeout 500))
-            (match (sup/delete-child pid :1)
+            (match (sup/delete-child! pid :1)
                    [:error reason] (printf "can't delete child :1 %s%n" reason))
-            (match (sup/delete-child pid :4)
+            (match (sup/delete-child! pid :4)
                    [:error reason] (printf "can't delete child :4 %s%n" reason))
-            (match (sup/terminate-child pid :5)
+            (match (sup/terminate-child! pid :5)
                    [:error reason] (printf "can't terminate child :5 %s%n" reason))
-            (match (sup/terminate-child pid :2)
+            (match (sup/terminate-child! pid :2)
                    :ok (printf "child :2 terminated%n"))
-            (match (sup/terminate-child pid :2)
+            (match (sup/terminate-child! pid :2)
                    :ok (printf "child :2 terminated%n"))
-            (match (sup/restart-child pid :5)
+            (match (sup/restart-child! pid :5)
                    [:error reason] (printf "can't restart child :5 %s%n" reason))
-            (match (sup/restart-child pid :3)
+            (match (sup/restart-child! pid :3)
                    [:error reason] (printf "can't restart child :3 %s%n" reason))
-            (match (sup/restart-child pid :2)
+            (match (sup/restart-child! pid :2)
                    [:ok _] (printf "child :2 restarted%n"))
-            (match (sup/terminate-child pid :2)
+            (match (sup/terminate-child! pid :2)
                    :ok (printf "child :2 terminated%n"))
-            (match (sup/delete-child pid :2)
+            (match (sup/delete-child! pid :2)
                    :ok (printf "child :2 deleted%n"))
-            (match (sup/restart-child pid :2)
+            (match (sup/restart-child! pid :2)
                    [:error reason] (printf "can't restart child :2 %s%n" reason))
-            (match (sup/start-child pid child2) [:ok _] :ok)
-            (match (sup/start-child pid child4) [:ok _] :ok)
+            (match (sup/start-child! pid child2) [:ok _] :ok)
+            (match (sup/start-child! pid child4) [:ok _] :ok)
             (printf "call 2 %s%n" (rem (System/currentTimeMillis) 10000))
-            (match (process/ex-catch (gs/call buggy-child-name 1)) [:EXIT _] :ok)
+            (match (process/ex-catch (gs/call! buggy-child-name 1)) [:EXIT _] :ok)
             (printf "call 2 done %s%n" (rem (System/currentTimeMillis) 10000))
             (<! (async/timeout 500))))))
     (<!! (async/timeout 1000))

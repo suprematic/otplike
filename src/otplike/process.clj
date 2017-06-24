@@ -766,3 +766,12 @@
 
 (defn async? [x]
   (u/channel? x))
+
+(defmacro async?-value!
+  "If x is a result of async operation, returns its value (waiting if
+  needed). If x is a regular value, returns x."
+  [x]
+  `(let [res# ~x]
+     (cond
+       (process/async? res#) (process/await! res#)
+       :else res#)))

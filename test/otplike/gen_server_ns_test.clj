@@ -30,16 +30,17 @@
 (defn handle-info [message state]
   [:noreply state])
 
-(def-proc-test gen-server-ns
+;(def-proc-test gen-server-ns
+(otplike.proc-util/execute-proc!!
   (let [done (async/chan)]
-    (match (gs/start-ns [[0 done]])
+    (match (gs/start-ns! [[0 done]])
       [:ok pid]
       (do
         (gs/cast pid :inc)
-        (is (= 1 (gs/call pid :get-async)))
-        (is (= 1 (gs/call pid :get-sync)))
+        (is (= 1 (gs/call! pid :get-async)))
+        (is (= 1 (gs/call! pid :get-sync)))
         (gs/cast pid :dec)
-        (is (= 0 (gs/call pid :get-async)))
-        (is (= 0 (gs/call pid :get-sync)))
-        (is (= :ok (gs/call pid :stop)))
+        (is (= 0 (gs/call! pid :get-async)))
+        (is (= 0 (gs/call! pid :get-sync)))
+        (is (= :ok (gs/call! pid :stop)))
         (await-completion done 50)))))

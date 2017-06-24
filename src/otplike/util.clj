@@ -25,7 +25,6 @@
                                {:data (ex-data e)}))))
      acc)))
 
-
 (defn timeout-chan [timeout]
   (cond
     (= :infinity timeout) (async/chan)
@@ -33,3 +32,6 @@
     (satisfies? ap/ReadPort timeout) timeout
     :else (throw (Exception.
                    (str "unsupported receive timeout " (pr-str timeout))))))
+
+(defn channel? [x]
+  (satisfies? ap/ReadPort x))

@@ -42,7 +42,7 @@
                 (fn [reason _state]
                   (is false "terminate must not be called on parent exit"))}
         parent (process/proc-fn []
-                 (gs/start-link server)
+                 (gs/start-link! server)
                  (process/exit :abnormal))
         parent-pid (process/spawn parent)]
     (is (match (await-completion done 100) [:ok [:reason :abnormal]] :ok)
@@ -64,7 +64,7 @@
                                       " the value returned from handle-call"))
                              (async/close! terminate-chan))}
         parent (process/proc-fn []
-                 (gs/start-link
+                 (gs/start-link!
                    server [] {:spawn-opt {:flags {:trap-exit true}}}))]
     (process/spawn parent)
     (is (await-completion terminate-chan 500)
@@ -88,7 +88,7 @@
                                       " the value returned from handle-call"))
                              (async/close! terminate-chan))}
         parent (process/proc-fn []
-                 (gs/start-link
+                 (gs/start-link!
                    server [] {:spawn-opt {:flags {:trap-exit true}}})
                  (process/exit :abnormal))]
     (process/spawn parent)
@@ -98,28 +98,28 @@
         "gen-server must exit on bad return from handle-call")))
 
 (def-proc-test ^:parallel start.illegal-arguments
-  (is (thrown? Exception (gs/start 1 [] {})))
-  (is (thrown? Exception (gs/start "server" [] {})))
-  (is (thrown? Exception (gs/start [] [] {})))
-  (is (thrown? Exception (gs/start #{} [] {})))
+  (is (thrown? Exception (gs/start! 1 [] {})))
+  (is (thrown? Exception (gs/start! "server" [] {})))
+  (is (thrown? Exception (gs/start! [] [] {})))
+  (is (thrown? Exception (gs/start! #{} [] {})))
   (let [done (async/chan)
         server {:init (fn [] [:ok nil])
                 :terminate (fn [_ _] (async/close! done))}]
-    (is (thrown? Exception (gs/start server [] {:spawn-opt {:inbox "inbox"}})))
+    (is (thrown? Exception (gs/start! server [] {:spawn-opt {:inbox "inbox"}})))
     (is (thrown? Exception (await-completion done 50))
         (str "terminate must not be called when illegal arguments were passed"
              " to start"))))
 
 (def-proc-test ^:parallel start.start-returns-pid
   (let [server {:init (fn [] [:ok nil])}]
-    (match (gs/start server)
+    (match (gs/start! server)
       [:ok (pid :guard process/pid?)]
       (match (process/exit pid :abnormal) true :ok))))
 
 (def-proc-test ^:parallel init.start-calls-init
   (let [done (async/chan)
         server {:init (fn [] (async/close! done) [:ok nil])}]
-    (match (gs/start server)
+    (match (gs/start! server)
       [:ok pid]
       (do
         (await-completion done 50)
@@ -133,7 +133,7 @@
                       "args passed to init must be the same as passed to start")
                   (async/close! done)
                   [:ok args])}]
-    (match (gs/start server [:a 1 "str" {:a 1 :b 2} '()])
+    (match (gs/start! server [:a 1 "str" {:a 1 :b 2} '()])
       [:ok pid]
       (do
         (await-completion done 50)
@@ -145,18 +145,18 @@
                       "args passed to init must be the same as passed to start")
                   (async/close! done)
                   [:ok args])}]
-    (match (gs/start server [nil] {})
+    (match (gs/start! server [nil] {})
       [:ok pid]
       (do
         (await-completion done 50)
         (match (process/exit pid :abnormal) true :ok)))))
 
 (def-proc-test ^:parallel init.undefined-callback
-  (is (= [:error [:undef ['init [1]]]] (gs/start {} 1)))
-  (is (= [:error [:undef ['init [1]]]] (gs/start (create-ns 'test-ns) 1)))
+  (is (= [:error [:undef ['init [1]]]] (gs/start! {} 1)))
+  (is (= [:error [:undef ['init [1]]]] (gs/start! (create-ns 'test-ns) 1)))
   (let [done (async/chan)
         server {:terminate (fn [_ _] (async/put! done :val))}]
-    (is (= [:error [:undef ['init [1]]]] (gs/start server 1)))
+    (is (= [:error [:undef ['init [1]]]] (gs/start! server 1)))
     (is (= nil (async/poll! done))
         "terminate must not be called if init is undefined")))
 
@@ -164,7 +164,7 @@
   (let [done (async/chan)
         server {:init (fn [] (throw (Exception. "TEST")))
                 :terminate (fn [_ _] (async/put! done :val))}]
-    (is (match (gs/start server)
+    (is (match (gs/start! server)
           [:error [:exception {:message "TEST" :class "java.lang.Exception"}]]
           :ok)
         "error returned by start must contain exception thrown from callback")
@@ -175,7 +175,7 @@
   (let [done (async/chan)
         server {:init (fn [] :bad-return)
                 :terminate (fn [_ _] (async/put! done :val))}]
-    (is (match (gs/start server)
+    (is (match (gs/start! server)
           [:error [:bad-return-value :bad-return]] :ok)
         "error returned by start must contain value returned by callback")
     (is (= nil (async/poll! done))
@@ -183,9 +183,9 @@
 
 (def-proc-test ^:parallel init.invalid-timeout
   (let [server {:init (fn [] [:ok nil])}]
-    (is (thrown? Exception (gs/start server [] {:timeout -1}))
+    (is (thrown? Exception (gs/start! server [] {:timeout -1}))
         "start must throw on invali timeout")
-    (is (thrown? Exception (gs/start server [] {:timeout :t}))
+    (is (thrown? Exception (gs/start! server [] {:timeout :t}))
         "start must throw on invali timeout")))
 
 (def-proc-test ^:parallel init.infinite-timeout
@@ -194,7 +194,7 @@
                         (async/close! done)
                         [:ok nil])
                 :terminate (fn [_ _] :ok)}]
-    (is (match (gs/start-link server [] {:timeout :infinity}) [:ok _pid] :ok)
+    (is (match (gs/start-link! server [] {:timeout :infinity}) [:ok _pid] :ok)
         "error returned by start must contain :timeout")
     (is (await-completion done 100)
         "gen-server process must be started")))
@@ -207,7 +207,7 @@
                         (<!! (async/timeout 100))
                         [:ok nil])
                 :terminate (fn [_ _] (async/put! done1 :val))}]
-    (is (match (gs/start server [] {:timeout 50}) [:error :timeout] :ok)
+    (is (match (gs/start! server [] {:timeout 50}) [:error :timeout] :ok)
         "error returned by start must contain :timeout")
     (is (= (await-completion done 200) [:ok [:reason :killed]])
         "gen-server process must be killed after init timeout")
@@ -218,7 +218,7 @@
   (let [server {:init (fn []
                         (<!! (async/timeout 100))
                         [:ok nil])}]
-    (is (match (gs/start-link server [] {:timeout 50}) [:error :timeout] :ok)
+    (is (match (gs/start-link! server [] {:timeout 50}) [:error :timeout] :ok)
         "error returned by start must contain :timeout")
     (is (= :timeout (<! (await-message 200)))
         (str "process must stay alive after gen-server/start-link fails"
@@ -236,10 +236,10 @@
                   (is (= x 123)
                       "handle-call must receive message passed to call")
                   [:reply :ok state])}]
-    (match (gs/start server)
+    (match (gs/start! server)
       [:ok pid]
       (do
-        (gs/call pid 123 50)
+        (gs/call! pid 123 50)
         (match (process/exit pid :abnormal) true :ok)))))
 
 (def-proc-test ^:parallel handle-call.undefined-callback
@@ -256,10 +256,10 @@
                           {:link true :flags {:trap-exit true}})
                         [:ok :state])
                 :terminate (fn [reason _] (async/put! done1 [:reason reason]))}]
-    (match (gs/start server)
+    (match (gs/start! server)
       [:ok pid]
       (do
-        (is (match (process/ex-catch [:ok (gs/call pid 1 50)])
+        (is (match (process/ex-catch [:ok (gs/call! pid 1 50)])
                [:EXIT [[:undef ['handle-call [1 _ :state]]]
                        [`gs/call [pid 1 50]]]]
                :ok)
@@ -279,21 +279,21 @@
         server {:init (fn [] [:ok nil])
                 :handle-call (fn [_ _ _] :bad-return)
                 :terminate (fn [reason _]
-                             (is (= [:bad-return-value :bad-return] reason)
+                             (is (= [:bad-return-value :bad-return]
+                                    reason)
                                  (str "reason passed to terminate must contain"
                                       " the value returned from handle-call"))
                              (async/close! done))}]
-    (match (gs/start-link server)
+    (match (gs/start-link! server)
       [:ok pid]
       (do
         (is (= [:EXIT [[:bad-return-value :bad-return] [`gs/call [pid nil 50]]]]
-               (process/ex-catch [:ok (gs/call pid nil 50)]))
+               (process/ex-catch [:ok (gs/call! pid nil 50)]))
             "call must exit on bad return from handle-call")
         (is (await-completion done 50)
             "terminate must be called on bad return from handle-call")
         (is (match (<! (await-message 50))
-                   [:exit [pid [:bad-return-value :bad-return]]]
-                   :ok))))))
+                   [:exit [pid [:bad-return-value :bad-return]]] :ok))))))
 
 (def-proc-test ^:parallel handle-call.callback-throws
   (let [done1 (async/chan)
@@ -309,13 +309,13 @@
                                  (str "reason passed to terminate must contain"
                                       " exception thrown from handle-call"))
                              (async/close! done1))}]
-    (match (gs/start server)
+    (match (gs/start! server)
       [:ok pid]
       (do
         (is (= [:EXIT [[:exception {:message "TEST" :data {:test 1}}]
                        [`gs/call [pid nil 50]]]]
                (let [[kind [[reason ex] f]] (process/ex-catch
-                                              [:ok (gs/call pid nil 50)])]
+                                              [:ok (gs/call! pid nil 50)])]
                  [kind [[reason (dissoc ex :stack-trace :class)] f]]))
             "call must exit after exit called in handle-call")
         (is (await-completion done1 50)
@@ -335,11 +335,11 @@
                                  (str "reason passed to terminate must be the"
                                       " same as passed to exit in handle-call"))
                              (async/close! done1))}]
-    (match (gs/start server)
+    (match (gs/start! server)
       [:ok pid]
       (do
         (is (= [:EXIT [:abnormal [`gs/call [pid nil 50]]]]
-               (process/ex-catch [:ok (gs/call pid nil 50)]))
+               (process/ex-catch [:ok (gs/call! pid nil 50)]))
             "call must exit after exit called in handle-call")
         (is (await-completion done1 50)
             "terminate must be called after exit called in  handle-call")
@@ -359,11 +359,11 @@
                                  (str "reason passed to terminate must be the"
                                       " same as passed to exit in handle-call"))
                              (async/close! done1))}]
-    (match (gs/start server)
+    (match (gs/start! server)
       [:ok pid]
       (do
         (is (= [:EXIT [:normal [`gs/call [pid nil 50]]]]
-               (process/ex-catch [:ok (gs/call pid nil 50)]))
+               (process/ex-catch [:ok (gs/call! pid nil 50)]))
             "call must exit after exit called in handle-call")
         (is (await-completion done1 50)
             "terminate must be called after exit called in handle-call")
@@ -383,11 +383,11 @@
                                  (str "reason passed to terminate must be the"
                                       " same as returned by handle-call"))
                              (async/close! done1))}]
-    (match (gs/start server)
+    (match (gs/start! server)
       [:ok pid]
       (do
         (is (= [:EXIT [:normal [`gs/call [pid nil 50]]]]
-               (process/ex-catch [:ok (gs/call pid nil 50)]))
+               (process/ex-catch [:ok (gs/call! pid nil 50)]))
             "call must exit if :stop returned by handle-call")
         (is (await-completion done1 50)
             "terminate must be called after :stop returned by handle-call")
@@ -407,11 +407,11 @@
                                  (str "reason passed to terminate must be the"
                                       " same as returned by handle-call"))
                              (async/close! done1))}]
-    (match (gs/start server)
+    (match (gs/start! server)
       [:ok pid]
       (do
         (is (= [:EXIT [:abnormal [`gs/call [pid nil 50]]]]
-               (process/ex-catch [:ok (gs/call pid nil 50)]))
+               (process/ex-catch [:ok (gs/call! pid nil 50)]))
             "call must exit if :stop returned by handle-call")
         (is (await-completion done1 50)
             "terminate must be called after :stop returned by handle-call")
@@ -422,20 +422,20 @@
 (def-proc-test ^:parallel handle-call.return-reply
   (let [server {:init (fn [] [:ok nil])
                 :handle-call (fn [x _from state] [:reply (inc x) state])}]
-    (match (gs/start server)
+    (match (gs/start! server)
       [:ok pid]
       (do
-        (is (= 2 (gs/call pid 1 50)) "call must return response from server")
-        (is (= 5 (gs/call pid 4 50)) "call must return response from server")
+        (is (= 2 (gs/call! pid 1 50)) "call must return response from server")
+        (is (= 5 (gs/call! pid 4 50)) "call must return response from server")
         (match (process/exit pid :abnormal) true :ok)))))
 
 (def-proc-test ^:parallel handle-call.nil-return-reply
   (let [server {:init (fn [] [:ok nil])
                 :handle-call (fn [_ _from state] [:reply nil state])}]
-    (match (gs/start server)
+    (match (gs/start! server)
       [:ok pid]
       (do
-        (is (= nil (gs/call pid nil 50))
+        (is (= nil (gs/call! pid nil 50))
             "call must return response from server")
         (match (process/exit pid :abnormal) true :ok)))))
 
@@ -444,10 +444,10 @@
                 :handle-call (fn [_ from state]
                                (gs/reply from :ok)
                                [:noreply state])}]
-    (match (gs/start server)
+    (match (gs/start! server)
       [:ok pid]
       (do
-        (is (= :ok (gs/call pid nil 50))
+        (is (= :ok (gs/call! pid nil 50))
             "call must return response from server")
         (match (process/exit pid :abnormal) true :ok)))))
 
@@ -456,12 +456,12 @@
                 :handle-call (fn [_ from state]
                                (gs/reply from :ok)
                                [:reply :error state])}]
-    (match (gs/start server)
+    (match (gs/start! server)
       [:ok pid]
       (do
-        (is (= :ok (gs/call pid nil 50))
+        (is (= :ok (gs/call! pid nil 50))
             "call must return first response from server")
-        (is (= :ok (gs/call pid nil 50))
+        (is (= :ok (gs/call! pid nil 50))
             "call must return first response from server")
         (match (process/exit pid :abnormal) true :ok)))))
 
@@ -470,10 +470,10 @@
                 :handle-call (fn [_ from state]
                                (gs/reply from nil)
                                [:noreply state])}]
-    (match (gs/start server)
+    (match (gs/start! server)
       [:ok pid]
       (do
-        (is (= nil (gs/call pid nil 50))
+        (is (= nil (gs/call! pid nil 50))
             "call must return response from server")
         (match (process/exit pid :abnormal) true :ok)))))
 
@@ -487,16 +487,16 @@
                                              [:noreply from])
                                  [2 from1] (do (gs/reply from1 :ok1)
                                                [:reply :ok2 nil])))}]
-    (match (gs/start server)
+    (match (gs/start! server)
       [:ok pid]
       (do
         (process/spawn
           (process/proc-fn []
-            (is (= :ok1 (gs/call pid 1 50))
+            (is (= :ok1 (gs/call! pid 1 50))
                 "call must return response from server")
             (async/close! done1)))
         (is (await-completion done 50))
-        (is (= :ok2 (gs/call pid 2 50))
+        (is (= :ok2 (gs/call! pid 2 50))
             "call must return response from server")
         (is (await-completion done1 50))
         (match (process/exit pid :abnormal) true :ok)))))
@@ -513,10 +513,10 @@
                                  (str "reason passed to terminate must be the"
                                       " same as returned by handle-call"))
                              (async/close! done1))}]
-    (match (gs/start server)
+    (match (gs/start! server)
       [:ok pid]
       (do
-        (is (= 2 (gs/call pid 1 50)) "call must return response from server")
+        (is (= 2 (gs/call! pid 1 50)) "call must return response from server")
         (is (await-completion done1 50)
             "terminate must be called after :stop returned by handle-call")
         (is (match (await-completion done2 50) [:ok [:reason :normal]] :ok)
@@ -534,10 +534,10 @@
                                  (str "reason passed to terminate must be the"
                                       " same as returned by handle-call"))
                              (async/close! done))}]
-    (match (gs/start server)
+    (match (gs/start! server)
       [:ok pid]
       (do
-        (is (= 2 (gs/call pid 1 50)) "call must return response from server")
+        (is (= 2 (gs/call! pid 1 50)) "call must return response from server")
         (is (await-completion done 50)
             "terminate must be called after :stop returned by handle-call")
         (is (match (await-completion done2 50) [:ok [:reason :abnormal]] :ok)
@@ -550,24 +550,24 @@
                         (spawn-exit-watcher done2 100)
                         [:ok nil])
                 :handle-call (fn [x _ state] [:stop :normal :ok state])}]
-    (match (gs/start server)
+    (match (gs/start! server)
       [:ok pid]
       (do
-        (match (gs/call pid nil 50) :ok :ok)
+        (match (gs/call! pid nil 50) :ok :ok)
         (match (await-completion done2 50) [:ok [:reason :normal]] :ok)
         (is (= [:EXIT [:noproc [`gs/call [pid nil 10]]]]
-               (process/ex-catch [:ok (gs/call pid nil 10)]))
+               (process/ex-catch [:ok (gs/call! pid nil 10)]))
             "call to exited server must exit with :noproc reason")))))
 
 (def-proc-test ^:parallel handle-call.timeout
   (let [done (async/chan)
         server {:init (fn [] [:ok nil])
                 :handle-call (fn [x _ state] (<!! (async/timeout 50)))}]
-    (match (gs/start server)
+    (match (gs/start! server)
       [:ok pid]
       (do
         (is (= [:EXIT [:timeout [`gs/call [pid nil 10]]]]
-               (process/ex-catch [:ok (gs/call pid nil 10)]))
+               (process/ex-catch [:ok (gs/call! pid nil 10)]))
             "call must return response from server")
         (match (process/exit pid :abnormal) true :ok)))))
 
@@ -578,14 +578,14 @@
                   (is (= old-state state)
                       "return from handle-call must update server state")
                   [:reply :ok new-state])}]
-    (match (gs/start server)
+    (match (gs/start! server)
       [:ok pid]
       (do
-        (is (= :ok (gs/call pid [1 2] 50))
+        (is (= :ok (gs/call! pid [1 2] 50))
             "call must return response from server")
-        (is (= :ok (gs/call pid [2 4] 50))
+        (is (= :ok (gs/call! pid [2 4] 50))
             "call must return response from server")
-        (is (= :ok (gs/call pid [4 0] 50))
+        (is (= :ok (gs/call! pid [4 0] 50))
             "call must return response from server")
         (match (process/exit pid :abnormal) true :ok)))))
 
@@ -596,7 +596,7 @@
                         [:ok nil])
                 :handle-call (fn [_ _ _] :bad-return)
                 :terminate (fn [_reason _] (throw (ex-info "TEST" {:a 1})))}]
-    (match (gs/start server)
+    (match (gs/start! server)
       [:ok pid]
       (do
         (is (= [:EXIT [[:exception {:message "TEST"
@@ -604,7 +604,7 @@
                                     :data {:a 1}}]
                        [`gs/call [pid nil 50]]]]
                (let [[kind [[reason ex] f]] (process/ex-catch
-                                              [:ok (gs/call pid nil 50)])]
+                                              [:ok (gs/call! pid nil 50)])]
                  [kind [[reason (dissoc ex :stack-trace)] f]]))
             (str "call must exit with reason containing exception thrown from"
                  " terminate"))
@@ -620,7 +620,7 @@
                         [:ok nil])
                 :handle-call (fn [_ _ _] (throw (ex-info "TEST" {:a 1})))
                 :terminate (fn [_reason _] (throw (ex-info "TEST" {:b 2})))}]
-    (match (gs/start server)
+    (match (gs/start! server)
       [:ok pid]
       (do
         (is (= [:EXIT [[:exception {:message "TEST"
@@ -628,7 +628,7 @@
                                     :data {:b 2}}]
                        [`gs/call [pid nil 50]]]]
                (let [[kind [[reason ex] f]] (process/ex-catch
-                                              [:ok (gs/call pid nil 50)])]
+                                              [:ok (gs/call! pid nil 50)])]
                  [kind [[reason (dissoc ex :stack-trace)] f]]))
             (str "call must exit with reason containing exception thrown from"
                  " terminate"))
@@ -644,7 +644,7 @@
                         [:ok nil])
                 :handle-call (fn [_ _ _] (process/exit :abnormal))
                 :terminate (fn [_reason _] (throw (ex-info "TEST" {:a 1})))}]
-    (match (gs/start server)
+    (match (gs/start! server)
       [:ok pid]
       (do
         (is (= [:EXIT [[:exception {:message "TEST"
@@ -652,7 +652,7 @@
                                     :data {:a 1}}]
                        [`gs/call [pid nil 50]]]]
                (let [[kind [[reason ex] f]] (process/ex-catch
-                                              [:ok (gs/call pid nil 50)])]
+                                              [:ok (gs/call! pid nil 50)])]
                  [kind [[reason (dissoc ex :stack-trace)] f]]))
             (str "call must exit with reason containing exception thrown from"
                  " terminate"))
@@ -666,7 +666,7 @@
                 :handle-call (fn [_ _ _] (process/exit :normal))
                 :terminate (fn [_reason _] (throw (ex-info "TEST" {:a 1})))}]
     (process/flag :trap-exit true)
-    (match (gs/start-link server)
+    (match (gs/start-link! server)
       [:ok pid]
       (do
         (is (= [:EXIT [[:exception {:message "TEST"
@@ -674,7 +674,7 @@
                                     :data {:a 1}}]
                        [`gs/call [pid nil 50]]]]
                (let [[kind [[reason ex] f]] (process/ex-catch
-                                              [:ok (gs/call pid nil 50)])]
+                                              [:ok (gs/call! pid nil 50)])]
                  [kind [[reason (dissoc ex :stack-trace)] f]]))
             (str "call must exit with reason containing exception thrown from"
                  " terminate"))
@@ -687,7 +687,7 @@
                         [:ok nil])
                 :handle-call (fn [_ _ state] [:stop :normal state])
                 :terminate (fn [_reason _] (throw (ex-info "TEST" {:a 1})))}]
-    (match (gs/start server)
+    (match (gs/start! server)
       [:ok pid]
       (do
         (is (= [:EXIT [[:exception {:message "TEST"
@@ -695,7 +695,7 @@
                                     :data {:a 1}}]
                        [`gs/call [pid nil 50]]]]
                (let [[kind [[reason ex] f]] (process/ex-catch
-                                              [:ok (gs/call pid nil 50)])]
+                                              [:ok (gs/call! pid nil 50)])]
                  [kind [[reason (dissoc ex :stack-trace)] f]]))
             (str "call must exit with reason containing exception thrown from"
                  " terminate"))
@@ -711,7 +711,7 @@
                         [:ok nil])
                 :handle-call (fn [_ _ state] [:stop :abnormal state])
                 :terminate (fn [_reason _] (throw (ex-info "TEST" {:a 1})))}]
-    (match (gs/start server)
+    (match (gs/start! server)
       [:ok pid]
       (do
         (is (= [:EXIT [[:exception {:message "TEST"
@@ -719,7 +719,7 @@
                                     :data {:a 1}}]
                        [`gs/call [pid nil 50]]]]
                (let [[kind [[reason ex] f]] (process/ex-catch
-                                              [:ok (gs/call pid nil 50)])]
+                                              [:ok (gs/call! pid nil 50)])]
                  [kind [[reason (dissoc ex :stack-trace)] f]]))
             (str "call must exit with reason containing exception thrown from"
                  " terminate"))
@@ -735,10 +735,10 @@
                         [:ok nil])
                 :handle-call (fn [x _ state] [:stop :normal (inc x) state])
                 :terminate (fn [_reason _] (throw (ex-info "TEST" {:a 1})))}]
-    (match (gs/start server)
+    (match (gs/start! server)
       [:ok pid]
       (do
-        (is (= 2 (gs/call pid 1 50))
+        (is (= 2 (gs/call! pid 1 50))
             "call must return response even if terminate throws")
         (is (match (await-completion done2 50)
                    [:ok [:reason [:exception {:message "TEST" :data {:a 1}}]]]
@@ -752,10 +752,10 @@
                         [:ok nil])
                 :handle-call (fn [x _ state] [:stop :abnormal (inc x) state])
                 :terminate (fn [_reason _] (throw (ex-info "TEST" {:a 1})))}]
-    (match (gs/start server)
+    (match (gs/start! server)
       [:ok pid]
       (do
-        (is (= 2 (gs/call pid 1 50))
+        (is (= 2 (gs/call! pid 1 50))
             "call must return response even if terminate throws")
         (is (match (await-completion done2 50)
                    [:ok [:reason [:exception {:message "TEST" :data {:a 1}}]]]
@@ -768,7 +768,7 @@
                         (spawn-exit-watcher done2 100)
                         [:ok :state])
                 :terminate (fn [_reason _] (throw (ex-info "TEST" {:a 1})))}]
-    (match (gs/start server)
+    (match (gs/start! server)
       [:ok pid]
       (do
         (is (= [:EXIT [[:exception {:message "TEST"
@@ -776,7 +776,7 @@
                                     :data {:a 1}}]
                        [`gs/call [pid nil 50]]]]
                (let [[kind [[reason ex] f]] (process/ex-catch
-                                              [:ok (gs/call pid nil 50)])]
+                                              [:ok (gs/call! pid nil 50)])]
                  [kind [[reason (dissoc ex :stack-trace)] f]]))
             (str "call must exit with reason containing exception thrown from"
                  " terminate"))
@@ -797,11 +797,11 @@
                     {:link true :flags {:trap-exit true}})
                   [:ok :state])
                 :handle-call (fn [_ _ _] :bad-return)}]
-    (match (gs/start server)
+    (match (gs/start! server)
       [:ok pid]
       (do
         (is (= [:EXIT [[:bad-return-value :bad-return] [`gs/call [pid nil 50]]]]
-               (process/ex-catch [:ok (gs/call pid nil 50)]))
+               (process/ex-catch [:ok (gs/call! pid nil 50)]))
             (str "call must exit with reason containing bad-value returned from"
                  " handle-call"))
         (is (match (await-completion done 50)
@@ -815,7 +815,7 @@
                         (spawn-exit-watcher done 50)
                         [:ok :state])
                 :handle-call (fn [_ _ _] (throw (ex-info "TEST" {:b 2})))}]
-    (match (gs/start server)
+    (match (gs/start! server)
       [:ok pid]
       (do
         (is (= [:EXIT [[:exception {:message "TEST"
@@ -823,7 +823,7 @@
                                     :data {:b 2}}]
                        [`gs/call [pid nil 50]]]]
                (let [[kind [[reason ex] f]] (process/ex-catch
-                                              [:ok (gs/call pid nil 50)])]
+                                              [:ok (gs/call! pid nil 50)])]
                  [kind [[reason (dissoc ex :stack-trace)] f]]))
             (str "call must exit with reason containing exception thrown from"
                  " handle-call"))
@@ -841,11 +841,11 @@
                         (spawn-exit-watcher done 50)
                         [:ok :state])
                 :handle-call (fn [_ _ _] (process/exit :abnormal))}]
-    (match (gs/start server)
+    (match (gs/start! server)
       [:ok pid]
       (do
         (is (= [:EXIT [:abnormal [`gs/call [pid nil 50]]]]
-               (process/ex-catch [:ok (gs/call pid nil 50)]))
+               (process/ex-catch [:ok (gs/call! pid nil 50)]))
             (str "call must exit with reason containing reason passed to exit"
                  " in handle-call"))
         (is (match (await-completion done 50) [:ok [:reason :abnormal]] :ok)
@@ -858,11 +858,11 @@
                         (spawn-exit-watcher done 50)
                         [:ok :state])
                 :handle-call (fn [_ _ _] (process/exit :normal))}]
-    (match (gs/start server)
+    (match (gs/start! server)
       [:ok pid]
       (do
         (is (= [:EXIT [:normal [`gs/call [pid nil 50]]]]
-               (process/ex-catch [:ok (gs/call pid nil 50)]))
+               (process/ex-catch [:ok (gs/call! pid nil 50)]))
             (str "call must exit with reason containing reason passed to exit"
                  " in handle-call"))
         (is (match (await-completion done 50) [:ok [:reason :normal]] :ok)
@@ -875,11 +875,11 @@
                         (spawn-exit-watcher done 50)
                         [:ok :state])
                 :handle-call (fn [_ _ state] [:stop :normal state])}]
-    (match (gs/start server)
+    (match (gs/start! server)
       [:ok pid]
       (do
         (is (= [:EXIT [:normal [`gs/call [pid nil 50]]]]
-               (process/ex-catch [:ok (gs/call pid nil 50)]))
+               (process/ex-catch [:ok (gs/call! pid nil 50)]))
             (str "call must exit with reason containing reason returned by"
                  " handle-call"))
         (is (match (await-completion done 50) [:ok [:reason :normal]] :ok)
@@ -892,11 +892,11 @@
                   (spawn-exit-watcher done 50)
                   [:ok :state])
                 :handle-call (fn [_ _ state] [:stop :abnormal state])}]
-    (match (gs/start server)
+    (match (gs/start! server)
       [:ok pid]
       (do
         (is (= [:EXIT [:abnormal [`gs/call [pid nil 50]]]]
-               (process/ex-catch [:ok (gs/call pid nil 50)]))
+               (process/ex-catch [:ok (gs/call! pid nil 50)]))
             (str "call must exit with reason containing reason returned by"
                  "  handle-call"))
         (is (match (await-completion done 50) [:ok [:reason :abnormal]] :ok)
@@ -908,10 +908,10 @@
                 (fn []
                   (spawn-exit-watcher done 50)
                   [:ok :state])}]
-    (match (gs/start server)
+    (match (gs/start! server)
       [:ok pid]
       (do
-        (is (match (process/ex-catch [:ok (gs/call pid nil 50)])
+        (is (match (process/ex-catch [:ok (gs/call! pid nil 50)])
                    [:EXIT [[:undef ['handle-call [nil _ :state]]]
                            [`gs/call [pid nil 50]]]] :ok)
             (str "call must exit with reason containing arguments passed to"
@@ -933,7 +933,7 @@
                       "handle-cast must receive message passed to cast")
                   (async/close! done)
                   [:noreply state])}]
-    (match (gs/start server)
+    (match (gs/start! server)
       [:ok pid]
       (do
         (gs/cast pid 123)
@@ -951,7 +951,7 @@
                                  (str "reason passed to terminate must contain"
                                       " name and arguments of handle-cast"))
                              (async/close! done))}]
-    (match (gs/start server)
+    (match (gs/start! server)
       [:ok pid]
       (do
         (is (= true (gs/cast pid 1))
@@ -975,7 +975,7 @@
                                  (str "reason passed to terminate must contain"
                                       " the value returned from handle-cast"))
                              (async/close! done))}]
-    (match (gs/start-link server)
+    (match (gs/start-link! server)
       [:ok pid]
       (do
         (is (= true (gs/cast pid nil))
@@ -983,7 +983,7 @@
         (is (await-completion done 50)
             "terminate must be called on bad return from handle-cast")
         (is (match (await-completion done2 50)
-                   [:ok [:reason [:bad-return-value :bad-return]]] :ok)
+              [:ok [:reason [:bad-return-value :bad-return]]] :ok)
             "gen-server must exit on bad return from handle-cast")))))
 
 (def-proc-test ^:parallel handle-cast.callback-throws
@@ -1002,7 +1002,7 @@
                                  (str "reason passed to terminate must contain"
                                       " exception thrown from handle-cast"))
                              (async/close! done))}]
-    (match (gs/start server)
+    (match (gs/start! server)
       [:ok pid]
       (do
         (is (= true (gs/cast pid nil))
@@ -1026,7 +1026,7 @@
                                  (str "reason passed to terminate must be the"
                                       " same as passed to exit in handle-cast"))
                              (async/close! done))}]
-    (match (gs/start server)
+    (match (gs/start! server)
       [:ok pid]
       (do
         (is (= true (gs/cast pid nil))
@@ -1048,7 +1048,7 @@
                                  (str "reason passed to terminate must be the"
                                       " same as passed to exit in handle-cast"))
                              (async/close! done))}]
-    (match (gs/start server)
+    (match (gs/start! server)
       [:ok pid]
       (do
         (is (= true (gs/cast pid nil))
@@ -1070,7 +1070,7 @@
                                  (str "reason passed to terminate must be the"
                                       " same as returned by handle-cast"))
                              (async/close! done))}]
-    (match (gs/start server)
+    (match (gs/start! server)
       [:ok pid]
       (do
         (is (= true (gs/cast pid nil))
@@ -1092,7 +1092,7 @@
                                  (str "reason passed to terminate must be the"
                                       " same as returned by handle-cast"))
                              (async/close! done))}]
-    (match (gs/start server)
+    (match (gs/start! server)
       [:ok pid]
       (do
         (is (= true (gs/cast pid nil))
@@ -1109,7 +1109,7 @@
                         (spawn-exit-watcher done2 100)
                         [:ok nil])
                 :handle-cast (fn [_ state] [:stop :normal state])}]
-    (match (gs/start server)
+    (match (gs/start! server)
       [:ok pid]
       (do
         (is (= true (gs/cast pid nil))
@@ -1125,7 +1125,7 @@
                   (is (= old-state state)
                       "return from handle-cast must update server state")
                   [:noreply new-state])}]
-    (match (gs/start server)
+    (match (gs/start! server)
       [:ok pid]
       (do
         (is (= true (gs/cast pid [1 2]))
@@ -1143,7 +1143,7 @@
                         [:ok :state])
                 :handle-cast (fn [_ _] :bad-return)
                 :terminate (fn [reason _] (throw (ex-info "TEST" {:a 1})))}]
-    (match (gs/start server)
+    (match (gs/start! server)
       [:ok pid]
       (do
         (is (= true (gs/cast pid nil))
@@ -1163,7 +1163,7 @@
                         [:ok :state])
                 :handle-cast (fn [_ _] (throw (ex-info "TEST" {:b 2})))
                 :terminate (fn [reason _] (throw (ex-info "TEST" {:a 1})))}]
-    (match (gs/start server)
+    (match (gs/start! server)
       [:ok pid]
       (do
         (is (= true (gs/cast pid nil))
@@ -1183,7 +1183,7 @@
                         [:ok :state])
                 :handle-cast (fn [_ _] (process/exit :abnormal))
                 :terminate (fn [reason _] (throw (ex-info "TEST" {:a 1})))}]
-    (match (gs/start server)
+    (match (gs/start! server)
       [:ok pid]
       (do
         (is (= true (gs/cast pid nil))
@@ -1203,7 +1203,7 @@
                         [:ok :state])
                 :handle-cast (fn [_ _] (process/exit :normal))
                 :terminate (fn [reason _] (throw (ex-info "TEST" {:a 1})))}]
-    (match (gs/start server)
+    (match (gs/start! server)
       [:ok pid]
       (do
         (is (= true (gs/cast pid nil))
@@ -1223,7 +1223,7 @@
                         [:ok :state])
                 :handle-cast (fn [_ state] [:stop :normal state])
                 :terminate (fn [reason _] (throw (ex-info "TEST" {:a 1})))}]
-    (match (gs/start server)
+    (match (gs/start! server)
       [:ok pid]
       (do
         (is (= true (gs/cast pid nil))
@@ -1243,7 +1243,7 @@
                         [:ok :state])
                 :handle-cast (fn [_ state] [:stop :abnormal state])
                 :terminate (fn [reason _] (throw (ex-info "TEST" {:a 1})))}]
-    (match (gs/start server)
+    (match (gs/start! server)
       [:ok pid]
       (do
         (is (= true (gs/cast pid nil))
@@ -1262,7 +1262,7 @@
                         (spawn-exit-watcher done 50)
                         [:ok :state])
                 :terminate (fn [reason _] (throw (ex-info "TEST" {:a 1})))}]
-    (match (gs/start server)
+    (match (gs/start! server)
       [:ok pid]
       (do
         (is (= true (gs/cast pid nil))
@@ -1281,7 +1281,7 @@
                         (spawn-exit-watcher done 50)
                         [:ok :state])
                 :handle-cast (fn [_ _] :bad-return)}]
-    (match (gs/start server)
+    (match (gs/start! server)
       [:ok pid]
       (do
         (is (= true (gs/cast pid nil))
@@ -1297,7 +1297,7 @@
                         (spawn-exit-watcher done 50)
                         [:ok :state])
                 :handle-cast (fn [_ _] (throw (ex-info "TEST" {:b 2})))}]
-    (match (gs/start server)
+    (match (gs/start! server)
       [:ok pid]
       (do
         (is (= true (gs/cast pid nil))
@@ -1316,7 +1316,7 @@
                         (spawn-exit-watcher done 50)
                         [:ok :state])
                 :handle-cast (fn [_ _] (process/exit :abnormal))}]
-    (match (gs/start server)
+    (match (gs/start! server)
       [:ok pid]
       (do
         (is (= true (gs/cast pid nil))
@@ -1331,7 +1331,7 @@
                         (spawn-exit-watcher done 50)
                         [:ok :state])
                 :handle-cast (fn [_ _] (process/exit :normal))}]
-    (match (gs/start server)
+    (match (gs/start! server)
       [:ok pid]
       (do
         (is (= true (gs/cast pid nil))
@@ -1346,7 +1346,7 @@
                         (spawn-exit-watcher done 50)
                         [:ok :state])
                 :handle-cast (fn [_ state] [:stop :normal state])}]
-    (match (gs/start server)
+    (match (gs/start! server)
       [:ok pid]
       (do
         (is (= true (gs/cast pid nil))
@@ -1360,7 +1360,7 @@
                         (spawn-exit-watcher done 50)
                         [:ok :state])
                 :handle-cast (fn [_ state] [:stop :abnormal state])}]
-    (match (gs/start server)
+    (match (gs/start! server)
       [:ok pid]
       (do
         (is (= true (gs/cast pid nil))
@@ -1373,7 +1373,7 @@
         server {:init (fn []
                         (spawn-exit-watcher done 50)
                         [:ok :state])}]
-    (match (gs/start server)
+    (match (gs/start! server)
       [:ok pid]
       (do
         (is (= true (gs/cast pid nil))
@@ -1395,7 +1395,7 @@
                       "handle-info must receive message passed to !")
                   (async/close! done)
                   [:noreply state])}]
-    (match (gs/start server)
+    (match (gs/start! server)
       [:ok pid]
       (do
         (is (! pid 123))
@@ -1413,7 +1413,7 @@
                                  (str "reason passed to terminate must contain"
                                       " name and arguments of handle-info"))
                              (async/close! done))}]
-    (match (gs/start server)
+    (match (gs/start! server)
       [:ok pid]
       (do
         (match (! pid 1) true :ok)
@@ -1435,7 +1435,7 @@
                                  (str "reason passed to terminate must contain"
                                       " the value returned from handle-info"))
                              (async/close! done))}]
-    (match (gs/start server)
+    (match (gs/start! server)
       [:ok pid]
       (do
         (match (! pid 1) true :ok)
@@ -1461,7 +1461,7 @@
                                  (str "reason passed to terminate must contain"
                                       " exception thrown from handle-info"))
                              (async/close! done))}]
-    (match (gs/start server)
+    (match (gs/start! server)
       [:ok pid]
       (do
         (match (! pid 1) true :ok)
@@ -1484,7 +1484,7 @@
                                  (str "reason passed to terminate must be the"
                                       " same as passed to exit in handle-info"))
                              (async/close! done))}]
-    (match (gs/start server)
+    (match (gs/start! server)
       [:ok pid]
       (do
         (match (! pid 1) true :ok)
@@ -1505,7 +1505,7 @@
                                  (str "reason passed to terminate must be the"
                                       " same as passed to exit in handle-info"))
                              (async/close! done))}]
-    (match (gs/start server)
+    (match (gs/start! server)
       [:ok pid]
       (do
         (match (! pid 1) true :ok)
@@ -1526,7 +1526,7 @@
                                  (str "reason passed to terminate must be the"
                                       " same as returned by handle-info"))
                              (async/close! done))}]
-    (match (gs/start server)
+    (match (gs/start! server)
       [:ok pid]
       (do
         (match (! pid 1) true :ok)
@@ -1547,7 +1547,7 @@
                                  (str "reason passed to terminate must be the"
                                       " same as returned by handle-info"))
                              (async/close! done))}]
-    (match (gs/start server)
+    (match (gs/start! server)
       [:ok pid]
       (do
         (match (! pid 1) true :ok)
@@ -1563,7 +1563,7 @@
                   (is (= old-state state)
                       "return from handle-info must update server state")
                   [:noreply new-state])}]
-    (match (gs/start server)
+    (match (gs/start! server)
       [:ok pid]
       (do
         (match (! pid [1 2]) true :ok)
@@ -1578,7 +1578,7 @@
                         [:ok :state])
                 :handle-info (fn [_ _] :bad-return)
                 :terminate (fn [reason _] (throw (ex-info "TEST" {:a 1})))}]
-    (match (gs/start server)
+    (match (gs/start! server)
       [:ok pid]
       (do
         (match (! pid 1) true :ok)
@@ -1597,7 +1597,7 @@
                         [:ok :state])
                 :handle-info (fn [_ _] (throw (ex-info "TEST" {:b 2})))
                 :terminate (fn [reason _] (throw (ex-info "TEST" {:a 1})))}]
-    (match (gs/start server)
+    (match (gs/start! server)
       [:ok pid]
       (do
         (match (! pid 1) true :ok)
@@ -1616,7 +1616,7 @@
                         [:ok :state])
                 :handle-info (fn [_ _] (process/exit :abnormal))
                 :terminate (fn [reason _] (throw (ex-info "TEST" {:a 1})))}]
-    (match (gs/start server)
+    (match (gs/start! server)
       [:ok pid]
       (do
         (match (! pid 1) true :ok)
@@ -1635,7 +1635,7 @@
                         [:ok :state])
                 :handle-info (fn [_ _] (process/exit :normal))
                 :terminate (fn [reason _] (throw (ex-info "TEST" {:a 1})))}]
-    (match (gs/start server)
+    (match (gs/start! server)
       [:ok pid]
       (do
         (match (! pid 1) true :ok)
@@ -1654,7 +1654,7 @@
                         [:ok :state])
                 :handle-info (fn [_ state] [:stop :normal state])
                 :terminate (fn [reason _] (throw (ex-info "TEST" {:a 1})))}]
-    (match (gs/start server)
+    (match (gs/start! server)
       [:ok pid]
       (do
         (match (! pid 1) true :ok)
@@ -1673,7 +1673,7 @@
                         [:ok :state])
                 :handle-info (fn [_ state] [:stop :abnormal state])
                 :terminate (fn [reason _] (throw (ex-info "TEST" {:a 1})))}]
-    (match (gs/start server)
+    (match (gs/start! server)
       [:ok pid]
       (do
         (match (! pid 1) true :ok)
@@ -1691,7 +1691,7 @@
                         (spawn-exit-watcher done 50)
                         [:ok :state])
                 :terminate (fn [reason _] (throw (ex-info "TEST" {:a 1})))}]
-    (match (gs/start server)
+    (match (gs/start! server)
       [:ok pid]
       (do
         (match (! pid 1) true :ok)
@@ -1709,7 +1709,7 @@
                         (spawn-exit-watcher done 50)
                         [:ok :state])
                 :handle-info (fn [_ _] :bad-return)}]
-    (match (gs/start server)
+    (match (gs/start! server)
       [:ok pid]
       (do
         (match (! pid 1) true :ok)
@@ -1724,7 +1724,7 @@
                         (spawn-exit-watcher done 50)
                         [:ok :state])
                 :handle-info (fn [_ _] (throw (ex-info "TEST" {:b 2})))}]
-    (match (gs/start server)
+    (match (gs/start! server)
       [:ok pid]
       (do
         (match (! pid 1) true :ok)
@@ -1742,7 +1742,7 @@
                         (spawn-exit-watcher done 50)
                         [:ok :state])
                 :handle-info (fn [_ _] (process/exit :abnormal))}]
-    (match (gs/start server)
+    (match (gs/start! server)
       [:ok pid]
       (do
         (match (! pid 1) true :ok)
@@ -1756,7 +1756,7 @@
                         (spawn-exit-watcher done 50)
                         [:ok :state])
                 :handle-info (fn [_ _] (process/exit :normal))}]
-    (match (gs/start server)
+    (match (gs/start! server)
       [:ok pid]
       (do
         (match (! pid 1) true :ok)
@@ -1770,7 +1770,7 @@
                         (spawn-exit-watcher done 50)
                         [:ok :state])
                 :handle-info (fn [_ state] [:stop :normal state])}]
-    (match (gs/start server)
+    (match (gs/start! server)
       [:ok pid]
       (do
         (match (! pid 1) true :ok)
@@ -1783,7 +1783,7 @@
                         (spawn-exit-watcher done 50)
                         [:ok :state])
                 :handle-info (fn [_ state] [:stop :abnormal state])}]
-    (match (gs/start server)
+    (match (gs/start! server)
       [:ok pid]
       (do
         (match (! pid 1) true :ok)
@@ -1795,7 +1795,7 @@
         server {:init (fn []
                         (spawn-exit-watcher done 50)
                         [:ok :state])}]
-    (match (gs/start server)
+    (match (gs/start! server)
       [:ok pid]
       (do
         (match (! pid 1) true :ok)

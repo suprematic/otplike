@@ -1,4 +1,4 @@
-(def core-async-version "0.3.441")
+(def core-async-version "0.3.443")
 
 (defproject otplike/otplike "0.3.0-alpha-SNAPSHOT"
   :description "Erlang/OTP like processes and behaviours on top of core.async"
@@ -13,8 +13,13 @@
 
   :source-paths  ["src"]
 
+  ;:main otplike.example.benchmarks
+  ;:source-paths  ["src" "examples"]
+
   :profiles {:parallel-test
              {:dependencies [[org.clojure/core.async ~core-async-version]]}
+
+             ;:uberjar {:aot :all}
 
              :repl
              {:source-paths  ["src" "examples"]}}
@@ -24,7 +29,5 @@
 
   :test-selectors {:parallel :parallel
                    :serial :serial}
-
-  :jvm-opts  ["-Dclojure.core.async.pool-size=32"]
 
   :plugins [[lein-ancient "0.6.10"]])
