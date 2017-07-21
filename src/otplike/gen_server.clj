@@ -11,22 +11,27 @@
 
 (defprotocol IGenServer
   (init [_ args]
-    #_[:ok State]
-    #_[:stop Reason])
+    #_[:ok state]
+    #_[:ok state timeout]
+    #_[:stop reason])
 
   (handle-call [_ request from state]
-    #_[:reply Reply NewState]
-    #_[:noreply NewState]
-    #_[:stop Reason Reply NewState]
-    #_[:stop Reason NewState])
+    #_[:reply reply new-state]
+    #_[:reply reply new-state timeout]
+    #_[:noreply new-state]
+    #_[:noreply new-state timeout]
+    #_[:stop reason reply new-state]
+    #_[:stop reason new-state])
 
   (handle-cast [_ request state]
-    #_[:noreply NewState]
-    #_[:stop Reason NewState])
+    #_[:noreply new-state]
+    #_[:noreply new-state timeout]
+    #_[:stop reason new-state])
 
   (handle-info [_ request state]
-    #_[:noreply NewState]
-    #_[:stop Reason NewState])
+    #_[:noreply new-state]
+    #_[:noreply new-state timeout]
+    #_[:stop reason new-state])
 
   (terminate [_ reason state]))
 
@@ -53,7 +58,10 @@
       (match (process/ex-catch
                [:ok (process/async?-value! (rqfn impl message state))])
         [:ok [:noreply new-state]]
-        [:recur new-state]
+        [:recur new-state :infinity]
+
+        [:ok  [:noreply new-state timeout]]
+        [:recur new-state timeout]
 
         [:ok [:stop reason new-state]]
         (process/await! (do-terminate impl reason new-state))
@@ -73,10 +81,18 @@
       [:ok [:reply reply new-state]]
       (do
         (async/put! from [::reply reply])
-        [:recur new-state])
+        [:recur new-state :infinity])
+
+      [:ok  [:reply reply new-state timeout]]
+      (do
+        (async/put! from  [::reply reply])
+        [:recur new-state timeout])
 
       [:ok [:noreply new-state]]
-      [:recur new-state]
+      [:recur new-state :infinity]
+
+      [:ok  [:noreply new-state timeout]]
+      [:recur new-state timeout]
 
       [:ok [:stop reason reply new-state]]
       (let [ret (process/await! (do-terminate impl reason new-state))]
@@ -125,17 +141,27 @@
     _
     (cast-or-info ::info impl message state)))
 
+(defn- enter-loop [impl parent state timeout]
+  (process/async
+    (loop [state state
+           timeout timeout]
+      (let [message (process/receive! message message (after timeout :timeout))]
+        (match (process/await! (dispatch impl parent state message))
+          [:recur new-state new-timeout] (recur new-state new-timeout)
+          [:terminate :normal _new-state] :ok
+          [:terminate reason _new-state] (process/exit reason))))))
+
 (process/proc-defn gen-server-proc [impl init-args parent response]
   (match (process/ex-catch [:ok (process/async?-value! (init impl init-args))])
     [:ok [:ok initial-state]]
     (do
       (put!* response :ok)
-      (loop [state initial-state]
-        (process/receive!
-          message (match (process/await! (dispatch impl parent state message))
-                    [:recur new-state] (recur new-state)
-                    [:terminate :normal _new-state] :ok
-                    [:terminate reason _new-state] (process/exit reason)))))
+      (process/await! (enter-loop impl parent initial-state :infinity)))
+
+    [:ok [:ok initial-state timeout]]
+    (do
+      (put!* response :ok)
+      (process/await! (enter-loop impl parent initial-state timeout)))
 
     [:ok [:stop reason]]
     (do

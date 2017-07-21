@@ -224,6 +224,30 @@
         (str "process must stay alive after gen-server/start-link fails"
              " with timeout"))))
 
+(def-proc-test ^:parallel init.timeout-returned.0
+  (let [done (async/chan)
+        server {:init (fn [] [:ok nil 0])
+                :handle-info (fn [msg state]
+                               (match msg
+                                      :timeout
+                                      (async/close! done)))}]
+    (match (gs/start-link! server) [:ok pid] :ok)
+    (is (await-completion done 100)
+        ":timeout message must be sent to gen-server")))
+
+(def-proc-test ^:parallel init.timeout-returned.100
+  (let [done (async/chan)
+        server {:init (fn [] [:ok nil 100])
+                :handle-info (fn [msg state]
+                               (match msg
+                                      :timeout
+                                      (async/close! done)))}]
+    (match (gs/start-link! server) [:ok pid] :ok)
+    (is (thrown? Exception (await-completion done 50))
+        ":timeout message must not be sent to gen-server before timeout")
+    (is (await-completion done 150)
+        ":timeout message must be sent to gen-server after timeout")))
+
 ;; ====================================================================
 ;; (handle-call [request from state])
 
@@ -924,6 +948,36 @@
             (str "gen-server must exit with reason containing arguments passed"
                  " to handle-call"))))))
 
+(def-proc-test ^:parallel handle-call.timeout-returned.0
+  (let [done (async/chan)
+        server {:init (fn [] [:ok nil])
+                :handle-call (fn [msg _ state]
+                               [:reply msg state 0])
+                :handle-info (fn [msg state]
+                               (match msg
+                                      :timeout
+                                      (async/close! done)))}]
+    (match (gs/start-link! server)
+           [:ok pid] (match (gs/call! pid :msg) :msg :ok))
+    (is (await-completion done 100)
+        ":timeout message must be sent to gen-server")))
+
+(def-proc-test ^:parallel handle-call.timeout-returned.100
+  (let [done (async/chan)
+        server {:init (fn [] [:ok nil])
+                :handle-call (fn [msg _ state]
+                               [:reply msg state 100])
+                :handle-info (fn [msg state]
+                               (match msg
+                                      :timeout
+                                      (async/close! done)))}]
+    (match (gs/start-link! server)
+           [:ok pid] (match (gs/call! pid :msg) :msg :ok))
+    (is (thrown? Exception (await-completion done 50))
+        ":timeout message must not be sent to gen-server before timeout")
+    (is (await-completion done 150)
+        ":timeout message must be sent to gen-server after timeout")))
+
 ;; ====================================================================
 ;; (handle-cast [request state])
 
@@ -1387,6 +1441,36 @@
             (str "gen-server must exit with reason containing arguments passed"
                  " to handle-cast"))))))
 
+(def-proc-test ^:parallel handle-cast.timeout-returned.0
+  (let [done (async/chan)
+        server {:init (fn [] [:ok nil])
+                :handle-cast (fn [msg state]
+                               [:noreply state 0])
+                :handle-info (fn [msg state]
+                               (match msg
+                                      :timeout
+                                      (async/close! done)))}]
+    (match (gs/start-link! server)
+           [:ok pid] (gs/cast pid :msg))
+    (is (await-completion done 100)
+        ":timeout message must be sent to gen-server")))
+
+(def-proc-test ^:parallel handle-cast.timeout-returned.100
+  (let [done (async/chan)
+        server {:init (fn [] [:ok nil])
+                :handle-cast (fn [msg state]
+                               [:noreply state 100])
+                :handle-info (fn [msg state]
+                               (match msg
+                                      :timeout
+                                      (async/close! done)))}]
+    (match (gs/start-link! server)
+           [:ok pid] (gs/cast pid :msg))
+    (is (thrown? Exception (await-completion done 50))
+        ":timeout message must not be sent to gen-server before timeout")
+    (is (await-completion done 150)
+        ":timeout message must be sent to gen-server after timeout")))
+
 ;; ====================================================================
 ;; (handle-info [message state])
 
@@ -1809,3 +1893,31 @@
               [:ok [:reason [:undef ['handle-info [1 :state]]]]] :ok)
             (str "gen-server must exit with reason containing arguments"
                  " passed to handle-info"))))))
+
+(def-proc-test ^:parallel handle-info.timeout-returned.0
+  (let [done (async/chan)
+        server {:init (fn [] [:ok :init])
+                :handle-info (fn [msg state]
+                               (match [msg state]
+                                 [:msg :init] [:noreply :timeout 0]
+                                 [:timeout :timeout] (async/close! done)))}]
+    (match (gs/start-link! server)
+           [:ok pid] (! pid :msg))
+    (is (await-completion done 100)
+        ":timeout message must be sent to gen-server")))
+
+(def-proc-test ^:parallel handle-info.timeout-returned.100
+  (let [done (async/chan)
+        server {:init (fn [] [:ok :init])
+                :handle-cast (fn [msg state]
+                               [:noreply state 100])
+                :handle-info (fn [msg state]
+                               (match [msg state]
+                                 [:msg :init] [:noreply :timeout 100]
+                                 [:timeout :timeout] (async/close! done)))}]
+    (match (gs/start-link! server)
+           [:ok pid] (! pid :msg))
+    (is (thrown? Exception (await-completion done 50))
+        ":timeout message must not be sent to gen-server before timeout")
+    (is (await-completion done 150)
+        ":timeout message must be sent to gen-server after timeout")))
