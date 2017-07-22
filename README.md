@@ -82,10 +82,6 @@ _Leiningen_ dependency information:
 
 # Known issues
 
-* As long as java uses "real" threads and some internals still block
-(e.g. `gen-server/call`, termination of `gen-server` and `trace/send-trace`)
-you can run out of threads and hang forever using a lot of such operations
-simultaneously
 * A chain of N processes, when each next process is created by the previous
 one, holds amount of memory proportional to N until the **last** process' exit
 * Timers can fire with significant delay (up to 20 ms) for the first time
@@ -93,8 +89,6 @@ after appilcation start
 
 # Plans
 
-* Return timeouts from `gen-server` callbacks
-* Replace/complement all internal blocking with parking
 * ClojureScript compatibility
 * `application` behaviour and related features as configuration
 * "Simple" supervisor (analogous to `simple_one_for_one` in Erlang) as
