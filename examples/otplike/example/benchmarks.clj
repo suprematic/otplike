@@ -106,5 +106,9 @@
 
 #_(time (start-process-tree 18))
 
+#_(let [tref (otplike.trace/event some? #(str %))]
+    (time (start-process-tree 18))
+    (otplike.trace/untrace tref))
+
 (defn -main [& args]
   (time (start-process-tree 18)))

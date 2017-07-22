@@ -1,57 +1,48 @@
 (ns otplike.trace
   "Examples:
   1. Print all events about processes exited abnormally:
-  (console-trace (filter (filter-event crashed?)))
+    (console-trace [(filter (filter-event crashed?))])
+    or just:
+    (console-trace [filter-crashed])
 
   See console-trace code for trace function usage example."
   (:require
-    [clojure.core.match :refer [match]]
-    [clojure.core.async :as async :refer [<!! <! >! >!! go go-loop]]))
+    [clojure.core.match :refer [match]]))
 
-(def ^:private *trace-chan
-  (async/chan 1024))
+(def *handlers (atom {}))
 
-(def ^:private *trace-mult
-  (async/mult *trace-chan))
+(def *t-ref (atom 0))
 
-(defn trace
-  ([xform]
-   (trace (async/buffer 1024) xform))
-  ([buf-or-n xform]
-   (let [chan (async/chan buf-or-n xform)]
-      (async/tap *trace-mult chan)
-      chan)))
+;; ====================================================================
+;; API
 
-(defn console-trace [& params]
-  (let [ch (apply trace params)]
-    (go
-      (loop []
-        (when-let [[pid event] (<! ch)]
-          (printf "pid:%s %s%n" pid (clojure.pprint/write event :stream nil))
-          (recur))))
-    ch))
+(defn pid=? [pid {pid1 :pid}]
+  (= pid pid1))
 
-(defn untrace [chan]
-  (async/untap *trace-mult chan))
+(defn reg-name=? [reg-name {reg-name1 :reg-name}]
+  (= reg-name reg-name1))
 
-(defn send-trace [pid event]
-  (>!! *trace-chan [pid event]))
+(defn kind=? [kind {kind1 :kind}]
+  (= kind kind1))
 
-(defn filter-pid [pid]
-  (fn [[[pid1 _] _]]
-    (= pid pid1)))
+(defn crashed? [{:keys [kind extra]}]
+  (and (= kind :terminate)
+       (not (#{:normal :shutdown} (:reason extra)))))
 
-(defn filter-name [pname]
-  (fn [[[_ pname1] _]]
-    (and pname1 (= pname pname1))))
+(defn event [pred handler]
+  (let [t-ref (swap! *t-ref inc)
+        handler #(if (pred %) (handler %))]
+    (swap! *handlers assoc t-ref handler)
+    t-ref))
 
-(defn filter-event [efn]
-  (fn [[_ event]]
-    (efn event)))
+(defn pid [pid handler]
+  (event (partial pid=? pid) handler))
 
-(defn crashed? [event]
-  (match event
-    [:terminate reason]
-    (not (#{:normal :shutdown} reason))
-    _
-    false))
+(defn re-name [reg-name handler]
+  (event (partial reg-name=? reg-name) handler))
+
+(defn kind [kind handler]
+  (event (partial kind=? kind) handler))
+
+(defn untrace [t-ref]
+  (swap! *handlers dissoc t-ref))

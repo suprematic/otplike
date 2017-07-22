@@ -6,7 +6,6 @@
             [clojure.core.async.impl.protocols :as ap]
             [clojure.pprint :as pprint]
             [otplike.spec-util :as spec-util]
-            [otplike.trace :as trace]
             [otplike.process :as process :refer [!]]
             [otplike.gen-server :as gen-server]
             [otplike.util :as util]))
@@ -101,7 +100,7 @@
 ;; Internal
 
 (defn- report-error [message]
-  (trace/send-trace [(process/self) nil] [::log-error message]))
+  (process/trace ::log-error {:data message}))
 
 (spec/fdef spec-problem
            :args (spec/cat :problem ::spec-problem)

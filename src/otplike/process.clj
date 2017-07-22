@@ -36,7 +36,7 @@
             [clojure.core.async.impl.protocols :as ap]
             [clojure.core.match :refer [match]]
             [clojure.spec :as spec]
-            [otplike.trace]
+            [otplike.trace :as trace]
             [otplike.util :as u]))
 
 (declare pid->str pid? self whereis monitor-ref? ! ex->reason exit)
@@ -89,8 +89,15 @@
 
 (defn- ->nil [x])
 
-(defn- trace [pid message]
-  (otplike.trace/send-trace [pid (@*registered-reverse pid)] message))
+(defn trace [kind extra]
+  (doseq [handler (vals @trace/*handlers)]
+    (try
+      (let [pid (self)]
+        (handler {:pid pid
+                  :reg-name (@*registered-reverse pid)
+                  :kind kind
+                  :extra extra}))
+      (catch Throwable _))))
 
 (defrecord MonitorRef [id self-pid other-pid])
 
@@ -153,7 +160,7 @@
       (let [[value _] (async/alts! [stop inbox] :priority true)]
         (if (some? value)
           (do
-            (trace pid [:deliver value])
+            (trace :receive {:message value})
             (>! outbox value)
             (recur))
           (async/close! outbox))))
@@ -218,7 +225,6 @@
    :post []}
   (let [trap-exit (:trap-exit (.getFlags process))
         pid (.pid process)]
-    (trace pid [:control message])
     (match message
       [:stop reason]
       [::break reason]
@@ -323,7 +329,6 @@
         kill (.kill process)
         control (.control process)]
     (sync-register process register link)
-    (trace pid [:start (str proc-func) args options])
     ; FIXME bindings from folded binding blocks are stacked, so no values
     ; bound between bottom and top folded binding blocks are garbage
     ; collected; see "ring" benchmark example
@@ -331,6 +336,7 @@
     ; (start-process...)
     (binding [*self* pid
               *inbox* outbox]
+      (trace :spawn {:fn (str proc-func) :args args :options options})
       (go
         (start-process pid proc-func args)
         (loop []
@@ -339,16 +345,14 @@
                           (dispatch-control process val)
 
                           [val kill]
-                          (do
-                            (trace pid [:kill (or val :nil)])
-                            [::break (if (some? val) val :nil)]))]
+                          [::break (if (some? val) val :nil)])]
             (match proceed
               ::continue
               (recur)
 
               [::break reason]
               (do
-                (trace pid [:terminate reason])
+                (trace :terminate {:reason reason})
                 (sync-unregister pid)
                 (async/close! control)
                 (close! outbox)
@@ -474,6 +478,7 @@
   Throws if any of arguments is nil."
   [dest message]
   {:post [(or (true? %) (false? %))]}
+  (trace :send {:destination dest :message message})
   (u/check-args [(some? dest)
                  (some? message)])
   (if-let [^TProcess process (find-process dest)]

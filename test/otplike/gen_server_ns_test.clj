@@ -30,8 +30,8 @@
 (defn handle-info [message state]
   [:noreply state])
 
-;(def-proc-test gen-server-ns
-(otplike.proc-util/execute-proc!!
+(def-proc-test gen-server-ns
+;(otplike.proc-util/execute-proc!!
   (let [done (async/chan)]
     (match (gs/start-ns! [[0 done]])
       [:ok pid]
