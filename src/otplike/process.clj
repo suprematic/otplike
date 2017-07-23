@@ -779,5 +779,5 @@
   [x]
   `(let [res# ~x]
      (cond
-       (process/async? res#) (process/await! res#)
+       (async? res#) (await! res#)
        :else res#)))
