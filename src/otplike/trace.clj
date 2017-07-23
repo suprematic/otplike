@@ -38,7 +38,7 @@
 (defn pid [pid handler]
   (event (partial pid=? pid) handler))
 
-(defn re-name [reg-name handler]
+(defn reg-name [reg-name handler]
   (event (partial reg-name=? reg-name) handler))
 
 (defn kind [kind handler]
