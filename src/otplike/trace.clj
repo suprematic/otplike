@@ -9,21 +9,26 @@
   (:require
     [clojure.core.match :refer [match]]))
 
-(def *handlers (atom {}))
+;; ====================================================================
+;; Internal
 
-(def *t-ref (atom 0))
+(def ^:no-doc *handlers
+  (atom {}))
+
+(def ^:private *t-ref
+  (atom 0))
+
+(defn- pid=? [pid {pid1 :pid}]
+  (= pid pid1))
+
+(defn- reg-name=? [reg-name {reg-name1 :reg-name}]
+  (= reg-name reg-name1))
+
+(defn- kind=? [kind {kind1 :kind}]
+  (= kind kind1))
 
 ;; ====================================================================
 ;; API
-
-(defn pid=? [pid {pid1 :pid}]
-  (= pid pid1))
-
-(defn reg-name=? [reg-name {reg-name1 :reg-name}]
-  (= reg-name reg-name1))
-
-(defn kind=? [kind {kind1 :kind}]
-  (= kind kind1))
 
 (defn crashed? [{:keys [kind extra]}]
   (and (= kind :terminate)

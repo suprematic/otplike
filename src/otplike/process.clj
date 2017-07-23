@@ -45,16 +45,15 @@
   Object
   (toString [self]
     (pid->str self)))
-
 (alter-meta! #'->Pid assoc :no-doc true)
 (alter-meta! #'map->Pid assoc :no-doc true)
-
-(def global-lock)
 
 (defn- pid?* [pid]
   (instance? Pid pid))
 
 (defrecord Async [result])
+(alter-meta! #'->Async assoc :no-doc true)
+(alter-meta! #'map->Async assoc :no-doc true)
 
 ;; ====================================================================
 ;; Specs
@@ -65,6 +64,8 @@
 
 ;; ====================================================================
 ;; Internal
+
+(def ^:private *global-lock)
 
 (def ^:private *pids
   (atom 0))
@@ -240,7 +241,7 @@
 
       [:linked-exit (xpid :guard pid?) reason]
       (do
-        (if (locking global-lock
+        (if (locking *global-lock
               (and (.getLinked process) (.updateLinked process #(disj % xpid))))
           (if trap-exit
             (do
@@ -283,7 +284,7 @@
   {:pre [(instance? TProcess process)]
    :post []}
   (let [pid (.pid process)]
-    (locking global-lock
+    (locking *global-lock
       (when link?
         (let [^TProcess other-process (self-process)
               other-pid (.pid other-process)]
@@ -300,7 +301,7 @@
 (defn- sync-unregister [pid]
   {:pre [(pid? pid)]
    :post []}
-  (locking global-lock
+  (locking *global-lock
     (swap! *processes dissoc pid)
     (when-let [register (@*registered-reverse pid)]
       (swap! *registered dissoc register)
@@ -357,7 +358,7 @@
                 (async/close! control)
                 (close! outbox)
                 (let [[linked monitors]
-                      (locking global-lock
+                      (locking *global-lock
                         (let [linked-val (.getLinked process)
                               mrefs (.getMonitors process)]
                           (.setLinked process nil)
@@ -538,7 +539,7 @@
   (u/check-args [(keyword? flag)])
   (if-let [^TProcess process (self-process)]
     (match flag
-      :trap-exit (locking global-lock
+      :trap-exit (locking *global-lock
                    (let [old-value (flag (.getFlags process))]
                      (.updateFlags process #(assoc % flag (boolean value)))
                      (boolean old-value))))
@@ -570,7 +571,7 @@
       true
       (if-let [^TProcess other-process (@*processes pid)]
         (try
-          (locking global-lock
+          (locking *global-lock
             (or (.updateLinked my-process #(if % (conj % pid)))
                 (throw (ex-info "" {:proc :self})))
             (or (.updateLinked other-process #(if % (conj % my-pid)))
@@ -607,7 +608,7 @@
         my-pid (.pid my-process)]
     (if (not= pid my-pid)
       (if-let [^TProcess other-process (@*processes pid)]
-        (locking global-lock
+        (locking *global-lock
           (.updateLinked my-process #(disj % pid))
           (.updateLinked other-process #(disj % my-pid)))))
     true))
@@ -663,7 +664,7 @@
         (if (= my-pid other-pid)
           (new-monitor-ref)
           (let [mref (new-monitor-ref other-pid)]
-            (if (locking global-lock
+            (if (locking *global-lock
                   (.updateMonitors other-process
                                    #(if % (assoc % mref [my-pid pid-or-name]))))
               mref
@@ -696,7 +697,7 @@
   (u/check-args [(monitor-ref? mref)])
   (if (and (= self-pid (self)) other-pid)
     (if-let [^TProcess other-process (@*processes other-pid)]
-      (locking global-lock (.updateMonitors other-process #(dissoc % mref)))))
+      (locking *global-lock (.updateMonitors other-process #(dissoc % mref)))))
   true)
 
 (defn spawn-opt
