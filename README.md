@@ -127,7 +127,7 @@ the same as Clojure. License file is available under the project root.
 [5]: https://img.shields.io/clojars/v/otplike.svg
 [6]: https://clojars.org/otplike
 [7]: https://clojars.org/otplike
-[8]: https://suprematic.github.io/otplike/index.html
+[8]: https://suprematic.github.io/otplike/api/index.html
 [9]: https://github.com/suprematic/otplike/tree/master/examples/otplike/example
 [10]: http://suprematic.net/
 [11]: https://github.com/suprematic/otplike/releases/tag/0.2.0
