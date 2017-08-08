@@ -80,6 +80,9 @@ _Leiningen_ dependency information:
 * [API docs][8]
 * [Examples][9]
 
+# Other materials
+* [EuroClojure 2017 presentation][12]
+
 # Known issues
 
 * As long as java uses "real" threads and some internals still block
@@ -131,3 +134,4 @@ the same as Clojure. License file is available under the project root.
 [9]: https://github.com/suprematic/otplike/tree/master/examples/otplike/example
 [10]: http://suprematic.net/
 [11]: https://github.com/suprematic/otplike/releases/tag/0.2.0
+[12]: https://suprematic.github.io/otplike/euroclojure2017/
