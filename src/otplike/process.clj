@@ -467,7 +467,7 @@
   which unconditionally exits with reason :killed.
   Returns true if exit signal was sent (process was alive), false
   otherwise.
-  Throws when callen not in process context, if pid is not a pid, or
+  Throws when caller not in process context, if pid is not a pid, or
   reason is nil."
   ([reason] ;FIXME docs
    (throw (ex-info "exit" {::exit-reason reason})))
