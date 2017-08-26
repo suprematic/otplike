@@ -100,7 +100,8 @@
 ;; Internal
 
 (defn- report-error [message]
-  (process/trace ::log-error {:data message}))
+  ; TODO
+  )
 
 (spec/fdef spec-problem
            :args (spec/cat :problem ::spec-problem)
