@@ -36,7 +36,6 @@
             [clojure.core.async.impl.protocols :as ap]
             [clojure.core.match :refer [match]]
             [clojure.spec :as spec]
-            [otplike.trace :as trace]
             [otplike.util :as u]))
 
 (declare pid->str pid? self whereis monitor-ref? ! ex->reason exit)
@@ -73,6 +72,9 @@
 (def ^:private *refids
   (atom 0))
 
+(def ^:private *trace-handlers
+  (atom {}))
+
 (def ^:private *processes
   (atom {}))
 
@@ -90,8 +92,8 @@
 
 (defn- ->nil [x])
 
-(defn trace [kind extra]
-  (doseq [handler (vals @trace/*handlers)]
+(defn- send-trace-event [kind extra]
+  (doseq [handler (vals @*trace-handlers)]
     (try
       (let [pid (self)]
         (handler {:pid pid
@@ -161,7 +163,7 @@
       (let [[value _] (async/alts! [stop inbox] :priority true)]
         (if (some? value)
           (do
-            (trace :receive {:message value})
+            (send-trace-event :receive {:message value})
             (>! outbox value)
             (recur))
           (async/close! outbox))))
@@ -337,7 +339,8 @@
     ; (start-process...)
     (binding [*self* pid
               *inbox* outbox]
-      (trace :spawn {:fn (str proc-func) :args args :options options})
+      (send-trace-event
+        :spawn {:fn (str proc-func) :args args :options options})
       (go
         (start-process pid proc-func args)
         (loop []
@@ -353,7 +356,7 @@
 
               [::break reason]
               (do
-                (trace :terminate {:reason reason})
+                (send-trace-event :terminate {:reason reason})
                 (sync-unregister pid)
                 (async/close! control)
                 (close! outbox)
@@ -479,7 +482,7 @@
   Throws if any of arguments is nil."
   [dest message]
   {:post [(or (true? %) (false? %))]}
-  (trace :send {:destination dest :message message})
+  (send-trace-event :send {:destination dest :message message})
   (u/check-args [(some? dest)
                  (some? message)])
   (if-let [^TProcess process (find-process dest)]
@@ -781,3 +784,12 @@
      (cond
        (async? res#) (await! res#)
        :else res#)))
+
+(defn trace [pred handler]
+  (let [t-ref (swap! *refids inc)
+        handler #(if (pred %) (handler %))]
+    (swap! *trace-handlers assoc t-ref handler)
+    t-ref))
+
+(defn untrace [t-ref]
+  (swap! *trace-handlers dissoc t-ref))
