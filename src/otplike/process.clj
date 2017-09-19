@@ -264,6 +264,8 @@
       (alter *registered dissoc register)
       (alter *registered-reverse dissoc pid))))
 
+(def ^:dynamic *message-context*)
+
 (defn- spawn*
   [proc-func
    args
@@ -298,7 +300,9 @@
     ; FIXME workaround for ASYNC-170. once fixed, binding should move to
     ; (start-process...)
     (binding [*self* pid
-              *inbox* outbox]
+              *inbox* outbox
+              *message-context*
+              (atom (if (bound? #'*message-context*) @*message-context* {}))]
       (go
         (start-process pid proc-func args)
         (loop []
@@ -333,10 +337,23 @@
                     (! pid (monitor-message mref object reason))))))))))
     pid))
 
+(defn update-message-context! [context]
+  (swap! *message-context* merge context))
+
+(defmacro with-message-context [context & body]
+  `(binding [*message-context* (atom ~context)]
+     ~@body))
+
+(defn message-context []
+  (if-let [mc *message-context*]
+    @mc))
+
 (defmacro receive* [park? clauses]
   (if (even? (count clauses))
-    `(if-let [msg# (~(if park? `<! `<!!) *inbox*)]
-       (match msg# ~@clauses)
+    `(if-let [[context# msg#] (~(if park? `<! `<!!) *inbox*)]
+       (do
+         (update-message-context! context#)
+         (match msg# ~@clauses))
        (throw (Exception. "noproc")))
     (match (last clauses)
       (['after timeout & body] :seq)
@@ -347,7 +364,10 @@
              (match (~(if park? `async/alts! `async/alts!!) [inbox# timeout#])
                     [nil timeout#] (do ~@body)
                     [nil inbox#] (throw (Exception. "noproc"))
-                    [msg# inbox#] (match msg# ~@(butlast clauses))))
+                    [[context# msg#] inbox#]
+                    (do
+                      (update-message-context! context#)
+                      (match msg# ~@(butlast clauses)))))
            (throw (Exception. "noproc")))))))
 
 (alter-meta! #'receive* assoc :no-doc true)
@@ -367,6 +387,18 @@
            :normal
            (catch Throwable t#
              (ex->reason t#)))))))
+
+(defn !*
+  [dest message]
+  {:post [(or (true? %) (false? %))]}
+  (u/check-args [(some? dest)
+                 (some? message)])
+  (match (find-process dest)
+    {:inbox inbox :kill kill} (or (async/offer! inbox message)
+                                  (do
+                                    (async/put! kill :inbox-overflow)
+                                    false))
+    nil false))
 
 ;; ====================================================================
 ;; API
@@ -441,15 +473,7 @@
   Returns true if message was sent (process was alive), false otherwise.
   Throws if any of arguments is nil."
   [dest message]
-  {:post [(or (true? %) (false? %))]}
-  (u/check-args [(some? dest)
-                 (some? message)])
-  (match (find-process dest)
-    {:inbox inbox :kill kill} (or (async/offer! inbox message)
-                                  (do
-                                    (async/put! kill :inbox-overflow)
-                                    false))
-    nil false))
+  (!* dest [(if (bound? #'*message-context*) @*message-context* {}) message]))
 
 (defn exit
   "Sends an exit signal with exit reason to the process identified
@@ -672,8 +696,7 @@
   :flags - a map of process' flags (e.g. {:trap-exit true})
   :link - if true, sets a link to the parent process
   :register - name to register the process, can not be pid, if name is
-    nil process will not be registered
-  :inbox - the channel to be used as a process' inbox"
+    nil process will not be registered"
   ([proc-func opts]
    (spawn-opt proc-func [] opts))
   ([proc-func args opts]

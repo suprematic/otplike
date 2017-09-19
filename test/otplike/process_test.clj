@@ -1254,18 +1254,6 @@
     (process/exit pid :abnormal)
     (await-completion done 50)))
 
-(deftest ^:parallel inbox-provided-to-spawn-is-spawned-process-inbox
-  (let [done (async/chan)
-        inbox (async/chan)
-        msg (uuid-keyword)
-        pfn (proc-fn []
-              (is (= [:message msg]
-                     (<! (await-message 50))))
-              (async/close! done))]
-    (process/spawn-opt pfn [] {:inbox inbox})
-    (>!! inbox msg)
-    (await-completion done 50)))
-
 (deftest ^:parallel spawn-opt:spawned-process-receives-parent-exit-reason
   (let [done (async/chan)
         pfn1 (proc-fn []
