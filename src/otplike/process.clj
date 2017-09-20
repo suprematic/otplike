@@ -264,7 +264,7 @@
       (alter *registered dissoc register)
       (alter *registered-reverse dissoc pid))))
 
-(def ^:dynamic *message-context*)
+(def ^:dynamic *message-context* (atom {}))
 
 (defn- spawn*
   [proc-func
@@ -301,8 +301,7 @@
     ; (start-process...)
     (binding [*self* pid
               *inbox* outbox
-              *message-context*
-              (atom (if (bound? #'*message-context*) @*message-context* {}))]
+              *message-context* (atom @*message-context*)]
       (go
         (start-process pid proc-func args)
         (loop []
@@ -345,8 +344,7 @@
      ~@body))
 
 (defn message-context []
-  (if-let [mc *message-context*]
-    @mc))
+  @*message-context*)
 
 (defmacro receive* [park? clauses]
   (if (even? (count clauses))
