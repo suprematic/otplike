@@ -6,3 +6,4 @@ target/
 .*.swp
 .*.swo
 pom.xml
+profiles.clj
