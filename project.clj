@@ -17,10 +17,12 @@
 
   :profiles {:parallel-test
              {:dependencies [[org.clojure/core.async ~core-async-version]
-                             [org.clojure/math.combinatorics "0.1.4"]]}
+                             [org.clojure/math.combinatorics "0.1.4"]]
+              :aot :all}
 
              :test
-             {:dependencies [[org.clojure/math.combinatorics "0.1.4"]]}
+             {:dependencies [[org.clojure/math.combinatorics "0.1.4"]]
+              :aot :all}
 
              ;:uberjar {:aot :all}
 
