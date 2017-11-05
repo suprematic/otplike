@@ -50,7 +50,7 @@
 (defn- pid?* [pid]
   (instance? Pid pid))
 
-(defrecord Async [result])
+(defrecord Async [chan])
 (alter-meta! #'->Async assoc :no-doc true)
 (alter-meta! #'map->Async assoc :no-doc true)
 
@@ -59,7 +59,7 @@
 
 (spec/def ::pid pid?*)
 
-(spec/def ::async u/channel?)
+(spec/def ::async #(instance? Async %))
 
 ;; ====================================================================
 ;; Internal
@@ -764,17 +764,17 @@
 (defmacro async
   ""
   [& body]
-  `(go (ex-catch (->Async (do ~@body)))))
+  `(->Async (go (ex-catch [:ok (do ~@body)] ))))
 
 (defmacro await!
   ""
-  [async-expr]
-  `(match (<! (do ~async-expr))
-     (async# :guard #(instance? Async %)) (:result async#)
+  [^Async x]
+  `(match (<! (:chan ~x))
+     [:ok result#] result#
      [:EXIT reason#] (exit reason#)))
 
 (defn async? [x]
-  (u/channel? x))
+  (instance? Async x))
 
 (defmacro async?-value!
   "If x is a result of async operation, returns its value (waiting if

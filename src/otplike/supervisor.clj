@@ -599,7 +599,7 @@
   :args (spec/cat :sup-fn fn?
                   :args (spec/nilable (spec/coll-of any?))
                   :spawn-opts map?)
-  :ret #(satisfies? ap/ReadPort %))
+  :ret ::process/async)
 (defn start-link* [sup-fn args spawn-opts]
   (process/async
     (gen-server/start-link-ns!
