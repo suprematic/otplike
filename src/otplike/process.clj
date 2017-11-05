@@ -383,12 +383,23 @@
       (['after timeout & body] :seq)
       (let [clauses1 (butlast clauses)]
         `(if *inbox*
-           (let [inbox# *inbox*
-                 timeout# (u/timeout-chan ~timeout)]
-             (match (~(if park? `async/alts! `async/alts!!) [inbox# timeout#])
-                    [nil timeout#] (do ~@body)
-                    [nil inbox#] (throw (Exception. "noproc"))
-                    [msg# inbox#] (match msg# ~@(butlast clauses))))
+           (let [inbox# *inbox*]
+             (case ~timeout
+               0
+               (let [msg# (async/poll! inbox#)]
+                 (if (nil? msg#)
+                   (do ~@body)
+                   (match msg# ~@(butlast clauses))))
+
+               :infinity
+               (receive* ~park? ~(butlast clauses))
+
+               (let [timeout# (u/timeout-chan ~timeout)]
+                 (match
+                   (~(if park? `async/alts! `async/alts!!) [inbox# timeout#])
+                   [nil timeout#] (do ~@body)
+                   [nil inbox#] (throw (Exception. "noproc"))
+                   [msg# inbox#] (match msg# ~@(butlast clauses))))))
            (throw (Exception. "noproc")))))))
 
 (alter-meta! #'receive* assoc :no-doc true)

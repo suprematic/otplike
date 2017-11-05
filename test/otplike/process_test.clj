@@ -1915,5 +1915,45 @@
         #"requires one or more message patterns"
         (eval `(process/receive! (after 10 :ok))))))
 
+(deftest ^:parallel receive-accepts-infinity-timeout
+  (let [done (async/chan)
+        pfn (proc-fn []
+              (process/receive!
+                :done (async/close! done)
+                (after :infinity
+                  (is false
+                      (str "expression for infinite timeout must never"
+                           " be executed")))))
+        pid (process/spawn pfn)]
+    (<!! (async/timeout 100))
+    (! pid :done)
+    (await-completion done 100)))
+
+(deftest ^:parallel receive-accepts-0-timeout
+  (let [done (async/chan)
+        pfn (proc-fn []
+              (process/receive!
+                _ (is false
+                      (str "expression for message must not be executed"
+                           " when there is no message in inbox"))
+                (after 0
+                  (async/close! done))))
+        pid (process/spawn pfn)]
+    (await-completion done 50))
+  (let [done1 (async/chan)
+        done2 (async/chan)
+        pfn (proc-fn []
+              (await-completion done1 50)
+              (process/receive!
+                :done (async/close! done2)
+                (after 0
+                  (is false
+                      (str "expression for 0 timeout must not be executed"
+                           " when there is a message in inbox")))))
+        pid (process/spawn pfn)]
+    (! pid :done)
+    (async/close! done1)
+    (await-completion done2 50)))
+
 ;; ====================================================================
 ;; Other
