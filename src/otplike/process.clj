@@ -374,6 +374,7 @@
     pid))
 
 (defmacro receive* [park? clauses]
+  (assert (> (count clauses) 1) "Receive requires one or more message patterns")
   (if (even? (count clauses))
     `(if-let [msg# (~(if park? `<! `<!!) *inbox*)]
        (match msg# ~@clauses)

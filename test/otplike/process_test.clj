@@ -1905,5 +1905,15 @@
         pid (process/spawn pfn)]
     (await-completion done 150)))
 
+(deftest ^:parallel receive-requires-one-or-more-message-patterns
+  (is (thrown-with-msg?
+        AssertionError
+        #"requires one or more message patterns"
+        (eval `(process/receive!))))
+  (is (thrown-with-msg?
+        AssertionError
+        #"requires one or more message patterns"
+        (eval `(process/receive! (after 10 :ok))))))
+
 ;; ====================================================================
 ;; Other
