@@ -34,8 +34,8 @@
 
 ; TODO try different child spec
 ; TODO try different supervisor flags
-(otplike.proc-util/execute-proc!!
-;(def-proc-test ^:parallel start-link:single-child
+;(otplike.proc-util/execute-proc!!
+(def-proc-test ^:parallel start-link:single-child
   (let [sup-init-done (async/chan)
         server-init-done (async/chan)
         sup-flags {}
