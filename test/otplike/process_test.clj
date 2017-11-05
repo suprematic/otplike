@@ -1943,7 +1943,7 @@
   (let [done1 (async/chan)
         done2 (async/chan)
         pfn (proc-fn []
-              (await-completion done1 50)
+              (await-completion done1 150)
               (process/receive!
                 :done (async/close! done2)
                 (after 0
@@ -1952,6 +1952,7 @@
                            " when there is a message in inbox")))))
         pid (process/spawn pfn)]
     (! pid :done)
+    (<!! (async/timeout 50))
     (async/close! done1)
     (await-completion done2 50)))
 
