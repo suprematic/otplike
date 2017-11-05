@@ -128,6 +128,7 @@
     (match (sup/start-link! init-fn)
            [:error [:bad-return _]]
            (do
+             (<! (async/timeout 50))
              (is (thrown? Exception (process/self))
                  "process must exit after suprevisor/init error")
              (is (await-completion sup-init-done 50)
