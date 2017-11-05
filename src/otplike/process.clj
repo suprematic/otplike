@@ -38,7 +38,7 @@
             [clojure.spec :as spec]
             [otplike.util :as u]))
 
-(declare pid->str pid? self whereis monitor-ref? ! ex->reason exit)
+(declare pid->str pid? self whereis monitor-ref? ! ex->reason exit async?)
 
 (defrecord Pid [id pname]
   Object
@@ -420,6 +420,15 @@
            (catch Throwable t#
              (ex->reason t#)))))))
 
+(defmacro ^:no-doc await* [park? x]
+  (let [take (if park? `<! `<!!)]
+    `(let [a# ~x]
+       (when-not (async? a#)
+         (throw (IllegalArgumentException. "argument must be 'async' value")))
+       (match (~take (:chan a#))
+         [:ok result#] result#
+         [:EXIT reason#] (exit reason#)))))
+
 ;; ====================================================================
 ;; API
 
@@ -780,10 +789,13 @@
 
 (defmacro await!
   ""
-  [^Async x]
-  `(match (<! (:chan ~x))
-     [:ok result#] result#
-     [:EXIT reason#] (exit reason#)))
+  [x]
+  `(await* true ~x))
+
+(defn await!!
+  "The same as await! but uses blocking instead of parking."
+  [x]
+  (await* false x))
 
 (defn async? [x]
   (instance? Async x))
