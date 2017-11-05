@@ -917,7 +917,7 @@
     (<!! (async/timeout 1000)))
 
 
-#_(let [trace-ch (trace/console-trace [trace/filter-crashed])]
+#_(let [t-ref (trace/crashed println)]
     (otplike.proc-util/execute-proc!!
       (let [buggy-child-name :1
             sup-flags {:period 200 ;:strategy :one-for-one
@@ -980,4 +980,4 @@
             (printf "call 2 done %s%n" (rem (System/currentTimeMillis) 10000))
             (<! (async/timeout 500))))))
     (<!! (async/timeout 1000))
-    (async/close! trace-ch))
+    (process/untrace t-ref))
