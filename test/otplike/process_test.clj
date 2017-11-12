@@ -230,6 +230,15 @@
   (is (thrown? Exception (eval `(process/proc-defn f 1 3)))))
 
 ;; ====================================================================
+;; (proc-defn- [fname args & body])
+
+(deftest ^:parallel proc-defn-:defines-private-var
+  (let [sym (gensym)]
+    (eval `(process/proc-defn- ~sym [] :ok))
+    (is (:private (meta (resolve sym)))
+        "proc-defn- must define a private var")))
+
+;; ====================================================================
 ;; (exit [reason])
 
 ; TODO

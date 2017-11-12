@@ -779,6 +779,11 @@
   [fname args & body]
   `(def ~fname (proc-fn* ~fname ~args ~@body)))
 
+(defmacro proc-defn-
+  "The same as proc-defn, but defines a private var."
+  [fname args & body]
+  `(proc-defn ~(vary-meta fname assoc :private true) ~args ~@body))
+
 (defmacro async
   ""
   [& body]
