@@ -229,6 +229,22 @@
   (is (thrown? Exception (eval `(process/proc-defn {} [] 3))))
   (is (thrown? Exception (eval `(process/proc-defn f 1 3)))))
 
+(deftest ^:parallel proc-defn:adds-docs-and-arglists
+  (let [sym (gensym)
+        docs (str "my doc-string for " sym)]
+    (eval `(process/proc-defn ~sym ~docs [] :ok))
+    (is (= docs (:doc (meta (resolve sym))))
+        "defined var must have doc-string meta"))
+  (let [sym (gensym)]
+    (eval `(process/proc-defn ~sym [~(symbol "a") ~(symbol "b")] :ok))
+    (is (= [['a 'b]] (:arglists (meta (resolve sym))))
+        "defined var must have arglists meta"))
+  (let [sym (gensym)
+        docs (str "my doc-string for " sym)]
+    (eval `(process/proc-defn ~sym ~docs [~(symbol "a") ~(symbol "b")] :ok))
+    (is (matches? (meta (resolve sym)) {:doc docs :arglists ([['a 'b]] :seq)})
+        "defined var must have doc-string and arglists meta")))
+
 ;; ====================================================================
 ;; (proc-defn- [fname args & body])
 

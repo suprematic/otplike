@@ -776,8 +776,15 @@
 
 (defmacro proc-defn
   "The same as (def fname (proc-fn args body))."
-  [fname args & body]
-  `(def ~fname (proc-fn* ~fname ~args ~@body)))
+  {:arglists '([fname doc-string? args & body])}
+  [fname docs-or-args & more]
+  (let [[doc-string args body] (if (string? docs-or-args)
+                                 [docs-or-args (first more) (rest more)]
+                                 [nil docs-or-args more])
+        arglists (list 'quote (list args))
+        fname (vary-meta fname assoc :arglists arglists)
+        fname (if doc-string (vary-meta fname assoc :doc doc-string) fname)]
+    `(def ~fname (proc-fn* ~fname ~args ~@body))))
 
 (defmacro proc-defn-
   "The same as proc-defn, but defines a private var."
