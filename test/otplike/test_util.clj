@@ -45,3 +45,10 @@
 (defmacro def-proc-test [name & body]
   `(clojure-test/deftest ~name
      (proc-util/execute-proc!! ~@body)))
+
+(defmacro matches? [what to]
+  `(match ~what ~to true _# false))
+
+(defn sym-bound? [sym]
+  (if-let [v (resolve sym)]
+    (bound? v)))

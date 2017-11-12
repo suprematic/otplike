@@ -775,12 +775,9 @@
   `(proc-fn* nil ~args ~@body))
 
 (defmacro proc-defn
-  "The same as proc-fn but also binds created function to a var with
-  the name fname."
+  "The same as (def fname (proc-fn args body))."
   [fname args & body]
-  `(let [f# (proc-fn* ~fname ~args ~@body)]
-     (def ~fname f#)
-     f#))
+  `(def ~fname (proc-fn* ~fname ~args ~@body)))
 
 (defmacro async
   ""
