@@ -73,7 +73,7 @@ More examples are available under the /examples directory.
 
 _Leiningen_ dependency information:
 
-    [otplike "0.2.1-alpha"]
+    [otplike "0.3.0-alpha"]
 
 # Documentation
 
@@ -120,6 +120,7 @@ the same as Clojure. License file is available under the project root.
 
 ## Changelog
 
+* Release 0.3.0-alpha on 28.11.2017 [NOTES][14]
 * Release 0.2.1-alpha on 11.08.2017 [NOTES][13]
 * Release 0.2.0-alpha on 17.05.2017 [NOTES][11]
 * Release 0.1.0-SNAPSHOT on 15.08.2016
@@ -137,3 +138,4 @@ the same as Clojure. License file is available under the project root.
 [11]: https://github.com/suprematic/otplike/releases/tag/0.2.0
 [12]: https://suprematic.github.io/otplike/euroclojure2017/
 [13]: https://github.com/suprematic/otplike/releases/tag/0.2.1
+[14]: https://github.com/suprematic/otplike/releases/tag/0.3.0
