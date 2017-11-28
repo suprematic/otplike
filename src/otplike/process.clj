@@ -471,6 +471,7 @@
   Returns true if message was sent (process was alive), false otherwise.
   Throws if any of arguments is nil."
   [dest message]
+  (u/check-args [(some? message)])
   (!* dest [(if (bound? #'*message-context*) @*message-context* {}) message]))
 
 (defn exit
