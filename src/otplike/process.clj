@@ -386,7 +386,7 @@
            (catch Throwable t#
              (ex->reason t#)))))))
 
-(defn !*
+(defn- !*
   [dest message]
   {:post [(or (true? %) (false? %))]}
   (u/check-args [(some? dest)
