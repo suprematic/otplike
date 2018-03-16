@@ -1,4 +1,4 @@
-(def core-async-version "0.3.441")
+(def core-async-version "0.4.474")
 
 (defproject otplike/otplike "0.3.1-alpha-SNAPSHOT"
   :description "Erlang/OTP like processes and behaviours on top of core.async"
@@ -9,7 +9,7 @@
                  [org.clojure/core.async ~core-async-version]
                  [org.clojure/core.match "0.3.0-alpha4"]
                  [org.clojure/math.combinatorics "0.1.4"]
-                 [clojure-future-spec "1.9.0-alpha14"]]
+                 [clojure-future-spec "1.9.0-beta4"]]
 
   :source-paths  ["src"]
 

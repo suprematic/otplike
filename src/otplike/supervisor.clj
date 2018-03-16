@@ -1,6 +1,5 @@
 (ns otplike.supervisor
-  (:require [clojure.future :refer :all]
-            [clojure.spec :as spec]
+  (:require [clojure.spec.alpha :as spec]
             [clojure.core.match :refer [match]]
             [clojure.core.async :as async]
             [clojure.pprint :as pprint]
@@ -8,6 +7,10 @@
             [otplike.trace :as trace]
             [otplike.process :as process :refer [!]]
             [otplike.gen-server :as gen-server]))
+
+(when (and (= 1 (:major *clojure-version*))
+           (< (:minor *clojure-version*) 9))
+  (require '[clojure.future :refer :all]))
 
 (declare check-child-specs)
 

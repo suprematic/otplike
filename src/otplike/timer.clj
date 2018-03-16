@@ -1,12 +1,15 @@
 (ns otplike.timer
   "This namespace contains helper functions to perform process-related
   actions (like sending a message, or exit signal) with a delay."
-  (:require [clojure.future :refer :all]
-            [clojure.core.match :refer [match]]
+  (:require [clojure.core.match :refer [match]]
             [clojure.core.async :as async :refer [<! >! put! go go-loop]]
             [clojure.core.async.impl.protocols :as ap]
             [otplike.process :as process :refer [!]]
             [otplike.util :as u]))
+
+(when (and (= 1 (:major *clojure-version*))
+           (< (:minor *clojure-version*) 9))
+  (require '[clojure.future :refer :all]))
 
 (declare cancel)
 
