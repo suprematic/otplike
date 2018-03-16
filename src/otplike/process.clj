@@ -31,12 +31,15 @@
   In such cases control message queue of a process can overflow. When
   it happens, the process exits immediately with reason
   :control-overflow."
-  (:require [clojure.future :refer :all]
-            [clojure.core.async :as async :refer [<!! <! >! put! go go-loop]]
+  (:require [clojure.core.async :as async :refer [<!! <! >! put! go go-loop]]
             [clojure.core.async.impl.protocols :as ap]
             [clojure.core.match :refer [match]]
-            [clojure.spec :as spec]
+            [clojure.spec.alpha :as spec]
             [otplike.util :as u]))
+
+(when (and (= 1 (:major *clojure-version*))
+           (< (:minor *clojure-version*) 9))
+  (require '[clojure.future :refer :all]))
 
 (declare pid->str pid? self whereis monitor-ref? ! ex->reason exit async?)
 

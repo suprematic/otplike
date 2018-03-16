@@ -1,5 +1,5 @@
 (ns otplike.spec-util
-  (:require [clojure.spec :as spec]))
+  (:require [clojure.spec.alpha :as spec]))
 
 ; FIXME: workaround to ensure spec is reloaded after the namespace
 ; it is defined in has been reloaded.

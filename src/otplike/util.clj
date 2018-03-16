@@ -1,7 +1,10 @@
 (ns ^:no-doc otplike.util
-  (:require [clojure.future :refer :all]
-            [clojure.core.async.impl.protocols :as ap]
+  (:require [clojure.core.async.impl.protocols :as ap]
             [clojure.core.async :as async]))
+
+(when (and (= 1 (:major *clojure-version*))
+           (< (:minor *clojure-version*) 9))
+  (require '[clojure.future :refer :all]))
 
 (defmacro check-args [exprs]
   (assert (sequential? exprs))
