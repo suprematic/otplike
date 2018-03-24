@@ -6,7 +6,7 @@ _otplike_ is a framework built on top of [_core.async_][3]. It emulates basic
 [_Erlang/OTP_][4] concepts, such as processes, process linking, monitoring,
 standard behaviours.
 
-# Rationale
+## Rationale
 
 Although _core.async_ provides a solid foundation for asynchronous
 applications, our experience shows that there is a need in higher level
@@ -26,9 +26,10 @@ application debugging and profiling.
 It is obvious that due to JVM limitations otplike cannot replace Erlang/OTP
 and otplike will `NEVER` be seen as Erlang/OTP alternative.
 
-# Example
+## Example
 
-## Echo Server
+### Echo Server
+
 ```clojure
 (require '[otplike.process :as process :refer [!]])
 
@@ -65,7 +66,7 @@ and otplike will `NEVER` be seen as Erlang/OTP alternative.
 
 More examples are available under the /examples directory.
 
-# Releases and Dependency Information
+## Releases and Dependency Information
 
 [![Clojars Project][5]][6]
 
@@ -75,19 +76,19 @@ _Leiningen_ dependency information:
 
     [otplike "0.2.0-alpha"]
 
-# Documentation
+## Documentation
 
 * [API docs][8]
 * [Examples][9]
 
-# Known issues
+## Known issues
 
 * A chain of N processes, when each next process is created by the previous
 one, holds amount of memory proportional to N until the **last** process' exit
 * Timers can fire with significant delay (up to 20 ms) for the first time
 after appilcation start
 
-# Plans
+## Plans
 
 * ClojureScript compatibility
 * `application` behaviour and related features as configuration
@@ -96,7 +97,7 @@ a separate module
 * Tracing and introspection
 * More advanced examples/tutorial
 
-# Contributing
+## Contributing
 
 Please use the project's GitHub issues page for all questions, ideas,
 etc. Pull requests are welcome. See the project's GitHub contributors
