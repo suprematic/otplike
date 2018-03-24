@@ -74,7 +74,7 @@ More examples are available under the /examples directory.
 
 _Leiningen_ dependency information:
 
-    [otplike "0.2.0-alpha"]
+    [otplike "0.4.0-alpha"]
 
 ## Documentation
 
