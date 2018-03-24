@@ -550,8 +550,7 @@
       [[:error :restarting] state]
 
       {::pid (_ :guard process/pid?)}
-      [[:error :running] state]))
-  )
+      [[:error :running] state])))
 (spec-util/instrument `handle-restart-child)
 
 (spec/fdef handle-terminate-child
@@ -719,8 +718,7 @@
 ;; API
 
 (defn start-link
-  "Supervisor always links to calling process.
-  Thus it can not be started from nonprocess context."
+  "The same as `start-link!` but returns async value."
   ([sup-fn]
    (start-link sup-fn []))
   ([sup-fn args]
@@ -738,8 +736,38 @@
   :ret (spec/or :success (spec/tuple ::ok ::process/pid)
                 :failure (spec/tuple ::error ::reason)))
 (defmacro start-link!
-  "Supervisor always links to calling process.
-  Thus it can not be started from nonprocess context."
+  "Creates a supervisor process as part of a supervision tree.
+  For example, the function ensures that the supervisor is linked to
+  the calling process (its supervisor).
+
+  The created supervisor process calls `sup-fn` to find out about
+  restart strategy, maximum restart intensity, and child processes.
+  To ensure a synchronized startup procedure, `start_link!` does not
+  return until `sup-fn` has returned and all child processes have been
+  started.
+
+  If `sup-name` is provided, the supervisor is registered locally as
+  `sup-name`.
+
+  `args` is a vector of the arguments to `sup-fn`.
+
+  If the supervisor and its child processes are successfully created
+  (that is, if all child process start functions return
+  `[ok, child-pid]`), the function returns `[ok, pid]`, where `pid` is
+  the pid of the supervisor.
+
+  If there already exists a process with the specified `sup-name`,
+  the function retunrs `[:error reason]`.
+
+  If `sup-fn` fails or returns an incorrect value, this function returns
+  `[:error ([:bad-return-value 'init ret] :as reason)]` , where `ret`
+  is the returned value, and the supervisor terminates with the same
+  reason.
+
+  If any child process start function fails or returns an error tuple
+  or an erroneous value, the supervisor first terminates all already
+  started child processes with reason `:shutdown` and then terminate
+  itself and returns `[:error, [:shutdown reason]]`."
   ([sup-fn]
    `(start-link! ~sup-fn []))
   ([sup-fn args]
@@ -751,7 +779,10 @@
   :args (spec/cat :child-specs any?)
   :ret (spec/or :ok ::ok
                 :error (spec/tuple ::error ::reason)))
-(defn check-child-specs [spec]
+(defn check-child-specs
+  "Takes a list of child specification and returns `:ok` if all of
+  them are syntactically correct, otherwise `[error, reason]`."
+  [spec]
   (match (check-spec ::child-specs spec :bad-child-specs)
     :ok (if-let [[id _] (->> spec
                              (map :id)
@@ -768,6 +799,28 @@
                              :pid+info (spec/tuple ::ok ::process/pid any?))
                 :error (spec/tuple ::error ::reason)))
 (defmacro start-child!
+  "Dynamically adds a child specification to supervisor `sup`, which
+  starts the corresponding child process.
+
+  SupRef can be a pid or a registered name.
+
+  ChildSpec must be a valid child specification. The child process is
+  started by using the start function as defined in the child
+  specification.
+
+  If there already exists a child specification with the specified
+  identifier, `child-spec` is discarded, and the function returns
+  `[:error :already-present]` or `[:error [:already-started child]]`,
+  depending on if the corresponding child process is running or not.
+
+  If the child process start function returns `[:ok child-pid]`,
+  the child specification and pid are added to the supervisor and
+  the function returns the same value.
+
+  If the child process start function returns an error tuple or an
+  erroneous value, or if it fails, the child specification is discarded,
+  and the function returns `[:error error]`, where `error` is a form
+  containing information about the error and child specification."
   [sup child-spec]
   `(gen-server/call! ~sup [:start-child ~child-spec]))
 
@@ -777,6 +830,27 @@
                              :pid+info (spec/tuple ::ok ::process/pid any?))
                 :error (spec/tuple ::error ::reason)))
 (defmacro restart-child!
+  "Tells supervisor to restart a child process corresponding to
+  the child specification identified by `id`. The child specification
+  must exist, and the corresponding child process must not be running.
+
+  Notice that for temporary children, the child specification is
+  automatically deleted when the child terminates; thus, it is not
+  possible to restart such children.
+
+  If the child specification identified by `id` does not exist, the
+  function returns `[:error :not-found]`. If the child specification
+  exists but the corresponding process is already running, the function
+  returns `[:error :running]`.
+
+  If the child process start function returns `[:ok pid]`,
+  the `pid` is added to the supervisor and the function returns
+  the same value.
+
+  If the child process start function returns an error tuple or an
+  erroneous value, or if it fails, the function returns
+  `[:error error]`, where `error` is a form containing information
+  about the error."
   [sup id]
   `(gen-server/call! ~sup [:restart-child ~id]))
 
@@ -785,6 +859,22 @@
   :ret (spec/or :ok ::ok
                 :error (spec/tuple ::error #{:not-found})))
 (defmacro terminate-child!
+  "Tells supervisor to terminate the specified child.
+
+  `id` must be the child specification identifier. The process,
+  if any, is terminated and, unless it is a temporary child, the child
+  specification is kept by the supervisor. The child process can later
+  be restarted by the supervisor. The child process can also be
+  restarted explicitly by calling `restart-child`.
+  Use `delete-child` to remove the child specification.
+
+  If the child is temporary, the child specification is deleted as soon
+  as the process terminates. This means that `delete-child` has no
+  meaning and `restart-child` cannot be used for these children.
+
+  If successful, the function returns `:ok`. If there is no child
+  specification with the specified `id`, the function returns
+  `[:error :not-found]`."
   [sup id]
   `(gen-server/call! ~sup [:terminate-child ~id]))
 
@@ -794,5 +884,15 @@
                 :error (spec/tuple ::error
                                    #{:running :restarting :not-found})))
 (defmacro delete-child!
+  "Tells supervisor to delete the child specification identified by
+  `id`. The corresponding child process must not be running. Use
+  `terminate-child` to terminate it.
+
+  If successful, the function returns `:ok`. If the child specification
+  identified by `id` exists but the corresponding child process is
+  running or is about to be restarted, the function returns
+  `[:error :running]` or `[:error :restarting]`, respectively.
+  If the child specification identified by `id` does not exist,
+  the function returns `[:error :not-found]`."
   [sup id]
   `(gen-server/call! ~sup [:delete-child ~id]))
