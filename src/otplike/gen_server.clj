@@ -422,6 +422,13 @@
   ([server message timeout-ms]
    (process/async (call! server message timeout-ms))))
 
+(defn call!!
+  "The same as call! but blocks."
+  ([server message]
+   (process/await!! (call server message)))
+  ([server message timeout-ms]
+   (process/await!! (call server message timeout-ms))))
+
 (defn cast [server message]
   (! server [::cast message]))
 
