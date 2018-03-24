@@ -349,6 +349,7 @@
       server args (assoc-in options [:spawn-opt :register] reg-name))))
 
 (defmacro start-link!
+  "The same as `start!` but atomically links caller to started process."
   ([server]
    `(start-link! ~server [] {}))
   ([server args]
@@ -361,7 +362,7 @@
 
 (defmacro start-ns
   "Starts the server, taking current ns as an implementation source.
-  See start! for more info."
+  See `start!` for more info."
   ([]
    `(start-ns [] {}))
   ([args]
@@ -372,8 +373,8 @@
    `(start ~reg-name ~*ns* ~args ~options)))
 
 (defmacro start-ns!
-  "Starts the server, taking current ns as a implementation source.
-  See start for more info."
+  "Starts the server, taking current ns as an implementation source.
+  See `start!` for more info."
   ([]
    `(start-ns! [] {}))
   ([args]
@@ -395,6 +396,8 @@
    `(start-link ~reg-name ~*ns* ~args ~options)))
 
 (defmacro start-link-ns!
+  "The same as `start-ns!` but atomically links caller to started
+  process."
   ([]
    `(start-link-ns! [] {}))
   ([args]
@@ -405,6 +408,32 @@
    `(start-link! ~reg-name ~*ns* ~args ~options)))
 
 (defmacro call!
+  "Makes a synchronous call to the `server`by sending a request and
+  waiting until a reply arrives or a time-out occurs. The `handle-call`
+  callback of the gen-server is called to handle the request.
+
+  `server` can be a pid or a registered name.
+
+  `request` is any form that is passed as the `request` arguments to
+  `handle-call`.
+
+  `timeout-ms` is an integer greater than zero that specifies how many
+  milliseconds to wait for a reply, or the keyword `:infinity` to wait
+  indefinitely. Defaults to 5000. If no reply is received within the
+  specified time, the function call fails.
+
+  As of now it's not the case but in future callers should expect the
+  following behaviour:
+  If the caller catches the failure and continues running, and the server
+  is just late with the reply, it can arrive at any time later into the
+  message queue of the caller. The caller must in this case be prepared
+  for this and discard any such garbage messages that are two element
+  tuples with a reference as the first element.
+
+  The return value is defined in the return value of `handle-call`.
+
+  The call can fail for many reasons, including time-out and the called
+  gen-server process dying before or during the call."
   ([server request]
    `(match (process/await! (call* ~server ~request 5000))
       [:ok ret#] ret#
@@ -429,10 +458,28 @@
   ([server request timeout-ms]
    (process/await!! (call server request timeout-ms))))
 
-(defn cast [server request]
+(defn cast
+  "Sends an asynchronous request to the `server` and returns immediately,
+  ignoring if the `server` process does not exist. The `handle-cast`
+  callback of the gen-server is called to handle the request.
+
+  `request` is any form that is passed as the `request` argument to
+  `handle-cast`."
+  [server request]
   (! server [::cast request]))
 
-(defn reply [to response]
+(defn reply
+  "This function can be used to explicitly send a reply to a client
+  that called `call*` or, when the reply cannot be defined in the
+  return value of `handle-call`. This allows processing `call*` requests
+  asynchronously.
+
+  Client must be the `from` argument provided to the `handle-call`
+  callback. `reply` is given back to the client as the return value
+  of `call*`.
+
+  The return value is not further defined, and is always to be ignored."
+  [to response]
   (async/put! to [::reply response]))
 
 (defmacro ^:no-doc get! [server]
