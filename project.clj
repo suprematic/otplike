@@ -24,10 +24,9 @@
              {:dependencies [[org.clojure/math.combinatorics "0.1.4"]]
               :aot :all}
 
-             ;:uberjar {:aot :all}
-
              :repl
-             {:source-paths  ["src" "examples"]}}
+             {:dependencies [[org.clojure/math.combinatorics "0.1.4"]]
+              :source-paths  ["src" "examples"]}}
 
   :codox {:source-paths ["src"]
           :namespaces [#"^(?!otplike.spec-util)"]}
