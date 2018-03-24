@@ -830,7 +830,7 @@
 ;; ====================================================================
 ;; one-for-one
 
-(defn test-one-for-one []
+(deftest ^:exhaustive test-one-for-one []
   (let [tests (gen-tests)
         ;tests [(nth tests (dec 179370))]
         ;tests (take 20000 tests)
@@ -840,7 +840,7 @@
 ;; ====================================================================
 ;; one-for-all
 
-(defn test-one-for-all []
+(deftest ^:exhaustive test-one-for-all []
   (let [tests (gen-tests)
         ;tests [(nth tests (dec 51482))]
         ;tests (take 20000 tests)
@@ -850,7 +850,7 @@
 ;; ====================================================================
 ;; rest-for-one
 
-(defn test-rest-for-one []
+(deftest ^:exhaustive test-rest-for-one []
   (let [tests (gen-tests)
         ;tests [(nth tests (dec 51482))]
         ;tests (take 20000 tests)

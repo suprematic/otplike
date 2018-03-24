@@ -32,6 +32,8 @@
           :namespaces [#"^(?!otplike.spec-util)"]}
 
   :test-selectors {:parallel :parallel
-                   :serial :serial}
+                   :serial :serial
+                   :all (constantly true)
+                   :default (complement :exhaustive)}
 
   :monkeypatch-clojure-test false)
