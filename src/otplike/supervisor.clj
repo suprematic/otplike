@@ -600,7 +600,7 @@
                   :args (spec/nilable (spec/coll-of any?))
                   :spawn-opts map?)
   :ret ::process/async)
-(defn start-link* [sup-fn args spawn-opts]
+(defn- start-link* [sup-fn args spawn-opts]
   (process/async
     (gen-server/start-link-ns!
       [sup-fn args] {:spawn-opt (merge spawn-opts {:flags {:trap-exit true}
@@ -718,6 +718,16 @@
 ;; ====================================================================
 ;; API
 
+(defn start-link
+  "Supervisor always links to calling process.
+  Thus it can not be started from nonprocess context."
+  ([sup-fn]
+   (start-link sup-fn []))
+  ([sup-fn args]
+   (start-link* sup-fn args {}))
+  ([sup-name sup-fn args]
+   (start-link* sup-fn args {:register sup-name})))
+
 (spec/fdef start-link!
   :args (spec/or
           :noname (spec/cat :sup-fn fn?
@@ -733,9 +743,9 @@
   ([sup-fn]
    `(start-link! ~sup-fn []))
   ([sup-fn args]
-   `(process/await! (start-link* ~sup-fn ~args {})))
+   `(process/await! (start-link ~sup-fn ~args)))
   ([sup-name sup-fn args]
-   `(process/await! (start-link* ~sup-fn ~args {:register sup-name}))))
+   `(process/await! (start-link ~sup-name ~sup-fn ~args))))
 
 (spec/fdef check-child-specs
   :args (spec/cat :child-specs any?)

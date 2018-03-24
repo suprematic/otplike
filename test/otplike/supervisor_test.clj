@@ -43,7 +43,7 @@
                         (async/close! server-init-done)
                         [:ok :state])}
         children-spec [{:id 1
-                        :start [#(process/async (gs/start-link! server)) []]}]
+                        :start [gs/start-link [server]]}]
         sup-spec [sup-flags children-spec]
         init-fn (fn []
                   (async/close! sup-init-done)
@@ -71,14 +71,12 @@
         (fn [await-chan done-chan id]
           {:id id
            :start
-           [#(process/async
-               (gs/start-link!
-                 {:init (fn []
-                          (is (await-completion await-chan 50)
-                              "supervisor must start children in spec's order")
-                          (async/close! done-chan)
-                          [:ok :state])}))
-            []]})
+           [gs/start-link
+            [{:init (fn []
+                      (is (await-completion await-chan 50)
+                          "supervisor must start children in spec's order")
+                      (async/close! done-chan)
+                      [:ok :state])}]]})
         children-spec (map make-child
                            [sup-init-done s1-init-done s2-init-done]
                            [s1-init-done s2-init-done s3-init-done]
@@ -103,12 +101,10 @@
         sup-flags {}
         make-child (fn [id]
                      {:id id
-                      :start [#(process/async
-                                 (gs/start-link!
-                                   {:init (fn []
-                                            (is false "child must not be started")
-                                            [:ok :state])}))
-                              []]})
+                      :start [gs/start-link
+                              [{:init (fn []
+                                        (is false "child must not be started")
+                                        [:ok :state])}]]})
         children-spec (map make-child [:id1 :id2 :id2])
         sup-spec [sup-flags children-spec]
         init-fn (fn []
@@ -140,12 +136,10 @@
         init-fn (fn []
                   (async/close! sup-init-done)
                   [:ok [{} [{:start
-                             [#(process/async
-                                 (gs/start-link!
-                                   {:init (fn []
-                                            (is false "child must not be started")
-                                            [:ok :state])}))
-                              []]}]]])]
+                             [gs/start-link
+                              [{:init (fn []
+                                        (is false "child must not be started")
+                                        [:ok :state])}]]}]]])]
     (process/flag :trap-exit true)
     (match (sup/start-link! init-fn)
            [:error [:bad-child-specs _]]
@@ -176,12 +170,10 @@
 (def-proc-test ^:parallel start-link:bad-return:bad-supervisor-flags
   (let [make-child (fn [id]
                      {:id id
-                      :start [#(process/async
-                                 (gs/start-link!
-                                   {:init (fn []
-                                            (is false "child must not be started")
-                                            [:ok :state])}))
-                              []]})]
+                      :start [gs/start-link
+                              [{:init (fn []
+                                        (is false "child must not be started")
+                                        [:ok :state])}]]})]
     (otplike.proc-util/execute-proc!
       (let [sup-init-done (async/chan)
             sup-flags {:strategy "one-for-one"}
@@ -245,8 +237,7 @@
     (let [sup-init-done (async/chan)
           sup-flags {}
           children-spec [{:id :child-id
-                          :start [#(process/async
-                                     (gs/start-link! {:init init-fn})) []]}]
+                          :start [gs/start-link [{:init init-fn}]]}]
           sup-spec [sup-flags children-spec]
           init-fn (fn []
                     (async/close! sup-init-done)
@@ -288,8 +279,7 @@
                               [:ok :state])
         child-spec (fn [id init-fn]
                      {:id id
-                      :start [#(process/async
-                                 (gs/start-link! {:init init-fn})) []]})
+                      :start [gs/start-link [{:init init-fn}]]})
         children-spec [(child-spec :id1 error-child-init)
                        (child-spec :id2 healthy-child-init)
                        (child-spec :id3 healthy-child-init)]
@@ -329,12 +319,10 @@
                               [:ok :state])
         child-spec (fn [id init-fn terminate-fn]
                      {:id id
-                      :start [#(process/async
-                                 (gs/start-link!
-                                   {:init init-fn :terminate terminate-fn}
-                                   []
-                                   {:spawn-opt {:flags {:trap-exit true}}}))
-                              []]})
+                      :start [gs/start-link
+                              [{:init init-fn :terminate terminate-fn}
+                               []
+                               {:spawn-opt {:flags {:trap-exit true}}}]]})
         children-spec [(child-spec :id1 healthy-child1-init child1-terminate)
                        (child-spec :id2 error-child-init nil)
                        (child-spec :id3 healthy-child2-init nil)]
@@ -387,12 +375,10 @@
               "child must be stopped with :shutdown reason"))
         child-spec (fn [id init-fn terminate-fn]
                      {:id id
-                      :start [#(process/async
-                                 (gs/start-link!
-                                   {:init init-fn :terminate terminate-fn}
-                                   []
-                                   {:spawn-opt {:flags {:trap-exit true}}}))
-                              []]})
+                      :start [gs/start-link
+                              [{:init init-fn :terminate terminate-fn}
+                               []
+                               {:spawn-opt {:flags {:trap-exit true}}}]]})
         children-spec [(child-spec :id1 healthy-child1-init child1-terminate)
                        (child-spec :id2 healthy-child2-init child2-terminate)
                        (child-spec :id3 error-child-init nil)]
@@ -898,7 +884,7 @@
                                   :terminate (fn [reason _state]
                                                (printf "server %s terminate %s, reason %s%n" sname (rem (System/currentTimeMillis) 10000) reason))}]
                       {:id sname
-                       :start [#(process/async (gs/start-link! sname server [] {})) []]
+                       :start [gs/start-link [sname server [] {}]]
                        :restart restart-type}))
             children-spec [(child done0 done1 :1 :permanent)
                            (child done1 done2 :2 :permanent)
@@ -933,7 +919,7 @@
                                   :terminate (fn [reason _state]
                                                (printf "server %s terminate %s, reason %s%n" sname (rem (System/currentTimeMillis) 10000) reason))}]
                       {:id sname
-                       :start [#(process/async (gs/start-link! sname server [] {:spawn-opt {:flags {:trap-exit true}}})) []]
+                       :start [gs/start-link [sname server [] {:spawn-opt {:flags {:trap-exit true}}}]]
                        :restart restart-type}))
             child1 (child :1 :permanent)
             child2 (child :2 :permanent)

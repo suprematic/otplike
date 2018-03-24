@@ -274,7 +274,7 @@
           [[::reply value] reply-to] [:ok value]
           [nil timeout] [:error :timeout])))))
 
-(defn ^:no-doc start*
+(defn- start*
   [server args {:keys [timeout spawn-opt] :or {timeout :infinity spawn-opt {}}}]
   (process/async
     (let [gs (->gen-server server)
@@ -292,6 +292,17 @@
 
 ;; ====================================================================
 ;; API
+
+(defn start
+  "The same as start! but returns async value."
+  ([server]
+   (start server []))
+  ([server args]
+   (start server args {}))
+  ([server args options]
+   (start* server args options))
+  ([reg-name server args options]
+   (start server args (assoc-in options [:spawn-opt :register] reg-name))))
 
 (defmacro start!
   "Starts the server, passing args to server's init function.
@@ -320,10 +331,22 @@
   ([server args]
    `(start! ~server ~args {}))
   ([server args options]
-   `(process/await! (start* ~server ~args ~options)))
+   `(process/await! (start ~server ~args ~options)))
   ([reg-name server args options]
    `(start!
       ~server ~args (assoc-in ~options [:spawn-opt :register] ~reg-name))))
+
+(defn start-link
+  "The same as `start` but returns async value."
+  ([server]
+   (start-link server [] {}))
+  ([server args]
+   (start-link server args {}))
+  ([server args options]
+   (start server args (assoc-in options [:spawn-opt :link] true)))
+  ([reg-name server args options]
+   (start-link
+      server args (assoc-in options [:spawn-opt :register] reg-name))))
 
 (defmacro start-link!
   ([server]
@@ -331,11 +354,22 @@
   ([server args]
    `(start-link! ~server ~args {}))
   ([server args options]
-   `(process/await!
-      (start* ~server ~args (assoc-in ~options [:spawn-opt :link] true))))
+   `(start! ~server ~args (assoc-in ~options [:spawn-opt :link] true)))
   ([reg-name server args options]
    `(start-link!
       ~server ~args (assoc-in ~options [:spawn-opt :register] ~reg-name))))
+
+(defmacro start-ns
+  "Starts the server, taking current ns as an implementation source.
+  See start! for more info."
+  ([]
+   `(start-ns [] {}))
+  ([args]
+   `(start-ns ~args {}))
+  ([args options]
+   `(start ~*ns* ~args ~options))
+  ([reg-name args options]
+   `(start ~reg-name ~*ns* ~args ~options)))
 
 (defmacro start-ns!
   "Starts the server, taking current ns as a implementation source.
@@ -348,6 +382,17 @@
    `(start! ~*ns* ~args ~options))
   ([reg-name args options]
    `(start! ~reg-name ~*ns* ~args ~options)))
+
+(defmacro start-link-ns
+  "The same as start-link-ns! returns async value."
+  ([]
+   `(start-link-ns [] {}))
+  ([args]
+   `(start-link-ns ~args {}))
+  ([args options]
+   `(start-link ~*ns* ~args ~options))
+  ([reg-name args options]
+   `(start-link ~reg-name ~*ns* ~args ~options)))
 
 (defmacro start-link-ns!
   ([]
@@ -369,6 +414,13 @@
       [:ok ret#] ret#
       [:error reason#] (process/exit
                          [reason# ['call [~server ~message ~timeout-ms]]]))))
+
+(defn call
+  "The same as call! but returns async value."
+  ([server message]
+   (process/async (call! server message)))
+  ([server message timeout-ms]
+   (process/async (call! server message timeout-ms))))
 
 (defn cast [server message]
   (! server [::cast message]))
