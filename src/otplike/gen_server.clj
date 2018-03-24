@@ -347,7 +347,7 @@
   ([args options]
    `(start! ~*ns* ~args ~options))
   ([reg-name args options]
-   `(start! reg-name ~*ns* ~args ~options)))
+   `(start! ~reg-name ~*ns* ~args ~options)))
 
 (defmacro start-link-ns!
   ([]
@@ -357,7 +357,7 @@
   ([args options]
    `(start-link! ~*ns* ~args ~options))
   ([reg-name args options]
-   `(start-link! reg-name ~*ns* ~args ~options)))
+   `(start-link! ~reg-name ~*ns* ~args ~options)))
 
 (defmacro call!
   ([server message]
