@@ -261,13 +261,13 @@
     (impl-ns :guard #(instance? clojure.lang.Namespace %))
     (coerce-ns impl-ns)))
 
-(defn ^:no-doc call* [server message timeout-ms]
+(defn ^:no-doc call* [server request timeout-ms]
   (process/async
     (let [reply-to (async/chan)
           timeout (if (= :infinity timeout-ms)
                     (async/chan)
                     (async/timeout timeout-ms))]
-      (if-not (! server [::call reply-to message])
+      (if-not (! server [::call reply-to request])
         [:error :noproc]
         (match (async/alts! [reply-to timeout])
           [[::terminated reason] reply-to] [:error reason]
@@ -405,32 +405,32 @@
    `(start-link! ~reg-name ~*ns* ~args ~options)))
 
 (defmacro call!
-  ([server message]
-   `(match (process/await! (call* ~server ~message 5000))
+  ([server request]
+   `(match (process/await! (call* ~server ~request 5000))
       [:ok ret#] ret#
-      [:error reason#] (process/exit [reason# ['call [~server ~message]]])))
-  ([server message timeout-ms]
-   `(match (process/await! (call* ~server ~message ~timeout-ms))
+      [:error reason#] (process/exit [reason# ['call [~server ~request]]])))
+  ([server request timeout-ms]
+   `(match (process/await! (call* ~server ~request ~timeout-ms))
       [:ok ret#] ret#
       [:error reason#] (process/exit
-                         [reason# ['call [~server ~message ~timeout-ms]]]))))
+                         [reason# ['call [~server ~request ~timeout-ms]]]))))
 
 (defn call
   "The same as call! but returns async value."
-  ([server message]
-   (process/async (call! server message)))
-  ([server message timeout-ms]
-   (process/async (call! server message timeout-ms))))
+  ([server request]
+   (process/async (call! server request)))
+  ([server request timeout-ms]
+   (process/async (call! server request timeout-ms))))
 
 (defn call!!
   "The same as call! but blocks."
-  ([server message]
-   (process/await!! (call server message)))
-  ([server message timeout-ms]
-   (process/await!! (call server message timeout-ms))))
+  ([server request]
+   (process/await!! (call server request)))
+  ([server request timeout-ms]
+   (process/await!! (call server request timeout-ms))))
 
-(defn cast [server message]
-  (! server [::cast message]))
+(defn cast [server request]
+  (! server [::cast request]))
 
 (defn reply [to response]
   (async/put! to [::reply response]))
