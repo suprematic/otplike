@@ -315,19 +315,16 @@
 (defn- spawn*
   [proc-func
    args
-   {:keys [inbox flags link register] pname :name :as options}]
+   {:keys [flags link register] pname :name :as options}]
   {:post [(pid? %)]}
   (u/check-args [(or (fn? proc-func) (symbol? proc-func))
                  (sequential? args)
                  (map? options) ;FIXME check for unknown options
                  (or (nil? link) (boolean? link))
-                 (or (nil? inbox)
-                     (and (satisfies? ap/ReadPort inbox)
-                          (satisfies? ap/WritePort inbox)))
                  (or (nil? flags) (map? flags)) ;FIXME check for unknown flags
                  (not (pid? register))])
   (let [proc-func (resolve-proc-func proc-func)
-        inbox     (or inbox (async/chan 1024))
+        inbox     (async/chan 1024)
         flags     (or flags {})
         ^TProcess process (new-process pname inbox flags)
         pid (.pid process)
@@ -732,15 +729,11 @@
   application of proc-fun to args.
   options argument is a map of option names (keyword) to its values.
 
-  The default process' inbox is blocking buffered channel of size 1024.
-  The :inbox option allows providing a custom channel.
-
   The following options are allowed:
   :flags - a map of process' flags (e.g. {:trap-exit true})
   :link - if true, sets a link to the parent process
   :register - name to register the process, can not be pid, if name is
-    nil process will not be registered
-  :inbox - the channel to be used as a process' inbox"
+    nil process will not be registered"
   ([proc-func opts]
    (spawn-opt proc-func [] opts))
   ([proc-func args opts]

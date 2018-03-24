@@ -1184,20 +1184,6 @@
       "spawn must throw if :flags option is not a map")
   (is (thrown? Exception (process/spawn-opt (proc-fn []) [] {:flags '()}))
       "spawn must throw if :flags option is not a map")
-  (is (thrown? Exception (process/spawn-opt (proc-fn []) [] {:inbox 1}))
-      "spawn must throw if :inbox-size option is not a channel")
-  (is (thrown? Exception (process/spawn-opt (proc-fn []) [] {:inbox true}))
-      "spawn must throw if :inbox-size option is not a channel")
-  (is (thrown? Exception (process/spawn-opt (proc-fn []) [] {:inbox "str"}))
-      "spawn must throw if :inbox-size option is not a channel")
-  (is (thrown? Exception (process/spawn-opt (proc-fn []) [] {:inbox []}))
-      "spawn must throw if :inbox-size option is not a channel")
-  (is (thrown? Exception (process/spawn-opt (proc-fn []) [] {:inbox #{}}))
-      "spawn must throw if :inbox-size option is not a channel")
-  (is (thrown? Exception (process/spawn-opt (proc-fn []) [] {:inbox '()}))
-      "spawn must throw if :inbox-size option is not a channel")
-  (is (thrown? Exception (process/spawn-opt (proc-fn []) [] {:inbox {}}))
-      "spawn must throw if :inbox-size option is not a channel")
   (let [pid (process/spawn-opt (proc-fn []) [] {})]
     (is (thrown? Exception (process/spawn-opt (proc-fn []) [] {:register pid}))
         "spawn must throw if :register name is a pid")))
@@ -1311,18 +1297,6 @@
               (async/close! done))
         pid (process/spawn-opt pfn [] {})]
     (process/exit pid :abnormal)
-    (await-completion done 50)))
-
-(deftest ^:parallel inbox-provided-to-spawn-is-spawned-process-inbox
-  (let [done (async/chan)
-        inbox (async/chan)
-        msg (uuid-keyword)
-        pfn (proc-fn []
-              (is (= [:message msg]
-                     (<! (await-message 50))))
-              (async/close! done))]
-    (process/spawn-opt pfn [] {:inbox inbox})
-    (>!! inbox msg)
     (await-completion done 50)))
 
 (deftest ^:parallel spawn-opt:spawned-process-receives-parent-exit-reason

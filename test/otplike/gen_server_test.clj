@@ -105,7 +105,6 @@
   (let [done (async/chan)
         server {:init (fn [] [:ok nil])
                 :terminate (fn [_ _] (async/close! done))}]
-    (is (thrown? Exception (gs/start! server [] {:spawn-opt {:inbox "inbox"}})))
     (is (thrown? Exception (await-completion done 50))
         (str "terminate must not be called when illegal arguments were passed"
              " to start"))))
