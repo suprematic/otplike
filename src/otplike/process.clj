@@ -827,12 +827,20 @@
   `(proc-defn ~(vary-meta fname assoc :private true) ~args ~@body))
 
 (defmacro async
-  ""
+  "Executes body asynchronously. Like go-block but propagates
+  exceptions.
+  The returned value is to be passed to await!."
   [& body]
   `(->Async (go (ex-catch [:ok (do ~@body)] ))))
 
 (defmacro await!
-  ""
+  "Returns the value of the async operation represented by x or exits with
+  the same reason the operation exited. Parks until the operation is
+  completed if required.
+
+  It is illegal to pass the same async value to await! more than once.
+
+  Throws if x is not async value (i.e. is not returned by async)."
   [x]
   `(await* true ~x))
 
@@ -841,12 +849,15 @@
   [x]
   (await* false x))
 
-(defn async? [x]
+(defn async?
+  "Returns true if x is async value (i.e. is returned by async),
+  otherwise returns false."
+  [x]
   (instance? Async x))
 
 (defmacro async?-value!
-  "If x is a result of async operation, returns its value (waiting if
-  needed). If x is a regular value, returns x."
+  "If x is returned by async, returns the value of the corresponding async
+  operation (parks if needed). If x is a regular value, returns x."
   [x]
   `(let [res# ~x]
      (cond
