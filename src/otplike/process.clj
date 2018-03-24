@@ -763,10 +763,45 @@
   ([proc-func args]
    (spawn-opt proc-func args {:link true})))
 
-(defmacro receive! [& clauses]
+(defmacro receive!
+  "Receives and removes from the inbox the first message sent to the
+  process using the ! function:
+
+  (receive!
+    pattern1 pattern-expr1
+    pattern2 pattern-expr2
+    ...)
+
+  The message is matched using clojure.core.match/match against the
+  patterns. If a match succeeds, the corresponding expression is
+  evaluated, otherwise throws. It is illegal to use a receive! with
+  no patterns.
+
+  If there are no messages in the inbox, the execution is suspended,
+  possibly indefinitely, until the first message arrives.
+
+  The receive expression can be augmented with a timeout:
+
+  (receive!
+    pattern pattern-expr
+    ...
+    (after timeout
+      timeout-expr))
+
+  There are two special cases for the timeout value:
+  :infinity - the process is to wait indefinitely for a matching
+    message. This is the same as not using a timeout. This can be
+    useful for timeout values that are calculated at runtime.
+  0 - if there is no matching message in the mailbox, the timeout
+    occurs immediately.
+
+  Returns the value of the evaluated expression."
+  [& clauses]
   `(receive* true ~clauses))
 
-(defmacro receive!! [& clauses]
+(defmacro receive!!
+  "The same as receive! but uses blocking instead of parking."
+  [& clauses]
   `(receive* false ~clauses))
 
 (defmacro proc-fn
