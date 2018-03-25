@@ -29,6 +29,8 @@
               :source-paths  ["src" "examples"]}}
 
   :codox {:source-paths ["src"]
+          :source-uri
+          "https://github.com/suprematic/otplike/blob/{version}/{filepath}#L{line}"
           :namespaces [#"^(?!otplike.spec-util)"]
           :metadata {:doc/format :markdown}}
 
