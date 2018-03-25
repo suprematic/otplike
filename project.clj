@@ -29,7 +29,8 @@
               :source-paths  ["src" "examples"]}}
 
   :codox {:source-paths ["src"]
-          :namespaces [#"^(?!otplike.spec-util)"]}
+          :namespaces [#"^(?!otplike.spec-util)"]
+          :metadata {:doc/format :markdown}}
 
   :test-selectors {:parallel :parallel
                    :serial :serial
