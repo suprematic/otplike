@@ -1,7 +1,8 @@
 (def core-async-version "0.4.474")
+(def project-version "0.4.0-alpha-SNAPSHOT")
 
 (defproject
-  otplike/otplike "0.4.0-alpha-SNAPSHOT"
+  otplike/otplike project-version
   :description "Erlang/OTP like processes and behaviours on top of core.async"
   :license {:name "Eclipse Public License - v1.0"
             :url  "https://www.eclipse.org/legal/epl-v10.html"}
@@ -10,6 +11,8 @@
                  [org.clojure/core.async ~core-async-version]
                  [org.clojure/core.match "0.3.0-alpha5"]
                  [clojure-future-spec "1.9.0-beta4"]]
+
+  :plugins [[lein-codox "0.10.3"]]
 
   :source-paths  ["src"]
 
@@ -36,6 +39,7 @@
   {:source-paths ["src"]
    :source-uri
    "https://github.com/suprematic/otplike/blob/{version}/{filepath}#L{line}"
+   :output-path ~(str "docs/" project-version)
    :namespaces [#"^(?!otplike.spec-util)"]
    :metadata {:doc/format :markdown}}
 
