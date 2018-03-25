@@ -10,7 +10,8 @@
   (:line (meta &form)))
 
 (defmacro execute-proc
-  "Executes body in newly created process context."
+  "Executes `body` in a newly created process context. Returns channel
+  which will receive the result."
   [& body]
   `(let [done# (async/chan)]
      (process/spawn-opt
@@ -25,22 +26,23 @@
      done#))
 
 (defmacro execute-proc!
-  "Executes body in newly created process context."
+  "Executes `body` in a newly created process context. Parks waiting
+  for the result."
   [& body]
   `(match (async/<! (execute-proc ~@body))
      [:ok res#] res#
      [:ex e#] (throw e#)))
 
 (defmacro execute-proc!!
-  "Executes body in newly created process context."
+  "The same as `execute-proc!` but blocks."
   [& body]
   `(match (async/<!! (execute-proc ~@body))
      [:ok res#] res#
      [:ex e#] (throw e#)))
 
 (defmacro defn-proc
-  "Defines function with name fname, arguments args, which body is
-  executed in newly created process context."
+  "Defines function with name `fname`, arguments `args`. `body` is
+  executed in a newly created process context."
   [fname args & body]
   `(defn ~fname []
      (let [done# (async/chan)]
