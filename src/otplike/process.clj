@@ -2,14 +2,14 @@
   "This namespace implements core process concepts like spawning,
   linking, monitoring, message passing, exiting, and other.
 
-  Process context
+  ### Process context
 
   All calls made from process function directly or indirectly after
   it has been spawned are made in process context.
   Note: for now process context exists until process function finishes
   its execution and isn't bound to process exit.
 
-  Process exit
+  ### Process exit
 
   - process' inbox becomes closed, so no future messages appear in it
     (but those alredy in inbox can be received)
@@ -22,7 +22,7 @@
   to communicate with other processes. If some function behaves
   different in such cases, it should be said in its documentation.
 
-  Signals (control messages)
+  ### Signals (control messages)
 
   Signals are used internally to manage processes. Exiting, monitoring,
   linking and some other operations require sending signals.
@@ -30,7 +30,7 @@
   (e.g. a process monitors 1000 linked processes and one of them exits).
   In such cases control message queue of a process can overflow. When
   it happens, the process exits immediately with reason
-  :control-overflow."
+  `:control-overflow`."
   (:require [clojure.core.async :as async :refer [<!! <! >! put! go go-loop]]
             [clojure.core.async.impl.protocols :as ap]
             [clojure.core.match :refer [match]]
@@ -312,7 +312,7 @@
       (swap! *registered dissoc register)
       (swap! *registered-reverse dissoc pid))))
 
-(def ^:dynamic *message-context* (atom {}))
+(def ^:dynamic ^:no-doc *message-context* (atom {}))
 
 (defn- spawn*
   [proc-func
@@ -464,18 +464,19 @@
 ;; API
 
 (defn monitor-ref?
-  "Returns true if term is a monitor reference, false otherwise."
+  "Returns `true` if `mref` is a monitor reference, `false` otherwise."
   [mref]
   (instance? MonitorRef mref))
 
 (defn ex->reason
-  "Makes exit reason from exception."
+  "Creates exit reason from exception."
   [^Throwable e]
   (or (::exit-reason (ex-data e))
       [:exception (u/stack-trace e)]))
 
 (defmacro ex-catch
-  "Executes expr. Returns either result of execution or [:EXIT reason]."
+  "Executes `expr`. Returns either result of execution or
+  `[:EXIT reason]`."
   [expr]
   `(try
      ~expr
@@ -483,15 +484,13 @@
        [:EXIT (ex->reason t#)])))
 
 (defn pid?
-  "Returns true if term is a process identifier, false otherwise."
+  "Returns `true` if `pid` is a process identifier, `false` otherwise."
   [pid]
   (pid?* pid))
 
 (defn resolve-pid
-  "If pid-or-name is
-    pid - returns pid,
-    registered name - returns the pid of registered process,
-  else returns nil."
+  "If `pid-or-name` is a pid - returns pid. If a registered name -
+  returns the pid of registered process. Else returns `nil`."
   [pid-or-name]
   {:post [(or (nil? %) (pid? %))]}
   (if (pid? pid-or-name)
@@ -499,10 +498,11 @@
     (whereis pid-or-name)))
 
 (defn pid->str
-  "Returns a string corresponding to the text representation of pid.
-  Throws if pid is not a process identifier.
+  "Returns a string corresponding to the text representation of `pid`.
 
-  Warning: this function is intended for debugging and is not to be
+  Throws if `pid` is not a process identifier.
+
+  **Warning:** this function is intended for debugging and is not to be
   used in application programs."
   [^Pid {:keys [id pname] :as pid}]
   {:post [(string? %)]}
@@ -519,41 +519,52 @@
     (throw (Exception. "noproc"))))
 
 (defn whereis
-  "Returns the process identifier with the registered name reg-name,
-  or nil if the name is not registered."
+  "Returns the process identifier with the registered name `reg-name`,
+  or `nil` if the name is not registered."
   [reg-name]
   {:post [(or (nil? %) (pid? %))]}
   (@*registered reg-name))
 
 (defn !
-  "Sends a message to dest. dest can be a process identifier, or a
+  "Sends a `message` to `dest`. `dest` can be a process identifier, or a
   registered name.
-  If sending results in dest's inbox overflow, dest exits with reason
-  :inbox-overflow.
-  Returns true if message was sent (process was alive), false otherwise.
-  Throws if any of arguments is nil."
+
+  If sending results in `dest`'s inbox overflow, `dest` exits with reason
+  `:inbox-overflow`.
+
+  Returns `true` if `message` was sent (process was alive), false
+  otherwise.
+
+  Throws if any of arguments is `nil`."
   [dest message]
   (u/check-args [(some? message)])
   (!* dest [(if (bound? #'*message-context*) @*message-context* {}) message]))
 
 (defn exit
-  "Sends an exit signal with exit reason to the process identified
-  by pid.
-  If reason is any term, except :normal or :kill:
-  - if pid is not trapping exits, pid itself exits with exit reason.
-  - if pid is trapping exits, the exit signal is transformed into a
-    message [:EXIT from reason] and delivered to the message queue
-    of pid. from is the process identifier of the process that sent
+  "Sends an exit signal with the reason `reason` to the process
+  identified by `pid`. If `pid` is not provided exits the calling
+  process immediately.
+
+  If reason is any term, except `:normal` or `:kill`:
+
+  - if `pid` is not trapping exits, `pid` itself exits with exit reason.
+  - if `pid` is trapping exits, the exit signal is transformed into a
+    message `[:EXIT from reason]` and delivered to the message queue
+    of `pid`. `from` is the process identifier of the process that sent
     the exit signal.
-  If reason is :normal, pid does not exit. If pid is trapping exits,
-  the exit signal is transformed into a message
-  [:EXIT from :normal] and delivered to its message queue.
-  If reason is :kill, an untrappable exit signal is sent to pid,
-  which unconditionally exits with reason :killed.
-  Returns true if exit signal was sent (process was alive), false
+
+  If reason is `:normal`, `pid` does not exit. If `pid` is trapping
+  exits, the exit signal is transformed into a message
+  `[:EXIT from :normal]` and delivered to its message queue.
+
+  If reason is `:kill`, an untrappable exit signal is sent to pid,
+  which unconditionally exits with reason `:killed`.
+
+  Returns `true` if exit signal was sent (process was alive), `false`
   otherwise.
-  Throws when called not in process context, if pid is not a pid, or
-  reason is nil."
+
+  Throws when called not in process context, if `pid` is not a pid, or
+  reason is `nil`."
   ([reason] ;FIXME docs
    (throw (ex-info "exit" {::exit-reason reason})))
   ([pid reason]
@@ -570,17 +581,20 @@
        (!control pid [:exit self-pid reason])))))
 
 (defn flag
-  "Sets the value of a process flag. See description of each flag below.
-  Returns the old value of a flag.
-  Throws when called not in process context.
+  "Sets the value of a process' flag. See description of each flag
+  below.
 
-  :trap-exit
-  When :trap-exit is set to true, exit signals arriving to a process
-  are converted to [:EXIT from reason] messages, which can be
-  received as ordinary messages. If :trap-exit is set to false, the
-  process exits if it receives an exit signal other than :normal and
-  the exit signal is propagated to its linked processes. Application
-  processes are normally not to trap exits."
+  Flags:
+
+  - `:trap-exit`. When set to `true`, exit signals arriving to a
+  process are converted to `[:EXIT from reason]` messages, which can
+  be received as ordinary messages. If is set to `false`, the process
+  exits if it receives an exit signal other than `:normal` and the exit
+  signal is propagated to its linked processes.
+
+  Returns the old value of a `flag`.
+
+  Throws when called not in process context."
   [flag value]
   {:post []}
   (u/check-args [(keyword? flag)])
@@ -600,15 +614,19 @@
 
 (defn link
   "Creates a link between the calling process and another process
-  identified by pid, if there is not such a link already. If a
+  identified by `pid`, if there is not such a link already. If a
   process attempts to create a link to itself, nothing is done.
+
   If pid does not exist and the calling process
+
   1. is trapping exits - the calling process receives message
-  [:EXIT pid :noproc].
-  2. is not trapping exits - process exits with reason :noproc.
-  Returns true.
+  `[:EXIT pid :noproc]`.
+  2. is not trapping exits - process exits with reason `:noproc`.
+
+  Returns `true`.
+
   Throws when called not in process context, or by exited process,
-  or pid is not a pid."
+  or `pid` is not a pid."
   [pid]
   {:post [(true? %)]}
   (u/check-args [(pid? pid)])
@@ -632,22 +650,28 @@
 
 (defn unlink
   "Removes the link, if there is one, between the calling process and
-  the process referred to by pid.
-  Returns true.
-  Does not fail if there is no link to pid, if pid is self pid, or
-  if pid does not exist.
+  the process referred to by `pid`.
+
+  Returns `true`.
+
+  Does not fail if there is no link to `pid`, if `pid` is self pid, or
+  if `pid` does not exist.
+
   Once unlink has returned, it is guaranteed that the link between
-  the caller and the entity referred to by pid has no effect on the
+  the caller and the entity referred to by `pid` has no effect on the
   caller in the future (unless the link is setup again).
-  If the caller is trapping exits, an [:EXIT pid _] message from
+
+  If the caller is trapping exits, an `[:EXIT pid _]` message from
   the link can have been placed in the caller's message queue before
   the call.
-  Notice that the [:EXIT pid _] message can be the result of the
+
+  Notice that the `[:EXIT pid _]` message can be the result of the
   link, but can also be the result of pid calling exit. Therefore,
   it can be appropriate to clean up the message queue when trapping
   exits after the call to unlink.
+
   Throws when called not in process context, or called by exited
-  process, or pid is not a pid."
+  process, or `pid` is not a pid."
   [pid]
   {:post [(true? %)]}
   (u/check-args [(pid? pid)])
@@ -661,47 +685,52 @@
     true))
 
 (defn monitor
-  "Sends a monitor request to the entity identified by pid-or-name.
+  "Sends a monitor request to the entity identified by `pid-or-name`.
   If the monitored entity does not exist or when it dies,
   the caller of monitor will be notified by a message of the
   following format:
 
+  ```
   [tag monitor-ref type object info]
+  ```
 
-  type can be one of the following keywords: :process.
+  `type` can be one of the following keywords: `:process`.
+
   A monitor is triggered only once, after that it is removed from
   both monitoring process and the monitored entity. Monitors are
   fired when the monitored process terminates, or does not
   exist at the moment of creation. The monitoring is also turned
-  off when demonitor/1 is called.
+  off when `demonitor` is called.
 
   When monitoring by name please note, that the registered-name is
   resolved to pid only once at the moment of monitor instantiation,
   later changes to the name registration will not affect the existing
   monitor.
 
-  When a monitor is triggered, a :DOWN message that has the
+  When a monitor is triggered, a `:DOWN` message that has the
   following pattern
 
+  ```
   [:DOWN monitor-ref type object info]
+  ```
 
   is sent to the monitoring process.
 
-  In monitor message monitor-ref and type are the same as described
+  In monitor message `monitor-ref` and `type` are the same as described
   earlier, and:
-  object
-    The monitored entity, which triggered the event. That is the
+
+  - `object` - the monitored entity, which triggered the event. That is the
     argument of monitor call.
-  info
-    Either the exit reason of the process, or :noproc (process did not
+  - `info` - either the exit reason of the process, or :noproc (process did not
     exist at the time of monitor creation).
 
-  Making several calls to monitor/2 for the same pid-or-name and/or
-  type is not an error; it results in as many independent monitoring
-  instances.
+  Making several calls to `monitor` for the same `pid-or-name` is not
+  an error; it results in as many independent monitoring instances.
+
   Monitoring self does nothing.
 
-  Returns monitor-ref.
+  Returns `monitor-ref`.
+
   Throws when called not in process context."
   [pid-or-name]
   {:post [(monitor-ref? %)]}
@@ -723,21 +752,22 @@
         empty-mref))))
 
 (defn demonitor
-  "If mref is a reference that the calling process obtained by
+  "If `mref` is a reference that the calling process obtained by
   calling monitor, this monitoring is turned off. If the monitoring
-  is already turned off, nothing happens. If mref was created by
+  is already turned off, nothing happens. If `mref` was created by
   other process, nothing happens.
 
   Once demonitor has returned, it is guaranteed that no
-  [:DOWN monitor-ref _ _ _] message, because of the monitor,
+  `[:DOWN monitor-ref _ _ _]` message, because of the monitor,
   will be placed in the caller message queue in the future.
-  A [:DOWN monitor-ref _ _ _] message can have been placed in
+  A `[:DOWN monitor-ref _ _ _]` message can have been placed in
   the caller message queue before the call, though. It is therefore
-  usually advisable to remove such a :DOWN message from the message
+  usually advisable to remove such a `:DOWN` message from the message
   queue after monitoring has been stopped.
 
-  Returns true.
-  Throws when called not in process context, mref is not a
+  Returns `true`.
+
+  Throws when called not in process context, `mref` is not a
   monitor-ref."
   [{:keys [self-pid other-pid] :as mref}]
   {:post [(= true %)]}
@@ -749,14 +779,17 @@
 
 (defn spawn-opt
   "Returns the process identifier of a new process started by the
-  application of proc-fun to args.
-  options argument is a map of option names (keyword) to its values.
+  application of `proc-fun` to `args`.
+
+  `options` argument is a map of option names (keywords) to their
+  values.
 
   The following options are allowed:
-  :flags - a map of process' flags (e.g. {:trap-exit true})
-  :link - if true, sets a link to the parent process
-  :register - name to register the process, can not be pid, if name is
-    nil process will not be registered"
+
+  - `:flags` - a map of process' flags (e.g. `{:trap-exit true}`)
+  - `:link` - if `true`, sets a link to the parent process
+  - `:register` - name to register the process, can not be pid, if name is
+    `nil` process will not be registered"
   ([proc-func opts]
    (spawn-opt proc-func [] opts))
   ([proc-func args opts]
@@ -764,7 +797,7 @@
 
 (defn spawn
   "Returns the process identifier of a new process started by the
-  application of proc-fun to args."
+  application of `proc-fun` to `args`."
   ([proc-func]
    (spawn proc-func []))
   ([proc-func args]
@@ -772,9 +805,9 @@
 
 (defn spawn-link
   "Returns the process identifier of a new process started by the
-  application of proc-fun to args. A link is created between the
+  application of `proc-fun` to `args`. A link is created between the
   calling process and the new process, atomically. Otherwise works
-  like spawn.
+  like `spawn`.
 
   Throws when called not in process context."
   ([proc-func]
@@ -784,16 +817,18 @@
 
 (defmacro receive!
   "Receives and removes from the inbox the first message sent to the
-  process using the ! function:
+  process using the `!` function:
 
+  ```
   (receive!
     pattern1 pattern-expr1
     pattern2 pattern-expr2
     ...)
+  ```
 
-  The message is matched using clojure.core.match/match against the
+  The message is matched using `clojure.core.match/match` against the
   patterns. If a match succeeds, the corresponding expression is
-  evaluated, otherwise throws. It is illegal to use a receive! with
+  evaluated, otherwise throws. It is illegal to use a `receive!` with
   no patterns.
 
   If there are no messages in the inbox, the execution is suspended,
@@ -801,17 +836,19 @@
 
   The receive expression can be augmented with a timeout:
 
+  ```
   (receive!
     pattern pattern-expr
     ...
     (after timeout
       timeout-expr))
+  ```
 
-  There are two special cases for the timeout value:
-  :infinity - the process is to wait indefinitely for a matching
+  There are two special cases for the `timeout` value:
+  `:infinity` - the process is to wait indefinitely for a matching
     message. This is the same as not using a timeout. This can be
     useful for timeout values that are calculated at runtime.
-  0 - if there is no matching message in the mailbox, the timeout
+  `0` - if there is no matching message in the mailbox, the timeout
     occurs immediately.
 
   Returns the value of the evaluated expression."
@@ -819,17 +856,17 @@
   `(receive* true ~clauses))
 
 (defmacro receive!!
-  "The same as receive! but uses blocking instead of parking."
+  "The same as `receive!` but blocks."
   [& clauses]
   `(receive* false ~clauses))
 
 (defmacro proc-fn
-  "Creates process function which can be passed to spawn."
+  "Creates process function which can be passed to `spawn`."
   [args & body]
   `(proc-fn* nil ~args ~@body))
 
 (defmacro proc-defn
-  "The same as (def fname (proc-fn args body))."
+  "The same as `(def fname (proc-fn args body))`."
   {:arglists '([fname doc-string? args & body])}
   [fname docs-or-args & more]
   (let [[doc-string args body] (if (string? docs-or-args)
@@ -848,35 +885,37 @@
 (defmacro async
   "Executes body asynchronously. Like go-block but propagates
   exceptions.
-  The returned value is to be passed to await!."
+
+  The returned value is to be passed to `await!`."
   [& body]
   `(->Async (go (ex-catch [:ok (do ~@body)] ))))
 
 (defmacro await!
-  "Returns the value of the async operation represented by x or exits with
-  the same reason the operation exited. Parks until the operation is
+  "Returns the value of the async operation represented by `x` or exits
+  with the same reason the operation exited. Parks until the operation is
   completed if required.
 
-  It is illegal to pass the same async value to await! more than once.
+  It is illegal to pass the same async value to `await!` more than once.
 
-  Throws if x is not async value (i.e. is not returned by async)."
+  Throws if `x` is not async value (i.e. is not returned by `async`)."
   [x]
   `(await* true ~x))
 
 (defn await!!
-  "The same as await! but uses blocking instead of parking."
+  "The same as `await!` but blocks."
   [x]
   (await* false x))
 
 (defn async?
-  "Returns true if x is async value (i.e. is returned by async),
-  otherwise returns false."
+  "Returns `true` if `x` is async value (i.e. is returned by `async`),
+  otherwise returns `false`."
   [x]
   (instance? Async x))
 
 (defmacro async?-value!
-  "If x is returned by async, returns the value of the corresponding async
-  operation (parks if needed). If x is a regular value, returns x."
+  "If `x` is returned by `async`, returns the value of the corresponding
+  async operation (parks if needed). If `x` is a regular value, returns
+  `x`."
   [x]
   `(let [res# ~x]
      (cond

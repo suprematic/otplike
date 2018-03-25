@@ -45,8 +45,10 @@
 ;; API
 
 (defn apply-after
-  "Applies f to args after msecs.
+  "Applies `f` to `args` after `msecs`.
+
   Returns the timer reference.
+
   Throws on bad arguments."
   ([msecs f]
    (apply-after msecs f []))
@@ -69,16 +71,19 @@
      cancel)))
 
 (defn cancel
-  "Cancels a previously requested timeout. tref is a unique timer
+  "Cancels a previously requested timeout. `tref` is a unique timer
   reference returned by the related timer function.
-  Throws if tref is not a timer reference."
+
+  Throws if `tref` is not a timer reference."
   [tref]
   (u/check-args [(satisfies? ap/ReadPort tref)])
   (async/close! tref))
 
 (defn send-after
-  "Evaluates (! pid message) after msecs.
+  "Evaluates `(! pid message)` after `msecs`.
+
   Returns the timer reference.
+
   Throws on bad arguments."
   ([msecs message]
     (send-after msecs (process/self) message))
@@ -87,9 +92,11 @@
    (apply-after msecs #(! pid message))))
 
 (defn exit-after
-  "Sends an exit signal with reason to pid after msecs. Pid can be a pid
-  or a registered name.
+  "Sends an exit signal with reason `reason` to pid `pid` after `msecs`.
+  `pid` can be a pid or a registered name.
+
   Returns the timer reference.
+
   Throws on bad arguments."
   ([msecs reason]
    (exit-after msecs (process/self) reason))
@@ -98,15 +105,17 @@
    (apply-after msecs #(process/exit (process/resolve-pid pid) reason))))
 
 (defn kill-after
-  "The same as exit-after called with reason :kill."
+  "The same as `exit-after` called with reason `:kill`."
   ([msecs]
    (kill-after msecs (process/self)))
   ([msecs pid]
     (exit-after msecs pid :kill)))
 
 (defn apply-interval
-  "Evaluates (! pid message) repeatedly at intervals of msecs.
+  "Evaluates `(! pid message)` repeatedly at intervals of `msecs`.
+
   Returns the timer reference.
+
   Throws on bad arguments."
   ([msecs f]
    (apply-interval msecs f []))
@@ -114,8 +123,10 @@
    (apply-interval* msecs (process/self) f args)))
 
 (defn send-interval
-  "Evaluates (! pid message) repeatedly at intervals of msecs.
+  "Evaluates `(! pid message)` repeatedly at intervals of `msecs`.
+
   Returns the timer reference.
+
   Throws on bad arguments."
   ([msecs message]
    (send-interval msecs (process/self) message))

@@ -1,7 +1,11 @@
 (ns otplike.trace
   "Examples:
+
   1. Print all events about processes exited abnormally:
-  (otplike.trace/crashed #(println %))"
+
+  ```
+  (otplike.trace/crashed #(println %))
+  ```"
   (:require
     [otplike.process :as process]))
 

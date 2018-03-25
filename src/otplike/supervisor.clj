@@ -805,9 +805,9 @@
   "Dynamically adds a child specification to supervisor `sup`, which
   starts the corresponding child process.
 
-  SupRef can be a pid or a registered name.
+  `sup` can be a pid or a registered name.
 
-  ChildSpec must be a valid child specification. The child process is
+  `child-spec` must be a valid child specification. The child process is
   started by using the start function as defined in the child
   specification.
 

@@ -297,7 +297,7 @@
 ;; API
 
 (defn start
-  "The same as start! but returns async value."
+  "The same as `start!` but returns async value."
   ([server]
    (start server []))
   ([server args]
@@ -308,25 +308,25 @@
    (start server args (assoc-in options [:spawn-opt :register] reg-name))))
 
 (defmacro start!
-  "Starts the server, passing args to server's init function.
+  "Starts the server, passing `args` to server's `init` function.
 
   Arguments:
-  server-impl - IGenServer implementation, or map, or namespace.
-  args - any form that is passed as the argument to init function.
+  `server-impl` - `IGenServer` implementation, or map, or namespace.
+  `args` - any form that is passed as the argument to init function.
 
   Options:
-  :timeout - time in milliseconds gen-server is allowed to spend
+  `:timeout` - time in milliseconds gen-server is allowed to spend
     initializing  or it is terminated and the start function returns
-    [:error :timeout].
-  :spawn-opt - options used to spawn the gen-server process (see
-    process/spawn-opt)
+    `[:error :timeout]`.
+  `:spawn-opt` - options used to spawn the gen-server process (see
+    `process/spawn-opt`)
 
   Returns:
-  [:ok pid] if server started successfully,
-  [:error :no-init] if server implementation doesn't provide init
+  `[:ok pid]` if server started successfully,
+  `[:error :no-init]` if server implementation doesn't provide `init`
   function,
-  [:error [:bad-return-value value]] if init returns a bad value,
-  [:error reason] otherwise.
+  `[:error [:bad-return-value value]]` if `init` returns a bad value,
+  `[:error reason]` otherwise.
 
   Throws on illegal arguments."
   ([server]
@@ -388,7 +388,7 @@
    `(start! ~reg-name ~*ns* ~args ~options)))
 
 (defmacro start-link-ns
-  "The same as start-link-ns! returns async value."
+  "The same as `start-link-ns!` but returns async value."
   ([]
    `(start-link-ns [] {}))
   ([args]
@@ -448,14 +448,14 @@
                          [reason# ['call [~server ~request ~timeout-ms]]]))))
 
 (defn call
-  "The same as call! but returns async value."
+  "The same as `call!` but returns async value."
   ([server request]
    (process/async (call! server request)))
   ([server request timeout-ms]
    (process/async (call! server request timeout-ms))))
 
 (defn call!!
-  "The same as call! but blocks."
+  "The same as `call!` but blocks."
   ([server request]
    (process/await!! (call server request)))
   ([server request timeout-ms]
