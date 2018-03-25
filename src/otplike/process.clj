@@ -445,7 +445,7 @@
     `(let [a# ~x]
        (when-not (async? a#)
          (throw (IllegalArgumentException. "argument must be 'async' value")))
-       (match (~take (:chan a#))
+       (match (~take (.chan a#))
          [:ok result#] result#
          [:EXIT reason#] (exit reason#)))))
 
@@ -506,10 +506,12 @@
 
   **Warning:** this function is intended for debugging and is not to be
   used in application programs."
-  [^Pid {:keys [id pname] :as pid}]
+  [^Pid pid]
   {:post [(string? %)]}
   (u/check-args [(pid? pid)])
-  (str "<" (if pname (str pname "@" id) id) ">"))
+  (let [pname (.pname pid)
+        id (.id pid)]
+    (str "<" (if pname (str pname "@" id) id) ">")))
 
 (defn self
   "Returns the process identifier of the calling process.
