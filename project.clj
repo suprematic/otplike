@@ -1,6 +1,7 @@
 (def core-async-version "0.4.474")
 
-(defproject otplike/otplike "0.4.0-alpha-SNAPSHOT"
+(defproject
+  otplike/otplike "0.4.0-alpha-SNAPSHOT"
   :description "Erlang/OTP like processes and behaviours on top of core.async"
   :license {:name "Eclipse Public License - v1.0"
             :url  "https://www.eclipse.org/legal/epl-v10.html"}
@@ -15,24 +16,28 @@
   ;:main otplike.example.benchmarks
   ;:source-paths  ["src" "examples"]
 
-  :profiles {:parallel-test
-             {:dependencies [[org.clojure/core.async ~core-async-version]
-                             [org.clojure/math.combinatorics "0.1.4"]]
-              :aot :all}
+  :profiles {:test
+             {:dependencies [[org.clojure/math.combinatorics "0.1.4"]]}
 
-             :test
-             {:dependencies [[org.clojure/math.combinatorics "0.1.4"]]
-              :aot :all}
+             :parallel-test
+             {:dependencies [[org.clojure/core.async ~core-async-version]]}
+
+             :test-1.8
+             {:dependencies [[org.clojure/clojure "1.8.0"]]}
+
+             :test-1.9
+             {:dependencies [[org.clojure/clojure "1.9.0"]]}
 
              :repl
              {:dependencies [[org.clojure/math.combinatorics "0.1.4"]]
               :source-paths  ["src" "examples"]}}
 
-  :codox {:source-paths ["src"]
-          :source-uri
-          "https://github.com/suprematic/otplike/blob/{version}/{filepath}#L{line}"
-          :namespaces [#"^(?!otplike.spec-util)"]
-          :metadata {:doc/format :markdown}}
+  :codox
+  {:source-paths ["src"]
+   :source-uri
+   "https://github.com/suprematic/otplike/blob/{version}/{filepath}#L{line}"
+   :namespaces [#"^(?!otplike.spec-util)"]
+   :metadata {:doc/format :markdown}}
 
   :test-selectors {:parallel :parallel
                    :serial :serial
