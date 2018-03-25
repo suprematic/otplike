@@ -247,7 +247,8 @@
       [:linked-exit (xpid :guard pid?) reason]
       (do
         (if (locking *global-lock
-              (and (.getLinked process) (.updateLinked process #(disj % xpid))))
+              (and (.getLinked process)
+                   (.updateLinked process #(disj % xpid))))
           (if trap-exit
             (do
               (! pid [:EXIT xpid reason])
@@ -387,7 +388,8 @@
   @*message-context*)
 
 (defmacro receive* [park? clauses]
-  (assert (> (count clauses) 1) "Receive requires one or more message patterns")
+  (assert (> (count clauses) 1)
+          "Receive requires one or more message patterns")
   (if (even? (count clauses))
     `(if-let [[context# msg#] (~(if park? `<! `<!!) *inbox*)]
        (do
@@ -721,8 +723,8 @@
 
   - `object` - the monitored entity, which triggered the event. That is the
     argument of monitor call.
-  - `info` - either the exit reason of the process, or :noproc (process did not
-    exist at the time of monitor creation).
+  - `info` - either the exit reason of the process, or `:noproc`
+    (process did not exist at the time of monitor creation).
 
   Making several calls to `monitor` for the same `pid-or-name` is not
   an error; it results in as many independent monitoring instances.
@@ -741,8 +743,9 @@
           (new-monitor-ref)
           (let [mref (new-monitor-ref other-pid)]
             (if (locking *global-lock
-                  (.updateMonitors other-process
-                                   #(if % (assoc % mref [my-pid pid-or-name]))))
+                  (.updateMonitors
+                    other-process
+                    #(if % (assoc % mref [my-pid pid-or-name]))))
               mref
               (let [empty-mref (new-monitor-ref)]
                 (! my-pid (monitor-message empty-mref pid-or-name :noproc))

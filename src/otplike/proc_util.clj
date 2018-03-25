@@ -3,6 +3,9 @@
             [clojure.core.match :refer [match]]
             [otplike.process :as process]))
 
+;; ====================================================================
+;; API
+
 (defmacro ^:no-doc current-line-number []
   (:line (meta &form)))
 

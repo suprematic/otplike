@@ -148,14 +148,17 @@
   (process/async
     (loop [state state
            timeout timeout]
-      (let [message (process/receive! message message (after timeout :timeout))]
+      (let [message (process/receive!
+                      message message
+                      (after timeout :timeout))]
         (match (process/await! (dispatch impl parent state message))
           [:recur new-state new-timeout] (recur new-state new-timeout)
           [:terminate :normal _new-state] :ok
           [:terminate reason _new-state] (process/exit reason))))))
 
 (process/proc-defn gen-server-proc [impl init-args parent response]
-  (match (process/ex-catch [:ok (process/async?-value! (init impl init-args))])
+  (match (process/ex-catch
+           [:ok (process/async?-value! (init impl init-args))])
     [:ok [:ok initial-state]]
     (do
       (put!* response :ok)
@@ -207,7 +210,8 @@
   (if terminate
     (terminate reason state)))
 
-(defn- coerce-map [{:keys [init handle-call handle-cast handle-info terminate]}]
+(defn- coerce-map
+  [{:keys [init handle-call handle-cast handle-info terminate]}]
   (reify IGenServer
     (init [_ args]
       (call-init init args))
@@ -245,7 +249,8 @@
       (call-handle-cast (ns-function impl-ns 'handle-cast) request state))
 
     (handle-call [_ request from state]
-      (call-handle-call (ns-function impl-ns 'handle-call) request from state))
+      (call-handle-call
+        (ns-function impl-ns 'handle-call) request from state))
 
     (handle-info [_ request state]
       (call-handle-info (ns-function impl-ns 'handle-info) request state))
@@ -278,7 +283,9 @@
           [nil timeout] [:error :timeout])))))
 
 (defn- start*
-  [server args {:keys [timeout spawn-opt] :or {timeout :infinity spawn-opt {}}}]
+  [server
+   args
+   {:keys [timeout spawn-opt] :or {timeout :infinity spawn-opt {}}}]
   (process/async
     (let [gs (->gen-server server)
           response (async/chan)

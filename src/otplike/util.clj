@@ -6,6 +6,9 @@
            (< (:minor *clojure-version*) 9))
   (require '[clojure.future :refer :all]))
 
+;; ====================================================================
+;; API
+
 (defmacro check-args [exprs]
   (assert (sequential? exprs))
   (when-let [expr (first exprs)]
@@ -14,19 +17,15 @@
       (throw (IllegalArgumentException.
                (str "require " '~expr " to be true"))))))
 
-(defn stack-trace
-  ([^Throwable e]
-   (let [s-trace (stack-trace e '())]
-     (reduce (fn [acc x] (assoc x :cause acc)) (first s-trace) (rest s-trace))))
-  ([^Throwable e acc]
-   (if e
-     (recur (.getCause e)
-            (conj acc (merge {:message (.getMessage e)
-                              :class (.getName (class e))
-                              :stack-trace (mapv str (.getStackTrace e))}
-                             (if (instance? clojure.lang.ExceptionInfo e)
-                               {:data (ex-data e)}))))
-     acc)))
+(defn stack-trace [^Throwable e]
+  (merge
+    {:message (.getMessage e)
+     :class (.getName (class e))
+     :stack-trace (mapv str (.getStackTrace e))}
+    (if (instance? clojure.lang.ExceptionInfo e)
+      {:data (ex-data e)})
+    (if-let [cause (.getCause e)]
+      {:cause (stack-trace cause)})))
 
 (defn timeout-chan [timeout]
   (cond

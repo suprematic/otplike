@@ -440,8 +440,9 @@
         [:shutdown new-state]
         (do
           ;(printf "too many restarts shutting down%n")
-          (report-error [:shutdown :reached-max-restart-intensity
-                         (select-keys state [::intensity ::period ::strategy]) child])
+          (report-error
+            [:shutdown :reached-max-restart-intensity
+             (select-keys state [::intensity ::period ::strategy]) child])
           [:shutdown
            (update new-state ::children delete-child-by-id (::id child))])))))
 (spec-util/instrument `restart-child*)
