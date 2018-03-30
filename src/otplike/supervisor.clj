@@ -721,15 +721,6 @@
 ;; ====================================================================
 ;; API
 
-(defn start-link
-  "The same as `start-link!` but returns async value."
-  ([sup-fn]
-   (start-link sup-fn []))
-  ([sup-fn args]
-   (start-link* sup-fn args {}))
-  ([sup-name sup-fn args]
-   (start-link* sup-fn args {:register sup-name})))
-
 (spec/fdef start-link!
   :args (spec/or
           :noname (spec/cat :sup-fn fn?
@@ -778,6 +769,23 @@
    `(process/await! (start-link ~sup-fn ~args)))
   ([sup-name sup-fn args]
    `(process/await! (start-link ~sup-name ~sup-fn ~args))))
+
+(spec/fdef start-link
+  :args (spec/or
+          :noname (spec/cat :sup-fn fn?
+                            :args (spec/? (spec/nilable (spec/coll-of any?))))
+          :register (spec/cat :sup-name any?
+                              :sup-fn fn?
+                              :args (spec/nilable (spec/coll-of any?))))
+  :ret ::process/async)
+(defn start-link
+  "The same as `start-link!` but returns async value."
+  ([sup-fn]
+   (start-link sup-fn []))
+  ([sup-fn args]
+   (start-link* sup-fn args {}))
+  ([sup-name sup-fn args]
+   (start-link* sup-fn args {:register sup-name})))
 
 (spec/fdef check-child-specs
   :args (spec/cat :child-specs any?)
@@ -828,6 +836,14 @@
   [sup child-spec]
   `(gen-server/call! ~sup [:start-child ~child-spec]))
 
+(spec/fdef start-child
+  :args (spec/cat :sup ::sup-ref :id ::child-spec)
+  :ret ::process/async)
+(defn start-child
+  "The same as `start-child!` but returns async value."
+  [sup child-spec]
+  (gen-server/call sup [:start-child child-spec]))
+
 (spec/fdef restart-child!
   :args (spec/cat :sup ::sup-ref :id ::id)
   :ret (spec/or :ok (spec/or :pid (spec/tuple ::ok ::process/pid)
@@ -858,6 +874,14 @@
   [sup id]
   `(gen-server/call! ~sup [:restart-child ~id]))
 
+(spec/fdef restart-child
+  :args (spec/cat :sup ::sup-ref :id ::id)
+  :ret ::process/async)
+(defn restart-child
+  "The same as `restart-child!` but returns async value."
+  [sup id]
+  (gen-server/call sup [:restart-child id]))
+
 (spec/fdef terminate-child!
   :args (spec/cat :sup ::sup-ref :id ::id)
   :ret (spec/or :ok ::ok
@@ -882,6 +906,14 @@
   [sup id]
   `(gen-server/call! ~sup [:terminate-child ~id]))
 
+(spec/fdef terminate-child
+  :args (spec/cat :sup ::sup-ref :id ::id)
+  :ret ::process/async)
+(defn terminate-child
+  "The same as `terminate-child!` but returns async value."
+  [sup id]
+  (gen-server/call sup [:terminate-child id]))
+
 (spec/fdef delete-child!
   :args (spec/cat :sup ::sup-ref :id ::id)
   :ret (spec/or :ok ::ok
@@ -900,3 +932,11 @@
   the function returns `[:error :not-found]`."
   [sup id]
   `(gen-server/call! ~sup [:delete-child ~id]))
+
+(spec/fdef delete-child
+  :args (spec/cat :sup ::sup-ref :id ::id)
+  :ret ::process/async)
+(defn delete-child
+  "The same as `delete-child!` but returns async value."
+  [sup id]
+  (gen-server/call sup [:delete-child id]))
