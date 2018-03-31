@@ -418,7 +418,7 @@
    `(start-link! ~reg-name ~*ns* ~args ~options)))
 
 (defmacro call!
-  "Makes a synchronous call to the `server`by sending a request and
+  "Makes a synchronous call to the `server` by sending a request and
   waiting until a reply arrives or a time-out occurs. The `handle-call`
   callback of the gen-server is called to handle the request.
 
