@@ -461,13 +461,6 @@
   ([server request timeout-ms]
    (process/async (call! server request timeout-ms))))
 
-(defn call!!
-  "The same as `call!` but blocks."
-  ([server request]
-   (process/await!! (call server request)))
-  ([server request timeout-ms]
-   (process/await!! (call server request timeout-ms))))
-
 (defn cast
   "Sends an asynchronous request to the `server` and returns immediately,
   ignoring if the `server` process does not exist. The `handle-cast`
