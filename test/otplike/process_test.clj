@@ -1990,4 +1990,112 @@
     (await-completion done2 50)))
 
 ;; ====================================================================
+;; (async [& body]) / (await x)
+
+(deftest ^:parallel async-returns-async-value
+  (is (process/async? (process/async)))
+  (is (process/async? (process/async 1)))
+  (is (process/async? (process/async (throw (ex-info "test" {}))))))
+
+(deftest ^:parallel async-executes-body-asynchronously
+  (let [done (async/chan)
+        done1 (async/chan)]
+    (process/async
+     (is (await-completion done 50)
+         "async's body must observe changes made after async was called")
+     (async/close! done1))
+    (async/close! done)
+    (await-completion done1 50)))
+
+(deftest ^:parallel async-allows-parking
+  (let [done (async/chan)
+        done1 (async/chan)]
+    (process/async
+      (let [timeout-ms 50
+            timeout (async/timeout timeout-ms)]
+        (match (async/alts! [done timeout])
+          [_ done] (async/close! done1)
+          [nil timeout] (is false (format "timeout %d" timeout-ms)))))
+    (async/close! done)
+    (await-completion done1 50)))
+
+(deftest ^:parallel await-returns-value-of-async-expr
+  (is (= 123 (process/await!! (process/async 123)))
+      "await!! must return the value of async's expression")
+  (is (nil? (process/await!! (process/async nil)))
+      "await!! must return the value of async's expression")
+  (let [done (async/chan)]
+    (async/go
+      (is (= 123 (process/await! (process/async 123)))
+          "await! must return the value of async's expression")
+      (is (nil? (process/await! (process/async nil)))
+          "await! must return the value of async's expression")
+      (async/close! done))
+    (await-completion done 50)))
+
+(deftest ^:parallel await-propagates-exceptions-of-async-expr
+  (let [async (process/async (throw (ex-info "msg 123" {})))]
+    (is (thrown?
+         clojure.lang.ExceptionInfo #"^msg 123$"
+         (process/await!! async))))
+  (let [async (process/async (throw (ex-info "msg 123" {})))]
+    (let [done (async/go
+                 (is (thrown?
+                      clojure.lang.ExceptionInfo #"^msg 123$"
+                      (process/await! async))))]
+      (await-completion done 50))))
+
+(deftest ^:parallel await-throws-on-illegal-argument
+  (is (thrown? IllegalArgumentException (process/await!! 1)))
+  (is (thrown? IllegalArgumentException (process/await!! nil)))
+  (is (thrown? IllegalArgumentException (process/await!! {})))
+  (is (thrown? IllegalArgumentException (process/await!! [])))
+  (is (thrown? IllegalArgumentException (process/await!! '())))
+  (is (thrown? IllegalArgumentException (process/await!! "str")))
+  (is (thrown? IllegalArgumentException (process/await!! (Object.))))
+  (is (thrown? IllegalArgumentException (process/await!! 'a)))
+  (is (thrown? IllegalArgumentException (process/await!! :a)))
+  (let [done (async/chan)]
+    (async/go
+      (is (thrown? IllegalArgumentException (process/await! 1)))
+      (is (thrown? IllegalArgumentException (process/await! nil)))
+      (is (thrown? IllegalArgumentException (process/await! {})))
+      (is (thrown? IllegalArgumentException (process/await! [])))
+      (is (thrown? IllegalArgumentException (process/await! '())))
+      (is (thrown? IllegalArgumentException (process/await! "str")))
+      (is (thrown? IllegalArgumentException (process/await! (Object.))))
+      (is (thrown? IllegalArgumentException (process/await! 'a)))
+      (is (thrown? IllegalArgumentException (process/await! :a)))
+      (async/close! done))
+    (await-completion done 50)))
+
+(deftest ^:parallel async?-value!-returns-value-of-async-expr
+  (let [done (async/chan)]
+    (async/go
+      (is (= 123 (process/await! (process/async 123)))
+          "async?-value! must return the value of async's expression")
+      (is (nil? (process/await! (process/async nil)))
+          "async?-value! must return the value of async's expression")
+      (async/close! done))
+    (await-completion done 50)))
+
+(deftest ^:parallel async?-value!-returns-non-async-value
+  (let [done (async/chan)]
+    (async/go
+      (is (= 123 (process/async?-value! 123))
+          "async?-value! must return the value of async's expression")
+      (is (nil? (process/async?-value! nil))
+          "async?-value! must return the value of async's expression")
+      (async/close! done))
+    (await-completion done 50)))
+
+(deftest ^:parallel async?-value!-propagates-exceptions-of-async-expr
+  (let [async (process/async (throw (ex-info "msg 123" {})))]
+    (let [done (async/go
+                 (is (thrown?
+                      clojure.lang.ExceptionInfo #"^msg 123$"
+                      (process/async?-value! async))))]
+      (await-completion done 50))))
+
+;; ====================================================================
 ;; Other
