@@ -347,7 +347,7 @@
       ~server ~args (assoc-in ~options [:spawn-opt :register] ~reg-name))))
 
 (defn start-link
-  "The same as `start` but returns async value."
+  "The same as `start-link!` but returns async value."
   ([server]
    (start-link server [] {}))
   ([server args]
@@ -371,8 +371,7 @@
       ~server ~args (assoc-in ~options [:spawn-opt :register] ~reg-name))))
 
 (defmacro start-ns
-  "Starts the server, taking current ns as an implementation source.
-  See `start!` for more info."
+  "The same as `start-ns!` but returns async value."
   ([]
    `(start-ns [] {}))
   ([args]
@@ -418,7 +417,7 @@
    `(start-link! ~reg-name ~*ns* ~args ~options)))
 
 (defmacro call!
-  "Makes a synchronous call to the `server` by sending a request and
+  "Makes a synchronous call to a `server` by sending a `request` and
   waiting until a reply arrives or a time-out occurs. The `handle-call`
   callback of the gen-server is called to handle the request.
 
