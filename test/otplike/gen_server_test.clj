@@ -115,6 +115,9 @@
       [:ok (pid :guard process/pid?)]
       (match (process/exit pid :abnormal) true :ok))))
 
+;; ====================================================================
+;; (init [& args])
+
 (def-proc-test ^:parallel init.start-calls-init
   (let [done (async/chan)
         server {:init (fn [] (async/close! done) [:ok nil])}]
@@ -246,6 +249,46 @@
         ":timeout message must not be sent to gen-server before timeout")
     (is (await-completion done 150)
         ":timeout message must be sent to gen-server after timeout")))
+
+(def-proc-test ^:parallel init.async-value-returned
+  (process/flag :trap-exit true)
+  (let [done (async/chan)
+        server {:init (fn [] (process/async [:ok :init]))
+                :handle-info (fn [msg state]
+                               (match [msg state]
+                                 [:msg :init]
+                                 (do
+                                   (async/close! done)
+                                   [:stop :normal state])))}]
+    (match (gs/start-link! server)
+      [:ok pid] (! pid :msg))
+    (is (await-completion done 50)
+        "state of a server must be set as returned from init"))
+  (let [done (async/chan)
+        server {:init (fn [] (process/async [:ok :init 100]))
+                :handle-info (fn [msg state]
+                               (match [msg state]
+                                 [:timeout :init]
+                                 (do
+                                   (async/close! done)
+                                   [:stop :normal state])))}]
+    (match (gs/start-link! server)
+      [:ok pid] :ok)
+    (is (await-completion done 150)
+        "timeout returned from init must occur"))
+  (let [done (async/chan)
+        server {:init (fn [] (process/async [:stop :test-reason]))}]
+    (is (match (gs/start-link! server) [:error :test-reason] :ok)
+        "start-link must return the reason returned from init"))
+  (let [done (async/chan)
+        server {:init (fn [] (process/async (process/exit :test)))}]
+    (is (match (gs/start-link! server) [:error :test] :ok)
+        "start-link must return the reason init exited with"))
+  (let [done (async/chan)
+        server {:init (fn [] (process/async :my-bad-return))}]
+    (is (match (gs/start-link! server)
+          [:error [:bad-return-value init :my-bad-return]] :ok)
+        "start-link's error must contain the value returned from init")))
 
 ;; ====================================================================
 ;; (handle-call [request from state])
@@ -977,6 +1020,80 @@
     (is (await-completion done 150)
         ":timeout message must be sent to gen-server after timeout")))
 
+(def-proc-test ^:parallel handle-call.async-value-returned
+  (process/flag :trap-exit true)
+  (let [server {:init (fn [] [:ok :init])
+                :handle-call (fn [msg _from state]
+                               (process/async [:reply :test-response state]))}]
+    (match (gs/start-link! server)
+      [:ok pid]
+      (is (= :test-response (gs/call! pid :call))
+        "server must return response returned from handle-call")))
+  (let [done (async/chan)
+        server {:init (fn [] [:ok :init])
+                :handle-call (fn [msg _from state]
+                               (match [msg state]
+                                 [:msg :init]
+                                 (process/async [:reply :ok :timeout 100])))
+                :handle-info (fn [msg state]
+                               (match [msg state]
+                                 [:timeout :timeout]
+                                 (do
+                                   (async/close! done)
+                                   [:stop :normal state])))}]
+    (match (gs/start-link! server)
+      [:ok pid] (gs/call! pid :msg))
+    (is (await-completion done 150)
+        "timeout returned from handle-call must occur"))
+  (let [done (async/chan)
+        server {:init (fn [] [:ok :init])
+                :handle-call (fn [msg _from state]
+                               (process/async [:stop :normal state]))
+                :terminate (fn [reason state]
+                             (match reason
+                               :normal (async/close! done)))}]
+    (match (gs/start-link! server)
+      [:ok pid] (process/ex-catch (gs/call! pid :msg)))
+    (is (await-completion done 50)
+        "server must terminate with reason returned from handle-call"))
+  (let [done (async/chan)
+        server {:init (fn [] [:ok :init])
+                :handle-call (fn [msg _from state]
+                               (process/async [:stop :abnormal state]))
+                :terminate (fn [reason state]
+                             (match reason
+                               :abnormal (async/close! done)))}]
+    (match (gs/start-link! server)
+      [:ok pid] (process/ex-catch (gs/call! pid :msg)))
+    (is (await-completion done 50)
+        "server must terminate with reason returned from handle-call"))
+  (let [server {:init (fn [] [:ok :init])
+                :handle-call (fn [msg _from state]
+                               (match [msg state]
+                                 [:msg1 :init]
+                                 (process/async [:reply :ok1 :new-state])
+                                 [:msg2 :new-state]
+                                 [:reply :ok2 state]))}]
+    (match (gs/start-link! server)
+      [:ok pid]
+      (do
+        (match (gs/call! pid :msg1) :ok1 :ok)
+        (is (= :ok2 (gs/call! pid :msg2))
+            "server must update state accroding to returned value"))))
+  (let [done (async/chan)
+        server {:init (fn [] [:ok :init])
+                :handle-call (fn [msg _from state]
+                               (process/async :test-bad-return))
+                :terminate (fn [reason state]
+                             (match reason
+                               [:bad-return-value 'handle-call :test-bad-return]
+                               (async/close! done)))}]
+    (match (gs/start-link! server)
+      [:ok pid] (process/ex-catch (gs/call! pid :msg)))
+    (is (await-completion done 50)
+        (str "the reason passed to terminate must containg the value returned"
+             " from handle-call"))))
+
 ;; ====================================================================
 ;; (handle-cast [request state])
 
@@ -1470,6 +1587,73 @@
     (is (await-completion done 150)
         ":timeout message must be sent to gen-server after timeout")))
 
+(def-proc-test ^:parallel handle-cast.async-value-returned
+  (process/flag :trap-exit true)
+  (let [done (async/chan)
+        server {:init (fn [] [:ok :init])
+                :handle-cast (fn [msg state]
+                               (process/async [:noreply :timeout 100]))
+                :handle-info (fn [msg state]
+                               (match [msg state]
+                                 [:timeout :timeout]
+                                 (do
+                                   (async/close! done)
+                                   [:stop :normal state])))}]
+    (match (gs/start-link! server)
+      [:ok pid] (gs/cast pid :msg))
+    (is (await-completion done 150)
+        "timeout returned from handle-cast must occur"))
+  (let [done (async/chan)
+        server {:init (fn [] [:ok :init])
+                :handle-cast (fn [msg state]
+                               (process/async [:stop :normal state]))
+                :terminate (fn [reason state]
+                             (match reason
+                               :normal (async/close! done)))}]
+    (match (gs/start-link! server)
+      [:ok pid] (gs/cast pid :msg))
+    (is (await-completion done 50)
+        "server must terminate with reason returned from handle-cast"))
+  (let [done (async/chan)
+        server {:init (fn [] [:ok :init])
+                :handle-cast (fn [msg state]
+                               (process/async [:stop :abnormal state]))
+                :terminate (fn [reason state]
+                             (match reason
+                               :abnormal (async/close! done)))}]
+    (match (gs/start-link! server)
+      [:ok pid] (gs/cast pid :msg))
+    (is (await-completion done 50)
+        "server must terminate with reason returned form handle-cast"))
+  (let [done (async/chan)
+        server {:init (fn [] [:ok :init])
+                :handle-cast (fn [msg state]
+                               (match [msg state]
+                                 [:msg1 :init]
+                                 (process/async [:noreply :new-state])
+                                 [:msg2 :new-state]
+                                 (async/close! done)))}]
+    (match (gs/start-link! server)
+      [:ok pid]
+      (do
+        (gs/cast pid :msg1)
+        (gs/cast pid :msg2)))
+    (is (await-completion done 50)
+        "server must update state accroding to returned value"))
+  (let [done (async/chan)
+        server {:init (fn [] [:ok :init])
+                :handle-cast (fn [msg state]
+                               (process/async :test-bad-return))
+                :terminate (fn [reason state]
+                             (match reason
+                               [:bad-return-value 'handle-cast :test-bad-return]
+                               (async/close! done)))}]
+    (match (gs/start-link! server)
+      [:ok pid] (gs/cast pid :msg))
+    (is (await-completion done 50)
+        (str "the reason passed to terminate must containg the value returned"
+             " from handle-cast"))))
+
 ;; ====================================================================
 ;; (handle-info [message state])
 
@@ -1920,3 +2104,70 @@
         ":timeout message must not be sent to gen-server before timeout")
     (is (await-completion done 150)
         ":timeout message must be sent to gen-server after timeout")))
+
+(def-proc-test ^:parallel handle-info.async-value-returned
+  (process/flag :trap-exit true)
+  (let [done (async/chan)
+        server {:init (fn [] [:ok :init])
+                :handle-info (fn [msg state]
+                               (match [msg state]
+                                 [:msg :init]
+                                 (process/async [:noreply :timeout 100])
+                                 [:timeout :timeout]
+                                 (do
+                                   (async/close! done)
+                                   [:stop :normal state])))}]
+    (match (gs/start-link! server)
+      [:ok pid] (! pid :msg))
+    (is (await-completion done 150)
+        "timeout returned from handle-info must occur"))
+  (let [done (async/chan)
+        server {:init (fn [] [:ok :init])
+                :handle-info (fn [msg state]
+                               (process/async [:stop :normal state]))
+                :terminate (fn [reason state]
+                             (match reason
+                               :normal (async/close! done)))}]
+    (match (gs/start-link! server)
+      [:ok pid] (! pid :msg))
+    (is (await-completion done 50)
+        "server must terminate with reason returned from handle-info"))
+  (let [done (async/chan)
+        server {:init (fn [] [:ok :init])
+                :handle-info (fn [msg state]
+                               (process/async [:stop :abnormal state]))
+                :terminate (fn [reason state]
+                             (match reason
+                               :abnormal (async/close! done)))}]
+    (match (gs/start-link! server)
+      [:ok pid] (! pid :msg))
+    (is (await-completion done 50)
+        "server must terminate with reason returned form handle-info"))
+  (let [done (async/chan)
+        server {:init (fn [] [:ok :init])
+                :handle-info (fn [msg state]
+                               (match [msg state]
+                                 [:msg1 :init]
+                                 (process/async [:noreply :new-state])
+                                 [:msg2 :new-state]
+                                 (async/close! done)))}]
+    (match (gs/start-link! server)
+      [:ok pid]
+      (do
+        (! pid :msg1)
+        (! pid :msg2)))
+    (is (await-completion done 50)
+        "server must update state accroding to returned value"))
+  (let [done (async/chan)
+        server {:init (fn [] [:ok :init])
+                :handle-info (fn [msg state]
+                               (process/async :test-bad-return))
+                :terminate (fn [reason state]
+                             (match reason
+                               [:bad-return-value 'handle-info :test-bad-return]
+                               (async/close! done)))}]
+    (match (gs/start-link! server)
+      [:ok pid] (! pid :msg))
+    (is (await-completion done 50)
+        (str "the reason passed to terminate must containg the value returned"
+             " from handle-info"))))
