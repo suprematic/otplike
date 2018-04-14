@@ -116,6 +116,7 @@ the same as Clojure. License file is available under the project root.
 
 ## Changelog
 
+* Release 0.4.0-alpha on 15.04.2018 [NOTES][15]
 * Release 0.3.0-alpha on 28.11.2017 [NOTES][14]
 * Release 0.2.1-alpha on 11.08.2017 [NOTES][13]
 * Release 0.2.0-alpha on 17.05.2017 [NOTES][11]
@@ -128,10 +129,11 @@ the same as Clojure. License file is available under the project root.
 [5]: https://img.shields.io/clojars/v/otplike.svg
 [6]: https://clojars.org/otplike
 [7]: https://clojars.org/otplike
-[8]: https://suprematic.github.io/otplike/api/0.4.0-alpha-SNAPSHOT/index.html
+[8]: https://suprematic.github.io/otplike/api/0.4.0-alpha/index.html
 [9]: https://github.com/suprematic/otplike/tree/master/examples/otplike/example
 [10]: http://suprematic.net/
 [11]: https://github.com/suprematic/otplike/releases/tag/0.2.0
 [12]: https://suprematic.github.io/otplike/euroclojure2017/
 [13]: https://github.com/suprematic/otplike/releases/tag/0.2.1
 [14]: https://github.com/suprematic/otplike/releases/tag/0.3.0
+[15]: https://github.com/suprematic/otplike/releases/tag/0.4.0-alpha

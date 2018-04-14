@@ -1,5 +1,5 @@
 (def core-async-version "0.4.474")
-(def project-version "0.4.0-alpha-SNAPSHOT")
+(def project-version "0.4.0-alpha")
 
 (defproject
   otplike/otplike project-version
