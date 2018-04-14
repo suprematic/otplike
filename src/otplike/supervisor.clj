@@ -895,7 +895,7 @@
 
   The created supervisor process calls `sup-fn` to find out about
   restart strategy, maximum restart intensity, and child processes.
-  To ensure a synchronized startup procedure, `start_link!` does not
+  To ensure a synchronized startup procedure, `start-link!` does not
   return until `sup-fn` has returned and all child processes have been
   started.
 
