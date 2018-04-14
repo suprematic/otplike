@@ -105,7 +105,8 @@
 
   The start function must create a child process and link to it, and
   must return `[:ok child-pid]` or `[:ok child-pid info]`, where `info`
-  is any value that is ignored by the supervisor.
+  is any value that is ignored by the supervisor. The function is
+  allowed to return async value wrapping the actual return.
 
   If something goes wrong, the function can also return an error tuple
   `[:error error]`.
@@ -897,7 +898,8 @@
   restart strategy, maximum restart intensity, and child processes.
   To ensure a synchronized startup procedure, `start-link!` does not
   return until `sup-fn` has returned and all child processes have been
-  started.
+  started. `sup-fn` is allowed to return async value wrapping the actual
+  return.
 
   If `sup-name` is provided, the supervisor is registered locally as
   `sup-name`.
