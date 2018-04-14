@@ -277,16 +277,13 @@
       [:ok pid] :ok)
     (is (await-completion done 150)
         "timeout returned from init must occur"))
-  (let [done (async/chan)
-        server {:init (fn [] (process/async [:stop :test-reason]))}]
+  (let [server {:init (fn [] (process/async [:stop :test-reason]))}]
     (is (match (gs/start-link! server) [:error :test-reason] :ok)
         "start-link must return the reason returned from init"))
-  (let [done (async/chan)
-        server {:init (fn [] (process/async (process/exit :test)))}]
+  (let [server {:init (fn [] (process/async (process/exit :test)))}]
     (is (match (gs/start-link! server) [:error :test] :ok)
         "start-link must return the reason init exited with"))
-  (let [done (async/chan)
-        server {:init (fn [] (process/async :my-bad-return))}]
+  (let [server {:init (fn [] (process/async :my-bad-return))}]
     (is (match (gs/start-link! server)
           [:error [:bad-return-value init :my-bad-return]] :ok)
         "start-link's error must contain the value returned from init")))
