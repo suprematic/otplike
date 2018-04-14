@@ -2079,13 +2079,13 @@
       (async/close! done))
     (await-completion done 100)))
 
-(deftest ^:parallel async?-value!-returns-non-async-value
+(deftest ^:parallel async?-value!-returns-regular-value
   (let [done (async/chan)]
     (async/go
       (is (= 123 (process/async?-value! 123))
-          "async?-value! must return the value of async's expression")
+          "async?-value! must return regular value")
       (is (nil? (process/async?-value! nil))
-          "async?-value! must return the value of async's expression")
+          "async?-value! must return regular value")
       (async/close! done))
     (await-completion done 100)))
 
