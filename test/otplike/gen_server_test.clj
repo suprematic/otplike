@@ -12,8 +12,9 @@
 ; TODO test bad callback (bad arity or not a function at all)
 ; TODO test everything with both map and ns server
 ; TODO test gen-server unlinks starting process on init timeout
-; FIXME check exit reason as soon as process/link or process/spawn will
-; allow to wait until linking is finished (including [:stop reason] returned
+; TODO test terminate callback
+; FIXME check exit reason as soon as process/link or process/spawn allow
+; to wait until linking is finished (including [:stop reason] returned
 ; from init)
 
 (defn spawn-exit-watcher [done timeout]
