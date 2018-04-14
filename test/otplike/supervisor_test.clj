@@ -400,6 +400,48 @@
              (is (await-completion sup-init-done 50)
                  "supervisor must call init-fn to get its spec")))))
 
+(def-proc-test ^:parallel init.async-value-returned
+  (process/flag :trap-exit true)
+  (let [done (async/chan)
+        sup-flags {}
+        server {:init (fn [] (process/async [:ok :init]))
+                :handle-info (fn [msg state]
+                               (match [msg state]
+                                 [:msg :init] (async/close! done)))}
+        reg-name (gensym "test-gs")
+        children-spec [{:id :gs1
+                        :start [gs/start-link [reg-name server [] {}]]}]
+        sup-spec [sup-flags children-spec]
+        init-fn (fn [] (process/async [:ok sup-spec]))]
+    (match (sup/start-link! init-fn)
+      [:ok _] (! reg-name :msg))
+    (is (await-completion done 50) "child must be started"))
+  (let [done (async/chan)
+        done? (atom false)
+        sup-flags {}
+        server {:init (fn []
+                        (if @done? (async/close! done))
+                        (process/async [:ok :init]))}
+        reg-name (gensym "test-gs")
+        children-spec [{:id :gs1
+                        :start [gs/start-link [reg-name server [] {}]]}]
+        sup-spec [sup-flags children-spec]
+        init-fn (fn [] (process/async [:ok sup-spec]))]
+    (match (sup/start-link! init-fn)
+      [:ok _]
+      (do
+        (reset! done? true)
+        (process/exit (process/whereis reg-name) :test)))
+    (is (await-completion done 50) "child must be restarted"))
+  (let [init-fn (fn [] (process/async (process/exit :test)))]
+    (is (match (sup/start-link! init-fn)
+          [:error :test] :ok)
+        "start-link must return the reason init-fn exited with"))
+  (let [init-fn (fn [] (process/async :my-bad-return))]
+    (is (match (sup/start-link! init-fn)
+          [:error [:bad-return :my-bad-return]] :ok)
+        "start-link's error must contain the value returned from init-fn")))
+
 ;; ####################################################################
 ;; Test strategies
 
