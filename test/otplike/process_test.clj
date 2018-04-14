@@ -2070,24 +2070,21 @@
     (await-completion done 50)))
 
 (deftest ^:parallel async?-value!-returns-value-of-async-expr
-  (let [done (async/chan)]
-    (async/go
-      (is (= 123 (process/await! (process/async 123)))
-          "async?-value! must return the value of async's expression")
-      (is (nil? (process/await! (process/async nil)))
-          "async?-value! must return the value of async's expression")
-      (async/close! done))
-    (await-completion done 100)))
+  (let [done
+        (async/go
+          (is (= 123 (process/await! (process/async 123)))
+              "async?-value! must return the value of async's expression")
+          (is (nil? (process/await! (process/async nil)))
+              "async?-value! must return the value of async's expression"))]
+    (await-completion done 150)))
 
 (deftest ^:parallel async?-value!-returns-regular-value
-  (let [done (async/chan)]
-    (async/go
-      (is (= 123 (process/async?-value! 123))
-          "async?-value! must return regular value")
-      (is (nil? (process/async?-value! nil))
-          "async?-value! must return regular value")
-      (async/close! done))
-    (await-completion done 100)))
+  (let [done (async/go
+               (is (= 123 (process/async?-value! 123))
+                   "async?-value! must return regular value")
+               (is (nil? (process/async?-value! nil))
+                   "async?-value! must return regular value"))]
+    (await-completion done 150)))
 
 (deftest ^:parallel async?-value!-propagates-exceptions-of-async-expr
   (let [async (process/async (throw (ex-info "msg 123" {})))]
