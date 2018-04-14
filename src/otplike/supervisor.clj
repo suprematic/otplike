@@ -1,4 +1,162 @@
 (ns otplike.supervisor
+  "Provides a supervisor, a process that supervises other processes
+  called child processes.
+
+  A child process can either be another supervisor or a worker
+  process. Worker processes are normally implemented using `gen_server`
+  behavior. Supervisors are used to build a hierarchical process
+  structure called a supervision tree, a nice way to structure a
+  fault-tolerant application. For more information, see
+  [Supervisor Behaviour][1] in OTP Design Principles.
+
+  A supervisor expects the definition of which child processes to
+  supervise to be specified in the return value of a supervisor's
+  function.
+
+  Unless otherwise stated, all functions of this namespaces fail if the
+  specified supervisor does not exist or if bad arguments are specified.
+
+  ### Supervision Principles
+
+  The supervisor is responsible for starting, stopping, and monitoring
+  its child processes. The basic idea of a supervisor is that it must
+  keep its child processes alive by restarting them when necessary.
+
+  The children of a supervisor are defined as a list of child
+  specifications. When the supervisor is started, the child processes
+  are started in order from left to right according to this list. When
+  the supervisor terminates, it first terminates its child processes in
+  reversed start order, from right to left.
+
+  The supervisor properties are defined by the supervisor flags. The
+  spec definition for the supervisor flags is as follows:
+
+  ```
+  (spec/def ::intensity nat-int?)
+  (spec/def ::period pos-int?)
+  (spec/def ::strategy
+  #{:one-for-all
+    :one-for-one
+    :rest-for-one})
+
+  (spec/def ::sup-flags
+  (spec/keys
+    :opt-un [::strategy
+             ::intensity
+             ::period]))
+  ```
+
+  A supervisor can have one of the following restart strategies
+  specified with the strategy key in the above map:
+
+  `:one-for-one` - If one child process terminates and is to be
+  restarted, only that child process is affected. This is the default
+  restart strategy.
+
+  `:one-for-all` - If one child process terminates and is to be
+  restarted, all other child processes are terminated and then all child
+  processes are restarted.
+
+  `:rest-for-one` - If one child process terminates and is to be
+  restarted, the 'rest' of the child processes (that is, the child
+  processes after the terminated child process in the start order) are
+  terminated. Then the terminated child process and all child processes
+  after it are restarted.
+
+  To prevent a supervisor from getting into an infinite loop of child
+  process terminations and restarts, a maximum restart intensity is
+  defined using two integer values specified with keys `:intensity` and
+  `:period` in the above map. Assuming the values `max-r` for
+  `:intensity` and `max-t` for `:period`, then, if more than `max-r`
+  restarts occur within `max-t` seconds, the supervisor terminates all
+  child processes and then itself. The termination reason for the
+  supervisor itself in that case will be `:shutdown`. intensity defaults
+  to `1` and period defaults to `5`.
+
+  The spec definition of a child specification is as follows:
+
+  ```
+  (spec/def ::timeout (spec/or :ms nat-int? :inf #{:infinity}))
+  (spec/def ::args (spec/coll-of any?))
+
+  (spec/def ::id any?)
+  (spec/def ::start (spec/tuple fn? ::args))
+  (spec/def ::restart #{:permanent :transient :temporary})
+  (spec/def ::shutdown
+  (spec/or :brutal-kill #{:brutal-kill}
+           :timeout ::timeout))
+  (spec/def ::type #{:worker :supervisor})
+
+  (spec/def ::child-spec
+  (spec/keys
+    :req-un [::id
+                 ::start]
+        :opt-un [::restart
+                 ::shutdown
+                         ::type]))
+  ```
+
+  `:id` is used to identify the child specification internally by the
+  supervisor.
+
+  `:start` defines the function call used to start the child process.
+  It must be a function-arguments tuple `[f args]` used as
+  `(apply f args)`.
+
+  The start function must create a child process and link to it, and
+  must return `[:ok child-pid]` or `[:ok child-pid info]`, where `info`
+  is any value that is ignored by the supervisor.
+
+  If something goes wrong, the function can also return an error tuple
+  `[:error error]`.
+
+  Notice that the `gen-server/start-link` functions fulfill the above
+  requirements.
+
+  `:restart` defines when a terminated child process must be
+  restarted. A `:permanent` child process is always restarted. A
+  `:temporary` child process is never restarted (even when the
+  supervisor's restart strategy is `:rest-for-one` or `one-for-all` and
+  a sibling's death causes the temporary process to be terminated). A
+  `:transient` child process is restarted only if it terminates
+  abnormally, that is, with another exit reason than `:normal`,
+  `:shutdown`, or `[:shutdown reason]`. The `:restart` key is optional
+  and defaults to `:permanent`.
+
+  `:shutdown` defines how a child process must be
+  terminated. `:brutal-kill` means that the child process is
+  unconditionally terminated using `(process/exit child-pid :kill)`. An
+  integer time-out value means that the supervisor tells the child
+  process to terminate by calling `(process/exit child-pid :shutdown)`
+  and then wait for an exit signal with reason `:shutdown` back from the
+  child process. If no exit signal is received within the specified
+  number of milliseconds, the child process is unconditionally
+  terminated using `(process/exit child-id :kill)`.
+
+  If the child process is another supervisor, the shutdown time is to be
+  set to `:infinity` to give the subtree ample time to shut down. It is
+  also allowed to set it to `:infinity`, if the child process is a
+  worker.
+
+  > **Warning!**
+  > Be careful when setting the shutdown time to
+  > `:infinity` when the child process is a worker. Because, in this
+  > situation, the termination of the supervision tree depends on the
+  > child process, it must be implemented in a safe way and its cleanup
+  > procedure must always return.
+
+  Notice that all child processes implemented using the standard
+  behaviors (`gen-server`) automatically adhere to the shutdown
+  protocol.
+
+  The `:shutdown` key is optional. If it is not specified, it defaults
+  to `5000` if the child is of type `:worker` and it defaults to
+  `:infinity` if the child is of type `:supervisor`.
+
+  `:type` specifies if the child process is a supervisor or a worker.
+  The `:type` key is optional and defaults to `:worker`.
+
+  [1]: https://erldocs.com/current/doc/design_principles/sup_princ.html"
   (:require [clojure.spec.alpha :as spec]
             [clojure.core.match :refer [match]]
             [clojure.core.async :as async]
