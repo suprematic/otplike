@@ -4,6 +4,7 @@
 (defproject
   otplike/otplike project-version
   :description "Erlang/OTP like processes and behaviours on top of core.async"
+  :url "https://github.com/suprematic/otplike"
   :license {:name "Eclipse Public License - v1.0"
             :url  "https://www.eclipse.org/legal/epl-v10.html"}
 
