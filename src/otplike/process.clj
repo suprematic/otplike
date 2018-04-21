@@ -69,7 +69,7 @@
 
 (def ^:private *global-lock)
 
-(def ^:private *pids
+(def ^:private *next-pid
   (atom 0))
 
 (def ^:private *refids
@@ -177,7 +177,7 @@
          (satisfies? ap/ReadPort inbox) (satisfies? ap/WritePort inbox)
          (map? flags)]
    :post [(instance? TProcess %)]}
-  (let [id (swap! *pids inc)
+  (let [id (swap! *next-pid inc)
         pname (or pname (str "proc" id))
         pid (Pid. id pname)
         control (async/chan 128)
