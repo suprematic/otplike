@@ -160,14 +160,14 @@
   {:pre [(pid? pid)
          (satisfies? ap/ReadPort inbox)]
    :post [(satisfies? ap/ReadPort %) (satisfies? IClose %)]}
-  (let [outbox (async/chan 1)
+  (let [outbox (async/chan)
         stop (async/chan)]
     (go-loop []
       (let [[value _] (async/alts! [stop inbox] :priority true)]
         (if (some? value)
           (do
-            (send-trace-event :receive {:message value})
             (>! outbox value)
+            (send-trace-event :receive {:message value})
             (recur))
           (async/close! outbox))))
     (Outbox. outbox stop)))
