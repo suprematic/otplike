@@ -172,15 +172,15 @@
           (async/close! outbox))))
     (Outbox. outbox stop)))
 
-(defn- new-process [pname inbox flags]
+(defn- new-process [pname flags]
   {:pre [(or (nil? pname) (string? pname))
-         (satisfies? ap/ReadPort inbox) (satisfies? ap/WritePort inbox)
          (map? flags)]
    :post [(instance? TProcess %)]}
   (let [id (swap! *next-pid inc)
         pname (or pname (str "proc" id))
         pid (Pid. id pname)
         control (async/chan 128)
+        inbox (async/chan 1024)
         kill (async/chan)
         linked #{}
         monitors {}
@@ -327,9 +327,8 @@
                  (or (nil? flags) (map? flags)) ;FIXME check for unknown flags
                  (not (pid? register))])
   (let [proc-func (resolve-proc-func proc-func)
-        inbox     (async/chan 1024)
         flags     (or flags {})
-        ^TProcess process (new-process pname inbox flags)
+        ^TProcess process (new-process pname flags)
         pid (.pid process)
         outbox (.outbox process)
         kill (.kill process)
