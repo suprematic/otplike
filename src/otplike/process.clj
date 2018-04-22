@@ -91,8 +91,6 @@
 
 (def ^:private ^:dynamic *self* nil)
 
-(def ^:no-doc ^:dynamic *inbox* nil)
-
 (defn- ->nil [x])
 
 (defn- send-trace-event [kind extra]
@@ -187,7 +185,7 @@
         outbox (outbox pid inbox)]
     (TProcess. pid inbox outbox control kill monitors linked flags)))
 
-(defn- self-process
+(defn self-process
   "Returns the process identifier of the calling process.
   Throws when called not in process context."
   []
@@ -340,7 +338,6 @@
     ; FIXME workaround for ASYNC-170. once fixed, binding should move to
     ; (start-process...)
     (binding [*self* pid
-              *inbox* outbox
               *message-context* (atom @*message-context*)]
       (send-trace-event
         :spawn {:fn (str proc-func) :args args :options options})
@@ -390,36 +387,38 @@
   (assert (> (count clauses) 1)
           "Receive requires one or more message patterns")
   (if (even? (count clauses))
-    `(if-let [[context# msg#] (~(if park? `<! `<!!) *inbox*)]
-       (do
-         (update-message-context! context#)
-         (match msg# ~@clauses))
-       (throw (Exception. "noproc")))
+    `(let [^TProcess process# (self-process)
+           inbox# (.outbox process#)]
+       (if-let [[context# msg#] (~(if park? `<! `<!!) inbox#)]
+         (do
+           (update-message-context! context#)
+           (match msg# ~@clauses))
+         (throw (Exception. "noproc"))))
+
     (match (last clauses)
       (['after timeout & body] :seq)
       (let [clauses1 (butlast clauses)]
-        `(if *inbox*
-           (let [inbox# *inbox*]
-             (case ~timeout
-               0
-               (let [[context# msg#] (async/poll! inbox#)]
-                 (if (nil? msg#)
-                   (do ~@body)
-                   (match msg# ~@(butlast clauses))))
+        `(let [^TProcess process# (self-process)
+               inbox# (.outbox process#)]
+           (case ~timeout
+             0
+             (let [[context# msg#] (async/poll! inbox#)]
+               (if (nil? msg#)
+                 (do ~@body)
+                 (match msg# ~@(butlast clauses))))
 
-               :infinity
-               (receive* ~park? ~(butlast clauses))
+             :infinity
+             (receive* ~park? ~(butlast clauses))
 
-               (let [timeout# (u/timeout-chan ~timeout)]
-                 (match
+             (let [timeout# (u/timeout-chan ~timeout)]
+               (match
                    (~(if park? `async/alts! `async/alts!!) [inbox# timeout#])
-                   [nil timeout#] (do ~@body)
-                   [nil inbox#] (throw (Exception. "noproc"))
-                   [[context# msg#] inbox#]
-                   (do
-                      (update-message-context! context#)
-                      (match msg# ~@(butlast clauses)))))))
-           (throw (Exception. "noproc")))))))
+                 [nil timeout#] (do ~@body)
+                 [nil inbox#] (throw (Exception. "noproc"))
+                 [[context# msg#] inbox#]
+                 (do
+                   (update-message-context! context#)
+                   (match msg# ~@(butlast clauses)))))))))))
 
 (alter-meta! #'receive* assoc :no-doc true)
 
