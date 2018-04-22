@@ -1712,13 +1712,11 @@
                  (async/close! done1)
                  (<! (async/timeout 50))
                  (process/demonitor mref)
-                 (is (= [:down [mref pid :normal]]
-                        (<! (await-message 100)))
+                 (is (= [:down [mref pid :normal]] (<! (await-message 100)))
                      (str "demonitor called after monitored process exited"
                           " must not affect monitoring process"))
                  (is (= :timeout (<! (await-message 100)))
-                     (str "demonitor called after monitored process exited"
-                          " must not affect monitoring process"))
+                     "no messages expected")
                  (async/close! done)))]
     (process/spawn pfn)
     (await-completion done 300)))
