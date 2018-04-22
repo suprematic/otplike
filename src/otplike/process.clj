@@ -924,6 +924,9 @@
        (async? res#) (await! res#)
        :else res#)))
 
+(defn processes []
+  (keys @*processes))
+
 (defn trace [pred handler]
   (let [t-ref (swap! *refids inc)
         handler #(if (pred %) (handler %))]
