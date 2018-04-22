@@ -154,9 +154,8 @@
   (close! [_]
     (async/close! stop)))
 
-(defn- outbox [pid inbox]
-  {:pre [(pid? pid)
-         (satisfies? ap/ReadPort inbox)]
+(defn- outbox [inbox]
+  {:pre [(satisfies? ap/ReadPort inbox)]
    :post [(satisfies? ap/ReadPort %) (satisfies? IClose %)]}
   (let [outbox (async/chan)
         stop (async/chan)]
@@ -182,7 +181,7 @@
         kill (async/chan)
         linked #{}
         monitors {}
-        outbox (outbox pid inbox)]
+        outbox (outbox inbox)]
     (TProcess. pid inbox outbox control kill monitors linked flags)))
 
 (defn self-process
