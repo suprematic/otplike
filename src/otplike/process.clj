@@ -927,6 +927,18 @@
 (defn processes []
   (keys @*processes))
 
+(defn process-info [pid]
+  (u/check-args [(pid? pid)])
+  (if-let [^TProcess process (@*processes pid)]
+    {:links (.getLinked process)
+     ;; :monitors TODO
+     :monitored-by (->> (.getMonitors process) (vals) (map first))
+     :registered-name (@*registered-reverse pid)
+     ;; :initial-call TODO
+     ;; :message-queue-len TODO
+     ;; :messages TODO
+     :flags (.getFlags process)}))
+
 (defn trace [pred handler]
   (let [t-ref (swap! *refids inc)
         handler #(if (pred %) (handler %))]
