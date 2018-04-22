@@ -123,6 +123,7 @@
 
 (deftype TProcess
   [pid
+   initial-call
    inbox
    outbox
    control
@@ -182,7 +183,8 @@
         linked #{}
         monitors {}
         outbox (outbox inbox)]
-    (TProcess. pid inbox outbox control kill monitors linked flags)))
+    (TProcess.
+     pid initial-call inbox outbox control kill monitors linked flags)))
 
 (defn self-process
   "Returns the process identifier of the calling process.
@@ -325,7 +327,7 @@
                  (not (pid? register))])
   (let [proc-func (resolve-proc-func proc-func)
         flags     (or flags {})
-        ^TProcess process (new-process pname flags)
+        ^TProcess process (new-process pname [proc-func args] flags)
         pid (.pid process)
         outbox (.outbox process)
         kill (.kill process)
@@ -934,7 +936,7 @@
      ;; :monitors TODO
      :monitored-by (->> (.getMonitors process) (vals) (map first))
      :registered-name (@*registered-reverse pid)
-     ;; :initial-call TODO
+     :initial-call (.initial-call process)
      ;; :message-queue-len TODO
      ;; :messages TODO
      :flags (.getFlags process)}))
