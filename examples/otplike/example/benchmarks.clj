@@ -28,14 +28,14 @@
       (! npid :ok)
       (process/receive! :ok :ok))))
 
-(defn start-ring.no-parent [n]
+(defn start-ring:no-parent [n]
   (let [done (clojure.core.async/chan)
         pid (process/spawn proc1 [n done])]
     (! pid :ok)
     (clojure.core.async/<!! done)
     (println "done" n)))
 
-#_(time (start-ring.no-parent 100000))
+#_(time (start-ring:no-parent 100000))
 
 ;---
 
