@@ -126,6 +126,7 @@
    initial-call
    inbox
    outbox
+   messages
    control
    kill
    ^:unsynchronized-mutable monitors
@@ -141,36 +142,7 @@
   (getFlags [_] flags)
   (updateFlags [_ f] (set! flags (f flags))))
 
-(defprotocol IClose
-  (close! [_]))
-
-(alter-meta! #'IClose assoc :no-doc true)
-
-(deftype Outbox [outbox stop]
-  ap/ReadPort
-  (take! [_ handler]
-    (ap/take! outbox handler))
-
-  IClose
-  (close! [_]
-    (async/close! stop)))
-
-(defn- outbox [inbox]
-  {:pre [(satisfies? ap/ReadPort inbox)]
-   :post [(satisfies? ap/ReadPort %) (satisfies? IClose %)]}
-  (let [outbox (async/chan)
-        stop (async/chan)]
-    (go-loop []
-      (let [[value _] (async/alts! [stop inbox] :priority true)]
-        (if (some? value)
-          (do
-            (>! outbox value)
-            (send-trace-event :receive {:message value})
-            (recur))
-          (async/close! outbox))))
-    (Outbox. outbox stop)))
-
-(defn- new-process [pname flags]
+(defn- new-process [pname initial-call flags]
   {:pre [(or (nil? pname) (string? pname))
          (map? flags)]
    :post [(instance? TProcess %)]}
@@ -179,12 +151,22 @@
         pid (Pid. id pname)
         control (async/chan 128)
         inbox (async/chan 1024)
+        outbox (async/chan)
+        messages (atom (clojure.lang.PersistentQueue/EMPTY))
         kill (async/chan)
-        linked #{}
         monitors {}
-        outbox (outbox inbox)]
+        linked #{}]
     (TProcess.
-     pid initial-call inbox outbox control kill monitors linked flags)))
+     pid
+     initial-call
+     inbox
+     outbox
+     messages
+     control
+     kill
+     monitors
+     linked
+     flags)))
 
 (defn self-process
   "Returns the process identifier of the calling process.
@@ -329,6 +311,7 @@
         flags     (or flags {})
         ^TProcess process (new-process pname [proc-func args] flags)
         pid (.pid process)
+        inbox (.inbox process)
         outbox (.outbox process)
         kill (.kill process)
         control (.control process)]
@@ -345,9 +328,15 @@
       (go
         (start-process pid proc-func args)
         (loop []
-          (let [proceed (match (async/alts! [kill control] :priority true)
+          (let [proceed (match (async/alts! [kill control inbox] :priority true)
                           [val control]
                           (dispatch-control process val)
+
+                          [message inbox]
+                          (do
+                            (swap! (.messages process) conj message)
+                            (async/put! outbox message)
+                            ::continue)
 
                           [val kill]
                           [::break (if (some? val) val :nil)])]
@@ -360,7 +349,7 @@
                 (send-trace-event :terminate {:reason reason})
                 (sync-unregister pid)
                 (async/close! control)
-                (close! outbox)
+                (async/close! outbox)
                 (let [[linked monitors]
                       (locking *global-lock
                         (let [linked-val (.getLinked process)
@@ -389,37 +378,58 @@
           "Receive requires one or more message patterns")
   (if (even? (count clauses))
     `(let [^TProcess process# (self-process)
-           inbox# (.outbox process#)]
-       (if-let [[context# msg#] (~(if park? `<! `<!!) inbox#)]
-         (do
-           (update-message-context! context#)
-           (match msg# ~@clauses))
-         (throw (Exception. "noproc"))))
+           outbox# (.outbox process#)
+           message-q# (.messages process#)]
+       (let [[context# msg#] (loop []
+                               (or (peek @message-q#)
+                                   (do
+                                     (if-not (~(if park? `<! `<!!) outbox#)
+                                       (throw (Exception. "noproc")))
+                                     (recur))))]
+         (swap! message-q# pop)
+         (update-message-context! context#)
+         (match msg# ~@clauses)))
 
     (match (last clauses)
       (['after timeout & body] :seq)
       (let [clauses1 (butlast clauses)]
         `(let [^TProcess process# (self-process)
-               inbox# (.outbox process#)]
+               outbox# (.outbox process#)
+               message-q# (.messages process#)]
            (case ~timeout
              0
-             (let [[context# msg#] (async/poll! inbox#)]
-               (if (nil? msg#)
-                 (do ~@body)
-                 (match msg# ~@(butlast clauses))))
+             (if-let [[context# msg#] (peek @message-q#)]
+               (do
+                 (swap! message-q# pop)
+                 (match msg# ~@(butlast clauses)))
+               (do ~@body))
 
              :infinity
              (receive* ~park? ~(butlast clauses))
 
-             (let [timeout# (u/timeout-chan ~timeout)]
-               (match
-                   (~(if park? `async/alts! `async/alts!!) [inbox# timeout#])
-                 [nil timeout#] (do ~@body)
-                 [nil inbox#] (throw (Exception. "noproc"))
-                 [[context# msg#] inbox#]
-                 (do
-                   (update-message-context! context#)
-                   (match msg# ~@(butlast clauses)))))))))))
+             (if-let [[context# msg#] (peek @message-q#)]
+               (do
+                 (swap! message-q# pop)
+                 (update-message-context! context#)
+                 (match msg# ~@(butlast clauses)))
+               (let [timeout# (u/timeout-chan ~timeout)
+                     res# (loop []
+                            (match (~(if park? `async/alts! `async/alts!!)
+                                    [outbox# timeout#])
+                              [_# timeout#] :timeout
+                              [nil outbox#] (throw (Exception. "noproc"))
+                              [_# outbox#]
+                              (if-let [m# (peek @message-q#)]
+                                [m#]
+                                (recur))))]
+                 (match res#
+                   :timeout
+                   (do ~@body)
+                   [[context# msg#]]
+                   (do
+                     (swap! message-q# pop)
+                     (update-message-context! context#)
+                     (match msg# ~@clauses)))))))))))
 
 (alter-meta! #'receive* assoc :no-doc true)
 
