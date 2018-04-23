@@ -93,7 +93,7 @@
 
 (defn- ->nil [x])
 
-(defn- send-trace-event [kind extra]
+(defn send-trace-event [kind extra]
   (doseq [handler (vals @*trace-handlers)]
     (try
       (let [pid (self)]
@@ -397,6 +397,7 @@
 
      [context# msg#]
      (do
+       (send-trace-event :receive {:message msg#})
        (update-message-context! context#)
        (match msg# ~@clauses))))
 
