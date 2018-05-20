@@ -402,8 +402,7 @@
        (match msg# ~@clauses))))
 
 (defmacro receive* [park? clauses]
-  (assert (> (count clauses) 1)
-          "Receive requires one or more message patterns")
+  (assert (> (count clauses) 1) "Receive requires one or more message patterns")
   (if (even? (count clauses))
     `(receive-message ~park? (async/chan) ~clauses nil)
     (match (last clauses)
@@ -418,9 +417,6 @@
                    (swap! message-q# pop)
                    (match msg# ~@(butlast clauses)))
                  (do ~@timeout-body)))
-
-             :infinity
-             (receive* ~park? ~(butlast clauses))
 
              (receive-message
               ~park? (u/timeout-chan ~timeout) ~clauses ~timeout-body))))))
