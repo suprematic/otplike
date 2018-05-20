@@ -152,7 +152,7 @@
         control (async/chan 128)
         inbox (async/chan 1024)
         outbox (async/chan)
-        messages (atom (clojure.lang.PersistentQueue/EMPTY))
+        messages (atom (u/queue))
         kill (async/chan)
         monitors {}
         linked #{}]

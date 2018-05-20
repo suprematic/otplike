@@ -6,6 +6,12 @@
            (< (:minor *clojure-version*) 9))
   (require '[clojure.future :refer :all]))
 
+;; Overload the printer for queues so they look like other collections
+(defmethod print-method clojure.lang.PersistentQueue [q w]
+  (print-method '< w)
+  (print-method (vec q) w)
+  (print-method '= w))
+
 ;; ====================================================================
 ;; API
 
@@ -37,3 +43,6 @@
 
 (defn channel? [x]
   (satisfies? ap/ReadPort x))
+
+(defn queue []
+  (clojure.lang.PersistentQueue/EMPTY))
