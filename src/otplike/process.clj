@@ -151,7 +151,7 @@
         pid (Pid. id pname)
         control (async/chan 128)
         inbox (async/chan 1024)
-        outbox (async/chan)
+        outbox (async/chan (async/sliding-buffer 1))
         messages (atom (u/queue))
         kill (async/chan)
         monitors {}
