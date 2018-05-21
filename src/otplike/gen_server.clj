@@ -12,6 +12,8 @@
            (< (:minor *clojure-version*) 9))
   (require '[clojure.future :refer :all]))
 
+(declare reply)
+
 (defprotocol IGenServer
   (init [_ args]
     #_[:ok state]
@@ -81,14 +83,14 @@
     (match (process/ex-catch
              [:ok (process/async?-value!
                     (handle-call impl request from state))])
-      [:ok [:reply reply new-state]]
+      [:ok [:reply response new-state]]
       (do
-        (async/put! from [::reply reply])
+        (reply from response)
         [:recur new-state :infinity])
 
-      [:ok  [:reply reply new-state timeout]]
+      [:ok  [:reply response new-state timeout]]
       (do
-        (async/put! from  [::reply reply])
+        (reply from response)
         [:recur new-state timeout])
 
       [:ok [:noreply new-state]]
@@ -97,28 +99,25 @@
       [:ok  [:noreply new-state timeout]]
       [:recur new-state timeout]
 
-      [:ok [:stop reason reply new-state]]
+      [:ok [:stop reason response new-state]]
       (let [ret (process/await! (do-terminate impl reason new-state))]
-        (async/put! from [::reply reply])
+        (reply from response)
         ret)
 
       [:ok [:stop reason new-state]]
       (let [[_ reason _ :as ret]
             (process/await! (do-terminate impl reason new-state))]
-        (async/put! from [::terminated reason])
         ret)
 
       [:ok other]
       (let [reason [:bad-return-value 'handle-call other]
             [_ reason _ :as ret]
             (process/await! (do-terminate impl reason state))]
-        (async/put! from [::terminated reason])
         ret)
 
       [:EXIT reason]
       (let [[_ reason _ :as ret]
             (process/await! (do-terminate impl reason state))]
-        (async/put! from [::terminated reason])
         ret))))
 
 (defn- put!* [chan value]
@@ -127,9 +126,9 @@
 
 (defn- dispatch [impl parent state message]
   (match message
-    [::call from [::get-state]]
+    [::call from ::get-state]
     (process/async
-      (put!* from [::reply state])
+      (reply from state)
       [:recur state])
 
     [::call from request]
@@ -271,16 +270,16 @@
 
 (defn ^:no-doc call* [server request timeout-ms]
   (process/async
-    (let [reply-to (async/chan)
-          timeout (if (= :infinity timeout-ms)
-                    (async/chan)
-                    (async/timeout timeout-ms))]
-      (if-not (! server [::call reply-to request])
-        [:error :noproc]
-        (match (async/alts! [reply-to timeout])
-          [[::terminated reason] reply-to] [:error reason]
-          [[::reply value] reply-to] [:ok value]
-          [nil timeout] [:error :timeout])))))
+   (let [mref (process/monitor server)]
+     (! server [::call [mref (process/self)] request])
+     (process/selective-receive!
+      [mref resp] (do
+                    (process/demonitor mref)
+                    [:ok resp])
+      [:DOWN mref _ _ reason] [:error reason]
+      (after timeout-ms
+       (process/demonitor mref {:flush true})
+       [:error :timeout])))))
 
 (defn- start*
   [server
@@ -481,8 +480,8 @@
   of `call*`.
 
   The return value is not further defined, and is always to be ignored."
-  [to response]
-  (async/put! to [::reply response]))
+  [[mref pid :as _from] response]
+  (! pid [mref response]))
 
 (defmacro ^:no-doc get! [server]
-  `(call! ~server [::get-state]))
+  `(call! ~server ::get-state))
