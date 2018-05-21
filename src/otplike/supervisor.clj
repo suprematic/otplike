@@ -160,8 +160,6 @@
   [1]: https://erldocs.com/current/doc/design_principles/sup_princ.html"
   (:require [clojure.spec.alpha :as spec]
             [clojure.core.match :refer [match]]
-            [clojure.core.async :as async]
-            [clojure.core.async.impl.protocols :as ap]
             [clojure.pprint :as pprint]
             [otplike.spec-util :as spec-util]
             [otplike.process :as process :refer [!]]
@@ -186,7 +184,6 @@
 (spec/def ::shutdown (spec/or :brutal-kill #{:brutal-kill}
                               :timeout ::timeout))
 (spec/def ::type #{:worker :supervisor})
-
 
 (spec/def ::child-spec (spec/keys :req-un [::id
                                            ::start]
@@ -305,31 +302,18 @@
 (defn- shutdown [pid reason timeout]
   (process/async
     (try
-      (let [timeout (case timeout
-                      :infinity timeout
-                      (async/timeout timeout))]
-        (process/exit pid reason)
-        (let [[res msgs]
-              (loop [msgs []]
-                (if (= :kill reason)
-                  (process/receive!
-                    [:EXIT pid :killed] [[:ok reason] msgs]
-                    [:EXIT pid other-reason] [[:error other-reason] msgs]
-                    msg (recur (conj msgs msg)))
-                  (process/receive!
-                    [:EXIT pid reason] [[:ok reason] msgs]
-                    [:EXIT pid other-reason] [[:error other-reason] msgs]
-                    msg (recur (conj msgs msg))
-                    (after timeout
-                           (loop [msgs msgs]
-                             (process/exit pid :kill)
-                             (process/receive!
-                               [:EXIT pid other-reason]
-                               [[:error other-reason] msgs]
-                               msg
-                               (recur (conj msgs msg))))))))]
-          (doseq [m msgs] (! (process/self) m))
-          res))
+      (process/exit pid reason)
+      (if (= :kill reason)
+        (process/selective-receive!
+         [:EXIT pid :killed] [:ok reason]
+         [:EXIT pid other-reason] [:error other-reason])
+        (process/selective-receive!
+         [:EXIT pid reason] [:ok reason]
+         [:EXIT pid other-reason] [:error other-reason]
+         (after timeout
+          (process/exit pid :kill)
+          (process/selective-receive!
+           [:EXIT pid other-reason] [:error other-reason]))))
       (catch Throwable t
         (println t)
         [:panic (process/ex->reason t)]))))
