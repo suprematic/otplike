@@ -496,6 +496,8 @@
                (if-let [[context# msg#] (peek @message-q#)]
                  (do
                    (swap! message-q# pop)
+                   (send-trace-event :receive {:message msg#})
+                   (update-message-context! context#)
                    (match msg# ~@(butlast clauses)))
                  (do ~@timeout-body)))
 
