@@ -860,14 +860,23 @@
 
   Throws when called not in process context, `mref` is not a
   monitor-ref."
-  [{:keys [self-pid other-pid] :as mref}]
-  {:post [(= true %)]}
-  (u/check-args [(monitor-ref? mref)])
-  (if (and (= self-pid (self)) other-pid)
-    (if-let [^TProcess other-process (@*processes other-pid)]
-      (locking *global-lock (.updateMonitors other-process #(dissoc % mref)))))
-  true)
-
+  ([{:keys [self-pid other-pid] :as mref}]
+   (demonitor mref {}))
+  ([{:keys [self-pid other-pid] :as mref} {flush? :flush}]
+   {:post [(= true %)]}
+   (u/check-args [(monitor-ref? mref)])
+   (if (and (= self-pid (self)) other-pid)
+     (if-let [^TProcess other-process (@*processes other-pid)]
+       (locking *global-lock (.updateMonitors other-process #(dissoc % mref)))))
+   (if flush?
+     (selective-receive!
+      [:DOWN mref _1 _2 _3] :ok
+      (after 0 :ok)))
+   true))
+(macroexpand
+ '(selective-receive!
+      [:DOWN mref _1 _2 _3] :ok
+      (after 0 :ok)))
 (defn spawn-opt
   "Returns the process identifier of a new process started by the
   application of `proc-fun` to `args`.
