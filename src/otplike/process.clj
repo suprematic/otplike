@@ -373,6 +373,87 @@
 (defn message-context []
   @*message-context*)
 
+(defmacro s-receive** [park? timeout match-clauses or-body]
+  (let [patterns (take-nth 2 match-clauses)
+        select-clauses (mapcat list patterns (range))
+        select-clauses (case (last patterns)
+                         :else select-clauses
+                         (concat select-clauses [:else :else]))
+        msg-sym (gensym "msg")
+        by-clause-clauses (partition 2 match-clauses)
+        by-clause-matches (map #(concat [`match msg-sym] %) by-clause-clauses)
+        case-clauses (mapcat list (range) by-clause-matches)]
+    `(let [^TProcess process# (self-process)
+           timeout-chan# (u/timeout-chan ~timeout)
+           messages# (.messages process#)
+           outbox# (.outbox process#)
+           res# (loop [new-mq# (u/queue)]
+                  (if-let [[_# msg# :as m#] (peek @messages#)]
+                    (let [res# (match msg# ~@select-clauses)]
+                      (swap! messages# pop)
+                      (if (= res# :else)
+                        (recur (conj new-mq# m#))
+                        [m# res# new-mq#]))
+                    (let [[res# ch#] (~(if park? `async/alts! `async/alts!!)
+                                      [outbox# timeout-chan#])]
+                      (if res#
+                        (recur new-mq#)
+                        (if (= ch# outbox#)
+                          (throw (Exception. "noproc"))
+                          :timeout)))))]
+       (if (= res# :timeout)
+         (do ~@or-body)
+         (let [[[context# ~msg-sym] clause-n# new-mq#] res#]
+           (swap! messages# #(into new-mq# %))
+           (send-trace-event :receive {:message ~msg-sym})
+           (update-message-context! context#)
+           (case clause-n#
+             ~@case-clauses))))))
+
+(defmacro select-message-or [match-clauses or-body]
+  (let [patterns (take-nth 2 match-clauses)
+        select-clauses (mapcat list patterns (range))
+        select-clauses (case (last patterns)
+                         :else select-clauses
+                         (concat select-clauses [:else :else]))
+        msg-sym (gensym "msg")
+        by-clause-clauses (partition 2 match-clauses)
+        by-clause-matches (map #(concat [`match msg-sym] %) by-clause-clauses)
+        case-clauses (mapcat list (range) by-clause-matches)]
+    `(let [^TProcess process# (self-process)
+           messages# (.messages process#)
+           [mq# _#](reset-vals! messages# (u/queue))
+           res# (loop [mq# mq#
+                       new-mq# (u/queue)]
+                  (if-let [[_# msg# :as m#] (peek mq#)]
+                    (let [res# (match msg# ~@select-clauses)
+                          mq# (pop mq#)]
+                      (if (= res# :else)
+                        (recur mq# (conj new-mq# m#))
+                        [m# res# (into new-mq# mq#)]))
+                    :miss))]
+       (if (= res# :miss)
+         (do ~@or-body)
+         (let [[[context# ~msg-sym] clause-n# new-mq#] res#]
+           (swap! messages# #(into new-mq# %))
+           (send-trace-event :receive {:message ~msg-sym})
+           (update-message-context! context#)
+           (case clause-n#
+             ~@case-clauses))))))
+
+(defmacro s-receive* [park? clauses]
+  (assert (> (count clauses) 1)
+          "Receive requires one or more message patterns")
+  (if (even? (count clauses))
+    `(s-receive** ~park? :infinity ~clauses nil)
+    (match (last clauses)
+      (['after timeout & timeout-body] :seq)
+      (let [match-clauses (butlast clauses)]
+        `(let [timeout# ~timeout]
+           (if (= 0 timeout#)
+             (select-message-or ~match-clauses ~timeout-body)
+             (s-receive** ~park? timeout# ~match-clauses ~timeout-body)))))))
+
 (defn receive-message* [timeout]
   (let [^TProcess process (self-process)
         outbox (.outbox process)
@@ -686,6 +767,10 @@
           (.updateLinked my-process #(disj % pid))
           (.updateLinked other-process #(disj % my-pid)))))
     true))
+
+(defmacro selective-receive!
+  [& clauses]
+  `(s-receive* true ~clauses))
 
 (defn monitor
   "Sends a monitor request to the entity identified by `pid-or-name`.
