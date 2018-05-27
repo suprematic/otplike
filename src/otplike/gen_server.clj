@@ -2,7 +2,7 @@
   "gen-server behaviour and related functions."
   (:refer-clojure :exclude [cast get])
   (:require
-    [clojure.core.async :as async :refer [<! >! put! go go-loop]]
+    [clojure.core.async :as async]
     [clojure.core.match :refer [match]]
     [clojure.spec.alpha :as spec]
     [otplike.util :as u]
