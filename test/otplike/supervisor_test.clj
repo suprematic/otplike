@@ -784,7 +784,7 @@
         (for [start-failure-reason [nil :abnormal]
               exit-delay (if start-failure-reason
                            [nil]
-                           [nil 100])
+                           [nil 300])
               exit-failure-reason (if (or start-failure-reason exit-delay)
                                     [nil]
                                     [nil :normal :abnormal])]
@@ -802,7 +802,7 @@
               child-type [:worker :supervisor]
               shutdown (if (= child-type :supervisor)
                          [nil]
-                         [:brutal-kill 50])]
+                         [:brutal-kill 250])]
           (merge {:restart restart-type
                   :type child-type}
                  (if shutdown
