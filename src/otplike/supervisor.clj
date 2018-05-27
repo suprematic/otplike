@@ -35,9 +35,9 @@
   (spec/def ::intensity nat-int?)
   (spec/def ::period pos-int?)
   (spec/def ::strategy
-  #{:one-for-all
-    :one-for-one
-    :rest-for-one})
+    #{:one-for-all
+      :one-for-one
+      :rest-for-one})
 
   (spec/def ::sup-flags
   (spec/keys
@@ -90,10 +90,10 @@
   (spec/def ::child-spec
   (spec/keys
     :req-un [::id
-                 ::start]
-        :opt-un [::restart
-                 ::shutdown
-                         ::type]))
+             ::start]
+    :opt-un [::restart
+             ::shutdown
+             ::type]))
   ```
 
   `:id` is used to identify the child specification internally by the
