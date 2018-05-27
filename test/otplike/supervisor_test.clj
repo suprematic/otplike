@@ -856,8 +856,10 @@
 
 (defn test-strategy [strategy tests]
   (time
-    (binding [*out* (clojure.java.io/writer "sup-test.log")]
-      (<!!
+   (with-open [writer (clojure.java.io/writer
+                       (str "sup_test." (name strategy) ".log"))]
+     (binding [*out* writer]
+       (<!!
         (async/go
           (doseq [tests (partition 512 512 [] tests)]
             (doseq [res (doall (map (partial run-test strategy) tests))]
@@ -867,7 +869,7 @@
                   (when-let [[ms fmt args] x]
                     (printf "log: %05d - %s%n" ms (apply format fmt args))
                     (recur (async/<! log)))))
-              (flush))))))))
+              (flush)))))))))
 
 ;; ====================================================================
 ;; one-for-one
