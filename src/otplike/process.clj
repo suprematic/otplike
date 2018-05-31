@@ -43,12 +43,16 @@
 
 (declare pid->str pid? self whereis monitor-ref? ! ex->reason exit async?)
 
-(defrecord Pid [id pname]
+(deftype Pid [^Long id ^String pname]
   Object
   (toString [self]
-    (pid->str self)))
+    (pid->str self))
+  (hashCode [_self]
+    (.hashCode id))
+  (equals [^Pid self other]
+    (and (= (type self) (type other))
+         (= (.id self) (.id ^Pid other)))))
 (alter-meta! #'->Pid assoc :no-doc true)
-(alter-meta! #'map->Pid assoc :no-doc true)
 
 (defn- pid?* [pid]
   (instance? Pid pid))
@@ -91,6 +95,8 @@
 
 (def ^:private ^:dynamic *self* nil)
 
+(def ^:dynamic ^:no-doc *message-context* (atom {}))
+
 (defn- ->nil [x])
 
 (defn send-trace-event [kind extra]
@@ -124,11 +130,11 @@
 (deftype TProcess
   [pid
    initial-call
-   inbox
-   outbox
-   messages
-   control
-   kill
+   message-chan
+   message-q
+   control-chan
+   control-q
+   exit-reason
    ^:unsynchronized-mutable monitors
    ^:unsynchronized-mutable linked
    ^:unsynchronized-mutable flags]
@@ -149,21 +155,21 @@
   (let [id (swap! *next-pid inc)
         pname (or pname (str "proc" id))
         pid (Pid. id pname)
-        control (async/chan 128)
-        inbox (async/chan 1024)
-        outbox (async/chan (async/sliding-buffer 1))
-        messages (atom (u/queue))
-        kill (async/chan)
+        message-chan (async/chan (async/sliding-buffer 1))
+        message-q (atom (u/queue))
+        control-chan (async/chan (async/sliding-buffer 1))
+        control-q (atom (u/queue))
+        exit-reason (atom nil)
         monitors {}
         linked #{}]
     (TProcess.
      pid
      initial-call
-     inbox
-     outbox
-     messages
-     control
-     kill
+     message-chan
+     message-q
+     control-chan
+     control-q
+     exit-reason
      monitors
      linked
      flags)))
@@ -196,37 +202,40 @@
          (vector? message) (keyword? (first message))]
    :post [(or (true? %) (false? %))]}
   (if-let [^TProcess process (@*processes pid)]
-    (or (async/offer! (.control process) message)
-        (do
-          (async/put! (.kill process) :control-overflow)
-          false))
+    (do
+      (swap! (.control-q process) conj message)
+      (async/put! (.control-chan process) :go))
     false))
 
 (defn- monitor-message [mref object reason]
   {:pre [(monitor-ref? mref)]}
   [:DOWN mref :process object reason])
 
-; TODO return new process and exit code
 (defn- dispatch-control [^TProcess process message]
   {:pre [(instance? TProcess process)]
    :post []}
   (let [trap-exit (:trap-exit (.getFlags process))
-        pid (.pid process)]
-    (match message
-      [:stop reason]
-      [::break reason]
+        pid (.pid process)
+        k (message 0)]
+    (case k
+      :stop
+      (let [reason (message 1)]
+        reason)
 
-      [:exit (xpid :guard pid?) reason]
-      (if trap-exit
-        (do
-          (! pid [:EXIT xpid reason])
-          ::continue)
-        (case reason
-          :normal ::continue
-          [::break reason]))
+      :exit
+      (let [xpid (message 1)
+            reason (message 2)]
+        (if trap-exit
+          (do
+            (! pid [:EXIT xpid reason])
+            ::continue)
+          (case reason
+            :normal ::continue
+            reason)))
 
-      [:linked-exit (xpid :guard pid?) reason]
-      (do
+      :linked-exit
+      (let [xpid (message 1)
+            reason (message 2)]
         (if (locking *global-lock
               (and (.getLinked process)
                    (.updateLinked process #(disj % xpid))))
@@ -236,7 +245,7 @@
               ::continue)
             (case reason
               :normal ::continue
-              [::break reason]))
+              reason))
           ::continue)))))
 
 (defn- start-process [pid proc-func args]
@@ -244,21 +253,17 @@
          (pid? pid)
          (sequential? args)]
    :post [(satisfies? ap/ReadPort %)]}
-  (go
+  ;; FIXME bindings from folded binding blocks are stacked, so no values
+  ;; bound between bottom and top folded binding blocks are garbage
+  ;; collected; see "ring" benchmark example
+  (binding [*self* pid
+            *message-context* (atom @*message-context*)]
     (try
-      (match (apply proc-func args)
-        (chan :guard #(satisfies? ap/ReadPort %))
-        (let [exit-reason (<! chan)]
-          (!control pid [:stop exit-reason])
-          exit-reason)
-        exit-reason
-        (do
-          (!control pid [:stop exit-reason])
-          exit-reason))
+      (apply proc-func args)
       (catch Throwable t
-        (let [exit-reason (ex->reason t)]
-          (!control pid [:stop exit-reason])
-          exit-reason)))))
+        (let [ch (async/chan 1)]
+          (async/put! ch (ex->reason t))
+          ch)))))
 
 (defn- resolve-proc-func [form]
   {:pre [(or (fn? form) (symbol? form))]
@@ -271,30 +276,27 @@
   {:pre [(instance? TProcess process)]
    :post []}
   (let [pid (.pid process)]
-    (locking *global-lock
-      (when link?
+    (when link?
+      (locking *global-lock
         (let [^TProcess other-process (self-process)
               other-pid (.pid other-process)]
           (.updateLinked process #(conj % other-pid))
           (or (.updateLinked other-process #(if % (conj % pid)))
-              (throw (Exception. "noproc")))))
-      (when (some? register)
-        (when (@*registered register)
-          (throw (Exception. (str "already registered: " register))))
-        (swap! *registered assoc register pid)
-        (swap! *registered-reverse assoc pid register))
-      (swap! *processes assoc pid process))))
+              (throw (Exception. "noproc"))))))
+    (swap! *processes assoc pid process)
+    (when (some? register)
+      (when (@*registered register)
+        (throw (Exception. (str "already registered: " register))))
+      (swap! *registered assoc register pid)
+      (swap! *registered-reverse assoc pid register))))
 
 (defn- sync-unregister [pid]
   {:pre [(pid? pid)]
    :post []}
-  (locking *global-lock
-    (swap! *processes dissoc pid)
-    (when-let [register (@*registered-reverse pid)]
-      (swap! *registered dissoc register)
-      (swap! *registered-reverse dissoc pid))))
-
-(def ^:dynamic ^:no-doc *message-context* (atom {}))
+  (swap! *processes dissoc pid)
+  (when-let [register (@*registered-reverse pid)]
+    (swap! *registered dissoc register)
+    (swap! *registered-reverse dissoc pid)))
 
 (defn- spawn*
   [proc-func
@@ -308,48 +310,39 @@
                  (or (nil? flags) (map? flags)) ;FIXME check for unknown flags
                  (not (pid? register))])
   (let [proc-func (resolve-proc-func proc-func)
-        flags     (or flags {})
+        flags (or flags {})
         ^TProcess process (new-process pname [proc-func args] flags)
         pid (.pid process)
-        inbox (.inbox process)
-        outbox (.outbox process)
-        kill (.kill process)
-        control (.control process)]
+        control-chan (.control-chan process)
+        control-q (.control-q process)
+        exit-reason (.exit-reason process)
+        message-chan (.message-chan process)]
     (sync-register process register link)
-    ; FIXME bindings from folded binding blocks are stacked, so no values
-    ; bound between bottom and top folded binding blocks are garbage
-    ; collected; see "ring" benchmark example
-    ; FIXME workaround for ASYNC-170. once fixed, binding should move to
-    ; (start-process...)
-    (binding [*self* pid
-              *message-context* (atom @*message-context*)]
-      (send-trace-event
-        :spawn {:fn (str proc-func) :args args :options options})
-      (go
-        (start-process pid proc-func args)
+    (send-trace-event :spawn {:fn proc-func :args args :options options})
+    (go
+      (let [result-ch (start-process pid proc-func args)]
         (loop []
-          (let [proceed (match (async/alts! [kill control inbox] :priority true)
-                          [val control]
-                          (dispatch-control process val)
-
-                          [message inbox]
-                          (do
-                            (swap! (.messages process) conj message)
-                            (async/put! outbox message)
-                            ::continue)
-
-                          [val kill]
-                          [::break (if (some? val) val :nil)])]
-            (match proceed
+          (let [proceed?
+                (loop []
+                  (if-let [reason @exit-reason]
+                    reason
+                    (if-let [m (peek @control-q)]
+                      (do
+                        (swap! control-q pop)
+                        (dispatch-control process m))
+                      (let [[v ch :as r] (async/alts! [control-chan result-ch])]
+                        (if (= result-ch ch)
+                          (if (some? v) v :nil)
+                          (recur))))))]
+            (case proceed?
               ::continue
               (recur)
 
-              [::break reason]
-              (do
+              (let [reason proceed?]
                 (send-trace-event :terminate {:reason reason})
                 (sync-unregister pid)
-                (async/close! control)
-                (async/close! outbox)
+                (async/close! control-chan)
+                (async/close! message-chan)
                 (let [[linked monitors]
                       (locking *global-lock
                         (let [linked-val (.getLinked process)
@@ -385,26 +378,26 @@
         case-clauses (mapcat list (range) by-clause-matches)]
     `(let [^TProcess process# (self-process)
            timeout-chan# (u/timeout-chan ~timeout)
-           messages# (.messages process#)
-           outbox# (.outbox process#)
+           message-q# (.message-q process#)
+           message-chan# (.message-chan process#)
            res# (loop [new-mq# (u/queue)]
-                  (if-let [[_# msg# :as m#] (peek @messages#)]
+                  (if-let [[_# msg# :as m#] (peek @message-q#)]
                     (let [res# (match msg# ~@select-clauses)]
-                      (swap! messages# pop)
+                      (swap! message-q# pop)
                       (if (= res# :else)
                         (recur (conj new-mq# m#))
                         [m# res# new-mq#]))
                     (let [[res# ch#] (~(if park? `async/alts! `async/alts!!)
-                                      [outbox# timeout-chan#])]
+                                      [message-chan# timeout-chan#])]
                       (if res#
                         (recur new-mq#)
-                        (if (= ch# outbox#)
+                        (if (= ch# message-chan#)
                           (throw (Exception. "noproc"))
                           :timeout)))))]
        (if (= res# :timeout)
          (do ~@or-body)
          (let [[[context# ~msg-sym] clause-n# new-mq#] res#]
-           (swap! messages# #(into new-mq# %))
+           (swap! message-q# #(into new-mq# %))
            (send-trace-event :receive {:message ~msg-sym})
            (update-message-context! context#)
            (case clause-n#
@@ -421,8 +414,8 @@
         by-clause-matches (map #(concat [`match msg-sym] %) by-clause-clauses)
         case-clauses (mapcat list (range) by-clause-matches)]
     `(let [^TProcess process# (self-process)
-           messages# (.messages process#)
-           [mq# _#](reset-vals! messages# (u/queue))
+           message-q# (.message-q process#)
+           [mq# _#](reset-vals! message-q# (u/queue))
            res# (loop [mq# mq#
                        new-mq# (u/queue)]
                   (if-let [[_# msg# :as m#] (peek mq#)]
@@ -435,7 +428,7 @@
        (if (= res# :miss)
          (do ~@or-body)
          (let [[[context# ~msg-sym] clause-n# new-mq#] res#]
-           (swap! messages# #(into new-mq# %))
+           (swap! message-q# #(into new-mq# %))
            (send-trace-event :receive {:message ~msg-sym})
            (update-message-context! context#)
            (case clause-n#
@@ -454,45 +447,53 @@
              (select-message-or ~match-clauses ~timeout-body)
              (s-receive** ~park? timeout# ~match-clauses ~timeout-body)))))))
 
-(defn receive-message* [timeout]
-  (let [^TProcess process (self-process)
-        outbox (.outbox process)
-        mq (.messages process)]
-    (go-loop []
-      (if-let [res (peek @mq)]
-        (do
-          (swap! mq pop)
-          res)
-        (match (async/alts! [outbox timeout])
-          [nil outbox] :noproc
-          [nil timeout] :timeout
-          [_ outbox] (recur))))))
+(defmacro receive-message [park? timeout clauses timeout-body]
+  (let [msg-sym (gensym "msg")
+        context-sym (gensym "context")
+        timeout-sym (gensym "timeout")
+        mchan-sym (gensym "message-chan")]
+    `(let [^TProcess process# (self-process)
+           ~mchan-sym (.message-chan process#)
+           mq# (.message-q process#)
+           ~timeout-sym ~timeout
+           res# (loop []
+                  (if-let [res# (peek @mq#)]
+                    (do
+                      (swap! mq# pop)
+                      res#)
+                    (if (= ~timeout-sym :infinity)
+                      (case (~(if park? `<! `<!!) ~mchan-sym)
+                        nil :noproc
+                        (recur))
+                      (let [[m# ch#] (~(if park? `async/alts! `async/alts!!)
+                                      [~mchan-sym ~timeout-sym])]
+                        (match [m# ch#]
+                          [nil ~mchan-sym] :noproc
+                          [nil ~timeout-sym] :timeout
+                          :else (recur))))))]
+       (case res#
+         :timeout
+         (do ~@timeout-body)
 
-(defmacro receive-message [park? timeout-chan clauses timeout-body]
-  `(match (~(if park? `<! `<!!) (receive-message* ~timeout-chan))
-     :timeout
-     (do ~@timeout-body)
+         :noproc
+         (throw (Exception. "noproc"))
 
-     :noproc
-     (throw (Exception. "noproc"))
-
-     [context# msg#]
-     (do
-       (send-trace-event :receive {:message msg#})
-       (update-message-context! context#)
-       (match msg# ~@clauses))))
+         (let [[~context-sym ~msg-sym] res#]
+           (send-trace-event :receive {:message ~msg-sym})
+           (update-message-context! ~context-sym)
+           (match ~msg-sym ~@clauses))))))
 
 (defmacro receive* [park? clauses]
   (assert (> (count clauses) 1) "Receive requires one or more message patterns")
   (if (even? (count clauses))
-    `(receive-message ~park? (async/chan) ~clauses nil)
+    `(receive-message ~park? :infinity ~clauses nil)
     (match (last clauses)
       (['after timeout & timeout-body] :seq)
       (let [clauses1 (butlast clauses)]
         `(case ~timeout
              0
              (let [^TProcess process# (self-process)
-                   message-q# (.messages process#)]
+                   message-q# (.message-q process#)]
                (if-let [[context# msg#] (peek @message-q#)]
                  (do
                    (swap! message-q# pop)
@@ -500,6 +501,9 @@
                    (update-message-context! context#)
                    (match msg# ~@(butlast clauses)))
                  (do ~@timeout-body)))
+
+             :infinity
+             (receive-message ~park? :infinity ~clauses ~timeout-body)
 
              (receive-message
               ~park? (u/timeout-chan ~timeout) ~clauses ~timeout-body))))))
@@ -523,13 +527,19 @@
              (ex->reason t#)))))))
 
 (defmacro ^:no-doc await* [park? x]
-  (let [take (if park? `<! `<!!)]
+  (let [take (if park? `<! `<!!)
+        k-sym (gensym "k")
+        res-sym (gensym "res")]
     `(let [a# ~x]
        (when-not (async? a#)
          (throw (IllegalArgumentException. "argument must be 'async' value")))
-       (match (~take (.chan a#))
-         [:ok result#] result#
-         [:EXIT reason#] (exit reason#)))))
+       (let [[~k-sym ~res-sym] (~take (.chan a#))]
+         (case ~k-sym
+           :ok
+           ~res-sym
+
+           :EXIT
+           (exit ~res-sym))))))
 
 (defn- !*
   [dest message]
@@ -538,10 +548,9 @@
                  (some? message)])
   (send-trace-event :send {:destination dest :message message})
   (if-let [^TProcess process (find-process dest)]
-    (or (async/offer! (.inbox process) message)
-        (do
-          (async/put! (.kill process) :inbox-overflow)
-          false))
+    (do
+      (swap! (.message-q process) conj message)
+      (async/put! (.message-chan process) :go))
     false))
 
 ;; ====================================================================
@@ -661,7 +670,8 @@
      (case reason
        :kill (if-let [^TProcess process (@*processes pid)]
                (do
-                 (async/put! (.kill process) :killed)
+                 (swap! (.exit-reason process) #(if (some? %) % :killed))
+                 (async/close! (.control-chan process))
                  true)
                false)
        (!control pid [:exit self-pid reason])))))
@@ -685,7 +695,7 @@
   {:post []}
   (u/check-args [(keyword? flag)])
   (if-let [^TProcess process (self-process)]
-    (match flag
+    (case flag
       :trap-exit (locking *global-lock
                    (let [old-value (flag (.getFlags process))]
                      (.updateFlags process #(assoc % flag (boolean value)))
@@ -1028,7 +1038,7 @@
 (defn process-info [pid]
   (u/check-args [(pid? pid)])
   (if-let [^TProcess process (@*processes pid)]
-    (let [mq @(.messages process)]
+    (let [mq @(.message-q process)]
       {:links (.getLinked process)
        ;; :monitors TODO
        :monitored-by (->> (.getMonitors process) (vals) (map first))

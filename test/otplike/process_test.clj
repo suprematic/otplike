@@ -174,7 +174,7 @@
     (! reg-name :msg)
     (await-completion done 100)))
 
-(def-proc-test ^:parallel process-killed-when-inbox-is-overflowed
+#_(def-proc-test ^:parallel process-killed-when-inbox-is-overflowed
   (process/flag :trap-exit true)
   (let [done (async/chan)
         pid (process/spawn-link (proc-fn [] (is (await-completion done 1000))))]
