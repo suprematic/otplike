@@ -29,7 +29,7 @@
       (do
         (is (process/pid? pid)
             "start-link must return supervisor's pid")
-        (is (await-completion done 50)
+        (is (await-completion! done 50)
             "supervisor must call init-fn to get its spec")))))
 
 ; TODO try different child spec
@@ -53,9 +53,9 @@
       (do
         (is (process/pid? pid)
             "start-link must return supervisor's pid")
-        (is (await-completion sup-init-done 50)
+        (is (await-completion! sup-init-done 50)
             "supervisor must call init-fn to get its spec")
-        (is (await-completion server-init-done 50)
+        (is (await-completion! server-init-done 50)
             "supervisor must call child's start-fn to start it")))))
 
 ; TODO try different child spec
@@ -73,10 +73,11 @@
            :start
            [gs/start-link
             [{:init (fn []
-                      (is (await-completion await-chan 50)
-                          "supervisor must start children in spec's order")
-                      (async/close! done-chan)
-                      [:ok :state])}]]})
+                      (process/async
+                        (is (await-completion! await-chan 50)
+                            "supervisor must start children in spec's order")
+                        (async/close! done-chan)
+                        [:ok :state]))}]]})
         children-spec (map make-child
                            [sup-init-done s1-init-done s2-init-done]
                            [s1-init-done s2-init-done s3-init-done]
@@ -90,9 +91,9 @@
       (do
         (is (process/pid? pid)
             "start-link must return supervisor's pid")
-        (is (await-completion sup-init-done 50)
+        (is (await-completion! sup-init-done 50)
             "supervisor must call init-fn to get its spec")
-        (is (await-completion s3-init-done 50)
+        (is (await-completion! s3-init-done 50)
             "supervisor must call child's start-fn to start it")))))
 
 ;(otplike.proc-util/execute-proc
@@ -112,7 +113,7 @@
                   [:ok sup-spec])]
     (match (process/ex-catch (sup/start-link! init-fn))
       [:error [:bad-child-specs [:duplicate-child-id :id2]]]
-      (is (await-completion sup-init-done 50)
+      (is (await-completion! sup-init-done 50)
           "supervisor must call init-fn to get its spec"))))
 
 ;(otplike.proc-util/execute-proc
@@ -127,7 +128,7 @@
              (<! (async/timeout 50))
              (is (thrown? Exception (process/self))
                  "process must exit after suprevisor/init error")
-             (is (await-completion sup-init-done 50)
+             (is (await-completion! sup-init-done 50)
                  "supervisor must call init-fn to get its spec")))))
 
 ;(otplike.proc-util/execute-proc
@@ -147,7 +148,7 @@
              (is (match (<! (await-message 50))
                         [:exit [_ [:bad-child-specs _]]] :ok)
                  "process must exit after suprevisor/init error")
-             (is (await-completion sup-init-done 50)
+             (is (await-completion! sup-init-done 50)
                  "supervisor must call init-fn to get its spec")))))
 
 ;(otplike.proc-util/execute-proc
@@ -159,13 +160,13 @@
                              :start ["not a function" []]}]]])]
     (process/flag :trap-exit true)
     (match (sup/start-link! init-fn)
-           [:error [:bad-child-specs _]]
-           (do
-             (is (match (<! (await-message 50))
-                        [:exit [_ [:bad-child-specs _]]] :ok)
-                 "process must exit after suprevisor/init error")
-             (is (await-completion sup-init-done 50)
-                 "supervisor must call init-fn to get its spec")))))
+      [:error [:bad-child-specs _]]
+      (do
+        (is (match (<! (await-message 50))
+              [:exit [_ [:bad-child-specs _]]] :ok)
+            "process must exit after suprevisor/init error")
+        (is (await-completion! sup-init-done 50)
+            "supervisor must call init-fn to get its spec")))))
 
 (def-proc-test ^:parallel start-link:bad-return:bad-supervisor-flags
   (let [make-child (fn [id]
@@ -183,9 +184,9 @@
                       (async/close! sup-init-done)
                       [:ok sup-spec])]
         (match (is (sup/start-link! init-fn))
-               [:error [:bad-supervisor-flags _]]
-               (is (await-completion sup-init-done 50)
-                   "supervisor must call init-fn to get its spec"))))
+          [:error [:bad-supervisor-flags _]]
+          (is (await-completion! sup-init-done 50)
+              "supervisor must call init-fn to get its spec"))))
     (otplike.proc-util/execute-proc!
       (let [sup-init-done (async/chan)
             sup-flags {:intensity "2"}
@@ -195,9 +196,9 @@
                       (async/close! sup-init-done)
                       [:ok sup-spec])]
         (match (is (sup/start-link! init-fn))
-               [:error [:bad-supervisor-flags _]]
-               (is (await-completion sup-init-done 50)
-                   "supervisor must call init-fn to get its spec"))))
+          [:error [:bad-supervisor-flags _]]
+          (is (await-completion! sup-init-done 50)
+              "supervisor must call init-fn to get its spec"))))
     (otplike.proc-util/execute-proc!
       (let [sup-init-done (async/chan)
             sup-flags {:period :1}
@@ -207,9 +208,9 @@
                       (async/close! sup-init-done)
                       [:ok sup-spec])]
         (match (is (sup/start-link! init-fn))
-               [:error [:bad-supervisor-flags _]]
-               (is (await-completion sup-init-done 50)
-                   "supervisor must call init-fn to get its spec"))))
+          [:error [:bad-supervisor-flags _]]
+          (is (await-completion! sup-init-done 50)
+              "supervisor must call init-fn to get its spec"))))
     (otplike.proc-util/execute-proc!
       (let [sup-init-done (async/chan)
             sup-flags {:strategy "one-for-one"
@@ -221,9 +222,9 @@
                       (async/close! sup-init-done)
                       [:ok sup-spec])]
         (match (is (sup/start-link! init-fn))
-               [:error [:bad-supervisor-flags _]]
-               (is (await-completion sup-init-done 50)
-                   "supervisor must call init-fn to get its spec"))))))
+          [:error [:bad-supervisor-flags _]]
+          (is (await-completion! sup-init-done 50)
+              "supervisor must call init-fn to get its spec"))))))
 
 ;(otplike.proc-util/execute-proc
 (def-proc-test ^:parallel start-link:invalid-arguments
@@ -243,24 +244,24 @@
                     (async/close! sup-init-done)
                     [:ok sup-spec])]
       (match (sup/start-link! init-fn)
-             [:error [:shutdown [:failed-to-start-child :child-id reason]]]
-             (is (await-completion sup-init-done 50)
-                 "supervisor must call init-fn to get its spec")))))
+        [:error [:shutdown [:failed-to-start-child :child-id reason]]]
+        (is (await-completion! sup-init-done 50)
+            "supervisor must call init-fn to get its spec")))))
 
 ;(otplike.proc-util/execute-proc
-(def-proc-test ^:parallel start-link:child-init-returns-error:exit-normal
+(deftest ^:parallel start-link:child-init-returns-error:exit-normal
   (test-start-link:child-init-returns-error
     (fn [] (process/exit :normal))
     :normal))
 
 ;(otplike.proc-util/execute-proc
-(def-proc-test ^:parallel start-link:child-init-returns-error:exit-abnormal
+(deftest ^:parallel start-link:child-init-returns-error:exit-abnormal
   (test-start-link:child-init-returns-error
     (fn [] (process/exit :abnormal))
     :abnormal))
 
 ;(otplike.proc-util/execute-proc
-(def-proc-test ^:parallel start-link:child-init-returns-error:stop-with-reason
+(deftest ^:parallel start-link:child-init-returns-error:stop-with-reason
   (test-start-link:child-init-returns-error
     (fn [] [:stop :some-reason])
     :some-reason))
@@ -288,12 +289,12 @@
                   (async/close! sup-init-done)
                   [:ok sup-spec])]
     (match (sup/start-link! init-fn)
-           [:error [:shutdown [:failed-to-start-child :id1 :abnormal]]]
-           (do
-             (is (await-completion child1-done 50)
-                 "first child must be started")
-             (is (await-completion sup-init-done 50)
-                 "supervisor must call init-fn to get its spec")))))
+      [:error [:shutdown [:failed-to-start-child :id1 :abnormal]]]
+      (do
+        (is (await-completion! child1-done 50)
+            "first child must be started")
+        (is (await-completion! sup-init-done 50)
+            "supervisor must call init-fn to get its spec")))))
 
 (def-proc-test ^:parallel
   start-link:multiple-children:middle-child-init-returns-error
@@ -331,16 +332,16 @@
                   (async/close! sup-init-done)
                   [:ok sup-spec])]
     (match (sup/start-link! init-fn)
-           [:error [:shutdown [:failed-to-start-child :id2 :abnormal]]]
-           (do
-             (is (await-completion child1-init-done 50)
-                 "first child must be started")
-             (is (await-completion error-child-done 50)
-                 "error child must be started")
-             (is (await-completion child1-terminate-done 50)
-                 "first child must be terminated")
-             (is (await-completion sup-init-done 50)
-                 "supervisor must call init-fn to get its spec")))))
+      [:error [:shutdown [:failed-to-start-child :id2 :abnormal]]]
+      (do
+        (is (await-completion! child1-init-done 50)
+            "first child must be started")
+        (is (await-completion! error-child-done 50)
+            "error child must be started")
+        (is (await-completion! child1-terminate-done 50)
+            "first child must be terminated")
+        (is (await-completion! sup-init-done 50)
+            "supervisor must call init-fn to get its spec")))))
 
 (def-proc-test ^:parallel
   start-link:multiple-children:last-child-init-returns-error
@@ -357,11 +358,12 @@
                               [:ok :state])
         child1-terminate
         (fn [reason _]
-          (is (await-completion child2-terminate-done 50)
-              "second child must be terminated before the first")
-          (async/close! child1-terminate-done)
-          (is (= :shutdown reason)
-              "child must be stopped with :shutdown reason"))
+          (process/async
+            (is (await-completion! child2-terminate-done 50)
+                "second child must be terminated before the first")
+            (async/close! child1-terminate-done)
+            (is (= :shutdown reason)
+                "child must be stopped with :shutdown reason")))
         error-child-init (fn []
                            (async/close! error-child-done)
                            [:stop :abnormal])
@@ -387,18 +389,18 @@
                   (async/close! sup-init-done)
                   [:ok sup-spec])]
     (match (sup/start-link! init-fn)
-           [:error [:shutdown [:failed-to-start-child :id3 :abnormal]]]
-           (do
-             (is (await-completion child1-init-done 50)
-                 "first child must be started")
-             (is (await-completion child2-init-done 50)
-                 "second child must be started")
-             (is (await-completion error-child-done 50)
-                 "error child must be started")
-             (is (await-completion child1-terminate-done 50)
-                 "first child must be terminated")
-             (is (await-completion sup-init-done 50)
-                 "supervisor must call init-fn to get its spec")))))
+      [:error [:shutdown [:failed-to-start-child :id3 :abnormal]]]
+      (do
+        (is (await-completion! child1-init-done 50)
+            "first child must be started")
+        (is (await-completion! child2-init-done 50)
+            "second child must be started")
+        (is (await-completion! error-child-done 50)
+            "error child must be started")
+        (is (await-completion! child1-terminate-done 50)
+            "first child must be terminated")
+        (is (await-completion! sup-init-done 50)
+            "supervisor must call init-fn to get its spec")))))
 
 (def-proc-test ^:parallel init.async-value-returned
   (process/flag :trap-exit true)
@@ -415,7 +417,7 @@
         init-fn (fn [] (process/async [:ok sup-spec]))]
     (match (sup/start-link! init-fn)
       [:ok _] (! reg-name :msg))
-    (is (await-completion done 50) "child must be started"))
+    (is (await-completion! done 50) "child must be started"))
   (let [done (async/chan)
         done? (atom false)
         sup-flags {}
@@ -432,7 +434,7 @@
       (do
         (reset! done? true)
         (process/exit (process/whereis reg-name) :test)))
-    (is (await-completion done 50) "child must be restarted"))
+    (is (await-completion! done 50) "child must be restarted"))
   (let [init-fn (fn [] (process/async (process/exit :test)))]
     (is (match (sup/start-link! init-fn)
           [:error :test] :ok)
@@ -921,7 +923,7 @@
             child (fn [await-chan done sname restart-type]
                     (let [server {:init (fn []
                                           (printf "server %s init %s%n" sname (rem (System/currentTimeMillis) 10000))
-                                          (await-completion await-chan 50)
+                                          (await-completion! await-chan 50)
                                           (async/close! done)
                                           [:ok :state])
                                   :handle-call (fn [req _ state] [:stop :normal state])
@@ -935,7 +937,7 @@
                            (child done2 done3 :3 :transient)]
             sup-spec [sup-flags children-spec]]
         (match (sup/start-link! (fn [] [:ok sup-spec])) [:ok pid] :ok)
-        (await-completion done3 100)
+        (await-completion! done3 100)
         (printf "server started %s%n" (rem (System/currentTimeMillis) 10000))
         (printf "call 1 %s%n" (rem (System/currentTimeMillis) 10000))
         (match (process/ex-catch (gs/call! buggy-child-name 1)) [:EXIT _] :ok)

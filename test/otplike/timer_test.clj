@@ -3,7 +3,7 @@
             [clojure.future :refer :all]
             [clojure.core.match :refer [match]]
             [otplike.process :as process :refer [!]]
-            [clojure.core.async :as async :refer [<!! <! >! >!!]]
+            [clojure.core.async :as async :refer [<! >!]]
             [otplike.test-util :refer :all]
             [otplike.proc-util :as proc-util]
             [otplike.timer :as timer]))
@@ -17,19 +17,19 @@
 (deftest ^:parallel apply-after.correct-time
   (let [done (async/chan)]
     (timer/apply-after 0 async/close! [done])
-    (is (match (await-completion done 100) :closed :ok)
+    (is (match (await-completion!! done 100) :closed :ok)
         "fn must be applied just after timeout"))
   (let [done (async/chan)
         start (System/nanoTime)]
     (timer/apply-after 100 async/close! [done])
-    (is (match (await-completion done 200)
+    (is (match (await-completion!! done 200)
                :closed (is (>= (ms-diff start) 100)
                            "fn must not be applied before timeout"))
         "fn must be applied just after timeout"))
   (let [done (async/chan)
         start (System/nanoTime)]
     (timer/apply-after 100 #(async/close! done) [])
-    (is (match (await-completion done 200)
+    (is (match (await-completion!! done 200)
                :closed (is (>= (ms-diff start) 100)
                            "fn must not be applied before timeout"))
         "fn must be applied just after timeout")))
@@ -41,17 +41,18 @@
                 "fn must be applied in process context")
             (async/close! done))]
     (timer/apply-after 0 f [])
-    (is (match (await-completion done 100) :closed :ok)
+    (is (match (await-completion!! done 100) :closed :ok)
         "fn must be applied just after timeout")))
 
 (deftest ^:parallel apply-after.fn-exit
+;(otplike.proc-util/execute-proc!!
   (let [done (async/chan)]
     (timer/apply-after 100 #(async/close! done) [])
     (timer/apply-after 1 #(process/exit (process/self) :kill) [])
     (timer/apply-after 1 inc [])
     (timer/apply-after 1 #(throw (Exception.)) [])
     (timer/apply-after 1 #(process/exit :abnormal) [])
-    (is (match (await-completion done 200) :closed :ok)
+    (is (match (await-completion!! done 200) :closed :ok)
         "timer must work after fn has thrown")))
 
 (deftest ^:parallel apply-after.bad-args
@@ -70,12 +71,12 @@
   (let [done (async/chan)
         tref (timer/apply-after 100 #(async/close! done))]
     (timer/cancel tref)
-    (is (thrown? Exception (await-completion done 200))
+    (is (thrown? Exception (await-completion!! done 200))
         "fn must not be applied after timer has been canceled"))
   (let [done (async/chan)
         tref (timer/apply-after 100 async/close! [done])]
     (timer/cancel tref)
-    (is (thrown? Exception (await-completion done 200))
+    (is (thrown? Exception (await-completion!! done 200))
         "fn must not be applied after timer has been canceled")))
 
 (deftest ^:parallel cancel.send-after
@@ -133,23 +134,23 @@
     (let [done (async/chan)
           tref (timer/apply-interval 100 async/put! [done :msg])]
       (timer/cancel tref)
-      (is (thrown? Exception (await-completion done 200))
+      (is (thrown? Exception (await-completion! done 200))
           (str "fn must not be applied if timer has been canceled before"
                " first timeout"))))
   (proc-util/execute-proc!!
     (let [done (async/chan)
           tref (timer/apply-interval 100 #(async/put! done :msg))]
       (timer/cancel tref)
-      (is (thrown? Exception (await-completion done 200))
+      (is (thrown? Exception (await-completion! done 200))
           (str "fn must not be applied if timer has been canceled before"
                " first timeout"))))
   (proc-util/execute-proc!!
     (let [done (async/chan)
           tref (timer/apply-interval 100 #(async/put! done :msg))]
-      (is (= (await-completion done 200) [:ok :msg])
+      (is (= (await-completion! done 200) [:ok :msg])
           "fn must be applied by timeout while timer has not been canceled")
       (timer/cancel tref)
-      (is (thrown? Exception (await-completion done 200))
+      (is (thrown? Exception (await-completion! done 200))
           (str "fn must not be applied if timer has been canceled before"
                " first timeout")))))
 
@@ -190,7 +191,7 @@
   (proc-util/execute-proc!!
     (let [done (async/chan)
           tref (timer/apply-after 0 async/close! [done])]
-      (is (= :closed (await-completion done 100))
+      (is (= :closed (await-completion! done 100))
         "fn must be applied just after timeout")
       (is (do (timer/cancel tref) true)
           "cancel must accept tref even if tref's timer has already fired")))
@@ -242,7 +243,7 @@
         pid (process/spawn pfn)
         start (System/nanoTime)]
     (timer/send-after 100 pid :msg)
-    (is (= :closed (await-completion done 200))
+    (is (= :closed (await-completion!! done 200))
         "message must be sent just after timeout")
     (is (>= (ms-diff start) 100) "message must not be sent before timeout"))
   (proc-util/execute-proc!!

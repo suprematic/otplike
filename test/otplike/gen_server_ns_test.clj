@@ -43,4 +43,4 @@
         (is (= 0 (gs/call! pid :get-async)))
         (is (= 0 (gs/call! pid :get-sync)))
         (is (= :ok (gs/call! pid :stop)))
-        (await-completion done 50)))))
+        (await-completion! done 50)))))

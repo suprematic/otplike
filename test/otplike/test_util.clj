@@ -30,17 +30,25 @@
       (catch Exception e
         [:noproc (process/ex->reason e)]))))
 
-(defn await-completion
+(defmacro await-completion* [park? chan timeout-ms]
+  `(let [timeout# (async/timeout ~timeout-ms)]
+     (match (~(if park? `async/alts! `async/alts!!) [~chan timeout#])
+       [nil ~chan] :closed
+       [value# ~chan] [:ok value#]
+       [nil timeout#] (throw (Exception. (str "timeout " ~timeout-ms))))))
+
+(defmacro await-completion!
   "Returns:
     - [:ok val] if chan gets any value during timeout-ms,
     - :closed if chan becomes closed during timeout-ms.
   Otherwise throws."
   [chan timeout-ms]
-  (let [timeout (async/timeout timeout-ms)]
-    (match (async/alts!! [chan timeout])
-      [nil chan] :closed
-      [value chan] [:ok value]
-      [nil timeout] (throw (Exception. (str "timeout " timeout-ms))))))
+  `(await-completion* true ~chan ~timeout-ms))
+
+(defn await-completion!!
+  "The same as await-completion! but blocks."
+  [chan timeout-ms]
+  (await-completion* false chan timeout-ms))
 
 (defmacro def-proc-test [name & body]
   `(clojure-test/deftest ~name
