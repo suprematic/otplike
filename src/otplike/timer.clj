@@ -34,7 +34,7 @@
            (process/receive!
              :cancel :ok
              [:EXIT _ _] (cancel cancel-chan)
-             (after msecs
+             (after (async/timeout msecs)
                (process/spawn (process/proc-fn [] (apply f args)))
                (recur)))))
        []
