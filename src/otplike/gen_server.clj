@@ -1,12 +1,11 @@
 (ns otplike.gen-server
   "gen-server behaviour and related functions."
   (:refer-clojure :exclude [cast get])
-  (:require
-    [clojure.core.async :as async]
-    [clojure.core.match :refer [match]]
-    [clojure.spec.alpha :as spec]
-    [otplike.util :as u]
-    [otplike.process :as process :refer [!]]))
+  (:require [clojure.core.async :as async]
+            [clojure.core.match :refer [match]]
+            [clojure.spec.alpha :as spec]
+            [otplike.util :as u]
+            [otplike.process :as process :refer [!]]))
 
 (when (and (= 1 (:major *clojure-version*))
            (< (:minor *clojure-version*) 9))
@@ -51,7 +50,7 @@
 (defn- do-terminate [impl reason state]
   (process/async
     (match (process/ex-catch
-             [:ok (process/async?-value! (terminate impl reason state))])
+            [:ok (process/async?-value! (terminate impl reason state))])
       [:ok _] [:terminate reason state]
       [:EXIT exit-reason] [:terminate exit-reason state])))
 
@@ -61,7 +60,7 @@
                           ::cast [handle-cast 'handle-cast]
                           ::info [handle-info 'handle-info])]
       (match (process/ex-catch
-               [:ok (process/async?-value! (rqfn impl message state))])
+              [:ok (process/async?-value! (rqfn impl message state))])
         [:ok [:noreply new-state]]
         [:recur new-state :infinity]
 
@@ -73,7 +72,7 @@
 
         [:ok other]
         (process/await!
-          (do-terminate impl [:bad-return-value rqtype other] state))
+         (do-terminate impl [:bad-return-value rqtype other] state))
 
         [:EXIT reason]
         (process/await! (do-terminate impl reason state))))))
@@ -81,8 +80,7 @@
 (defn- do-handle-call [impl from request state]
   (process/async
     (match (process/ex-catch
-             [:ok (process/async?-value!
-                    (handle-call impl request from state))])
+            [:ok (process/async?-value! (handle-call impl request from state))])
       [:ok [:reply response new-state]]
       (do
         (reply from response)
@@ -157,7 +155,7 @@
 
 (process/proc-defn gen-server-proc [impl init-args parent response]
   (match (process/ex-catch
-           [:ok (process/async?-value! (init impl init-args))])
+          [:ok (process/async?-value! (init impl init-args))])
     [:ok [:ok initial-state]]
     (do
       (put!* response :ok)
@@ -233,11 +231,11 @@
 
 (defn- coerce-ns-static [impl-ns]
   (coerce-map
-    {:init (ns-function impl-ns 'init)
-     :handle-call (ns-function impl-ns 'handle-call)
-     :handle-cast (ns-function impl-ns 'handle-cast)
-     :handle-info (ns-function impl-ns 'handle-info)
-     :terminate (ns-function impl-ns 'terminate)}))
+   {:init (ns-function impl-ns 'init)
+    :handle-call (ns-function impl-ns 'handle-call)
+    :handle-cast (ns-function impl-ns 'handle-cast)
+    :handle-info (ns-function impl-ns 'handle-info)
+    :terminate (ns-function impl-ns 'terminate)}))
 
 (defn- coerce-ns-dynamic [impl-ns]
   (reify IGenServer
@@ -248,8 +246,7 @@
       (call-handle-cast (ns-function impl-ns 'handle-cast) request state))
 
     (handle-call [_ request from state]
-      (call-handle-call
-        (ns-function impl-ns 'handle-call) request from state))
+      (call-handle-call (ns-function impl-ns 'handle-call) request from state))
 
     (handle-info [_ request state]
       (call-handle-info (ns-function impl-ns 'handle-info) request state))
@@ -270,16 +267,16 @@
 
 (defn ^:no-doc call* [server request timeout-ms]
   (process/async
-   (let [mref (process/monitor server)]
-     (! server [::call [mref (process/self)] request])
-     (process/selective-receive!
-      [mref resp] (do
-                    (process/demonitor mref)
-                    [:ok resp])
-      [:DOWN mref _ _ reason] [:error reason]
-      (after timeout-ms
-       (process/demonitor mref {:flush true})
-       [:error :timeout])))))
+    (let [mref (process/monitor server)]
+      (! server [::call [mref (process/self)] request])
+      (process/selective-receive!
+        [mref resp] (do
+                      (process/demonitor mref)
+                      [:ok resp])
+        [:DOWN mref _ _ reason] [:error reason]
+        (after timeout-ms
+          (process/demonitor mref {:flush true})
+          [:error :timeout])))))
 
 (defn- start*
   [server
@@ -291,13 +288,13 @@
           parent (process/self)
           timeout (u/timeout-chan timeout)
           pid (process/spawn-opt
-                gen-server-proc [gs args parent response] spawn-opt)]
+               gen-server-proc [gs args parent response] spawn-opt)]
       (match (async/alts! [response timeout])
-             [:ok response] [:ok pid]
-             [[:error reason] response] [:error reason]
-             [nil timeout] (do (process/unlink pid)
-                               (process/exit pid :kill)
-                               [:error :timeout])))))
+        [:ok response] [:ok pid]
+        [[:error reason] response] [:error reason]
+        [nil timeout] (do (process/unlink pid)
+                          (process/exit pid :kill)
+                          [:error :timeout])))))
 
 ;; ====================================================================
 ;; API
@@ -343,7 +340,7 @@
    `(process/await! (start ~server ~args ~options)))
   ([reg-name server args options]
    `(start!
-      ~server ~args (assoc-in ~options [:spawn-opt :register] ~reg-name))))
+     ~server ~args (assoc-in ~options [:spawn-opt :register] ~reg-name))))
 
 (defn start-link
   "The same as `start-link!` but returns async value."
@@ -354,8 +351,7 @@
   ([server args options]
    (start server args (assoc-in options [:spawn-opt :link] true)))
   ([reg-name server args options]
-   (start-link
-      server args (assoc-in options [:spawn-opt :register] reg-name))))
+   (start-link server args (assoc-in options [:spawn-opt :register] reg-name))))
 
 (defmacro start-link!
   "The same as `start!` but atomically links caller to started process."
@@ -367,7 +363,7 @@
    `(start! ~server ~args (assoc-in ~options [:spawn-opt :link] true)))
   ([reg-name server args options]
    `(start-link!
-      ~server ~args (assoc-in ~options [:spawn-opt :register] ~reg-name))))
+     ~server ~args (assoc-in ~options [:spawn-opt :register] ~reg-name))))
 
 (defmacro start-ns
   "The same as `start-ns!` but returns async value."
@@ -448,9 +444,11 @@
       [:error reason#] (process/exit [reason# ['call [~server ~request]]])))
   ([server request timeout-ms]
    `(match (process/await! (call* ~server ~request ~timeout-ms))
-      [:ok ret#] ret#
-      [:error reason#] (process/exit
-                         [reason# ['call [~server ~request ~timeout-ms]]]))))
+      [:ok ret#]
+      ret#
+
+      [:error reason#]
+      (process/exit [reason# ['call [~server ~request ~timeout-ms]]]))))
 
 (defn call
   "The same as `call!` but returns async value."
