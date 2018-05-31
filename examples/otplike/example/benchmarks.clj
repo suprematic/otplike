@@ -1,6 +1,7 @@
 (ns otplike.example.benchmarks
   (:require [otplike.process :as process :refer [!]]
-            [otplike.proc-util :as proc-util])
+            [otplike.proc-util :as proc-util]
+            [otplike.trace :as ptrace])
   (:gen-class))
 
 (process/proc-defn proc [n root-pid]
@@ -42,11 +43,26 @@
 (process/proc-defn proc2 [] :ok)
 
 (defn start-spawn [n]
-  (dotimes [_ n]
-    (process/spawn proc2))
+  (loop [i n]
+    (if (= 0 i)
+      ;;(println "done" n)
+      :ok
+      (do
+        (process/spawn proc2)
+        (recur (dec i))))))
+
+#_(time (start-spawn 200000))
+
+(defn start-go [n]
+  (loop [i n]
+    (if (= 0 i)
+      :ok
+      (do
+        (clojure.core.async/go :ok)
+        (recur (dec i)))))
   (println "done" n))
 
-#_(time (start-spawn 100000))
+#_(time (start-go 2000000))
 
 ;---
 
@@ -110,5 +126,11 @@
     (time (start-process-tree 18))
     (otplike.trace/untrace tref))
 
+#_(def tref (process/trace ptrace/crashed? println))
+#_(process/untrace tref)
+
 (defn -main [& args]
-  (time (start-process-tree 18)))
+  #_(time (start-process-tree 18))
+  #_(time (start-ping-pong 100000))
+  #_(time (start-spawn 200000))
+  (start-spawn 500000))
