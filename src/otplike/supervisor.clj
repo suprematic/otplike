@@ -263,9 +263,9 @@
   )
 
 (spec/fdef spec-problem
-           :args (spec/cat :problem ::spec-problem)
-           :ret (spec/merge ::spec-problem
-                            (spec/keys :req-un [:spec/message])))
+  :args (spec/cat :problem ::spec-problem)
+  :ret (spec/merge ::spec-problem
+                   (spec/keys :req-un [:spec/message])))
 (defn- spec-problem [{:keys [pred val] :as problem}]
   (assoc problem :message
          (str "value "
@@ -274,8 +274,8 @@
 (spec-util/instrument `spec-problem)
 
 (spec/fdef check-spec
-           :args (spec/cat :spec some? :x any? :reason any?)
-           :ret any?)
+  :args (spec/cat :spec some? :x any? :reason any?)
+  :ret any?)
 (defn- check-spec [spec x reason]
   (if-let [{problems ::spec/problems} (spec/explain-data spec x)]
     [:error [reason [:problems (map spec-problem problems)]]]
@@ -283,8 +283,8 @@
 (spec-util/instrument `check-spec)
 
 (spec/fdef spec->child
-           :args (spec/cat :spec ::child-spec)
-           :ret ::stopped-child)
+  :args (spec/cat :spec ::child-spec)
+  :ret ::stopped-child)
 (defn- spec->child [{:keys [id start restart shutdown type]}]
   {::id id
    ::start start
@@ -295,51 +295,51 @@
 (spec-util/instrument `spec->child)
 
 (spec/fdef shutdown
-           :args (spec/cat :pid process/pid?
-                           :reason any?
-                           :timeout ::timeout)
-           :ret ::process/async)
+  :args (spec/cat :pid process/pid?
+                  :reason any?
+                  :timeout ::timeout)
+  :ret ::process/async)
 (defn- shutdown [pid reason timeout]
   (process/async
     (try
       (process/exit pid reason)
       (if (= :kill reason)
         (process/selective-receive!
-         [:EXIT pid :killed] [:ok reason]
-         [:EXIT pid other-reason] [:error other-reason])
+          [:EXIT pid :killed] [:ok reason]
+          [:EXIT pid other-reason] [:error other-reason])
         (process/selective-receive!
-         [:EXIT pid reason] [:ok reason]
-         [:EXIT pid other-reason] [:error other-reason]
-         (after timeout
-          (process/exit pid :kill)
-          (process/selective-receive!
-           [:EXIT pid other-reason] [:error other-reason]))))
+          [:EXIT pid reason] [:ok reason]
+          [:EXIT pid other-reason] [:error other-reason]
+          (after timeout
+            (process/exit pid :kill)
+            (process/selective-receive!
+              [:EXIT pid other-reason] [:error other-reason]))))
       (catch Throwable t
         (println t)
         [:panic (process/ex->reason t)]))))
 (spec-util/instrument `shutdown)
 
 (spec/fdef do-terminate-child
-           :args (spec/cat :child ::started-child
-                           :reason ::reason
-                           :timeout ::timeout)
-           :ret ::process/async)
+  :args (spec/cat :child ::started-child
+                  :reason ::reason
+                  :timeout ::timeout)
+  :ret ::process/async)
 (defn- do-terminate-child
   [{pid ::pid restart ::restart :as child} reason timeout]
-  ;(printf "sup terminating child, id=%s, reason=%s, timeout=%s%n" (::id child) reason timeout)
+  ;;(printf "sup terminating child, id=%s, reason=%s, timeout=%s%n" (::id child) reason timeout)
   (process/async
     (match (process/await! (shutdown pid reason timeout))
-           [:ok reason] :ok
-           [:error other-reason]
-           (when (or (not= other-reason :normal) (= restart :permanent))
-             (report-error [:shutdown-error other-reason child])))
-    ;(printf "sup child shut down, id=%s%n" (::id child))
+      [:ok reason] :ok
+      [:error other-reason]
+      (when (or (not= other-reason :normal) (= restart :permanent))
+        (report-error [:shutdown-error other-reason child])))
+    ;;(printf "sup child shut down, id=%s%n" (::id child))
     (assoc child ::pid nil)))
 (spec-util/instrument `do-terminate-child)
 
 (spec/fdef terminate-child*
-           :args (spec/cat :child ::child)
-           :ret ::process/async)
+  :args (spec/cat :child ::child)
+  :ret ::process/async)
 (defn- terminate-child* [{how ::shutdown pid ::pid :as child}]
   (if (process/pid? pid)
     (match how
@@ -349,10 +349,10 @@
 (spec-util/instrument `terminate-child*)
 
 (spec/fdef terminate-children
-           :args (spec/cat :children ::children)
-           :ret ::process/async)
+  :args (spec/cat :children ::children)
+  :ret ::process/async)
 (defn- terminate-children [children]
-  ;(printf "sup terminate all children%n")
+  ;;(printf "sup terminate all children%n")
   (process/async
     (loop [children children
            new-children '()]
@@ -367,13 +367,13 @@
 (spec-util/instrument `terminate-children)
 
 (spec/fdef dispatch-child-start
-           :args (spec/cat :child ::stopped-child)
-           :ret (spec/or
-                  :success
-                  (spec/or :child (spec/tuple ::ok ::started-child)
-                           :child+info (spec/tuple ::ok ::started-child any?))
-                  :failure
-                  (spec/tuple ::error ::reason)))
+  :args (spec/cat :child ::stopped-child)
+  :ret (spec/or
+        :success
+        (spec/or :child (spec/tuple ::ok ::started-child)
+                 :child+info (spec/tuple ::ok ::started-child any?))
+        :failure
+        (spec/tuple ::error ::reason)))
 (defn- dispatch-child-start [child res]
   (match res
     [:ok (pid :guard process/pid?)]
@@ -389,13 +389,12 @@
     [:error [:bad-return other]]))
 
 (spec/fdef start-child*
-           :args (spec/cat :child ::stopped-child)
-           :ret ::process/async)
+  :args (spec/cat :child ::stopped-child)
+  :ret ::process/async)
 (defn- start-child* [{[f args] ::start :as child}]
-  ;(printf "sup starting child, id=%s%n" (::id child))
+  ;;(printf "sup starting child, id=%s%n" (::id child))
   (process/async
-    (match
-      (process/ex-catch [:ok (apply f args)])
+    (match (process/ex-catch [:ok (apply f args)])
       [:ok (async :guard process/async?)]
       (dispatch-child-start child (process/await! async))
 
@@ -417,59 +416,59 @@
         (match (process/await! (start-child* child))
           [:ok started-child]
           (do
-            ;(printf "sup child started, id=%s%n" (::id started-child))
+            ;;(printf "sup child started, id=%s%n" (::id started-child))
             (recur (rest to-start) (cons started-child started)))
           [:error reason]
           (let [stopped-child (assoc child ::pid nil)
                 new-children (concat (reverse (rest to-start))
                                      (cons stopped-child started))]
             (report-error [:start-error reason child])
-            ;(printf "sup start-child error, reason: %s%n" (pprint/write reason :length 3 :level 3 :stream nil))
+            ;;(printf "sup start-child error, reason: %s%n" (pprint/write reason :length 3 :level 3 :stream nil))
             [:error
              [:failed-to-start-child (::id child) reason] child new-children]))
         [:ok started]))))
 (spec-util/instrument `start-children)
 
 (spec/fdef child-by-pid
-           :args (spec/cat :children ::children :pid ::process/pid)
-           :ret (spec/nilable ::child))
+  :args (spec/cat :children ::children :pid ::process/pid)
+  :ret (spec/nilable ::child))
 (defn- child-by-pid [children pid]
   (some #(if (= pid (::pid %)) %) children))
 (spec-util/instrument `child-by-pid)
 
 (spec/fdef child-by-id
-           :args (spec/cat :children ::children :id ::id)
-           :ret (spec/nilable ::child))
+  :args (spec/cat :children ::children :id ::id)
+  :ret (spec/nilable ::child))
 (defn- child-by-id [children id]
   (some #(if (= id (::id %)) %) children))
 (spec-util/instrument `child-by-id)
 
 (spec/fdef delete-child-by-id
-           :args (spec/cat :children ::children :id ::id)
-           :ret ::children)
+  :args (spec/cat :children ::children :id ::id)
+  :ret ::children)
 (defn- delete-child-by-id [children id]
   (filter #(not= id (::id %)) children))
 (spec-util/instrument `delete-child-by-id)
 
 (spec/fdef delete-child-by-pid
-           :args (spec/cat :children ::children :pid ::process/pid)
-           :ret ::children)
+  :args (spec/cat :children ::children :pid ::process/pid)
+  :ret ::children)
 (defn- delete-child-by-pid [children pid]
   (filter #(= pid (::pid %)) children))
 (spec-util/instrument `delete-child-by-pid)
 
 (spec/fdef replace-child
-           :args (spec/cat :children ::children :child ::child)
-           :ret ::children)
+  :args (spec/cat :children ::children :child ::child)
+  :ret ::children)
 (defn- replace-child [children {id ::id :as child}]
   (match (split-with #(not= id (::id %)) children)
     [before ([_ & after] :seq)] (concat before [child] after)))
 (spec-util/instrument `replace-child)
 
 (spec/fdef split-children-after
-           :args (spec/cat :id ::id :children ::children)
-           :ret (spec/cat :after ::children
-                          :before ::children))
+  :args (spec/cat :id ::id :children ::children)
+  :ret (spec/cat :after ::children
+                 :before ::children))
 (defn- split-children-after [id children]
   (match (split-with #(not= id (::id %)) children)
     [before ([child & after] :seq)] [(concat before [child]) after]))
@@ -479,38 +478,38 @@
   (quot (System/nanoTime) 1000000))
 
 (spec/fdef in-period?
-           :args (spec/cat :restart-time int? :now int? :period ::period)
-           :ret boolean?)
+  :args (spec/cat :restart-time int? :now int? :period ::period)
+  :ret boolean?)
 (defn- in-period? [restart-time now period]
   (>= period (- now restart-time)))
 (spec-util/instrument `in-period?)
 
 (spec/fdef add-restart
-           :args (spec/cat :state ::state)
-           :ret (spec/or :continue (spec/tuple #{:continue} ::state)
-                         :shutdown (spec/tuple #{:shutdown} ::state)))
+  :args (spec/cat :state ::state)
+  :ret (spec/or :continue (spec/tuple #{:continue} ::state)
+                :shutdown (spec/tuple #{:shutdown} ::state)))
 (defn- add-restart
   [{intensity ::intensity period ::period restarts ::restarts :as state}]
-  ;(printf "adding restart, intensity=%s, restarts=%s%n" intensity (pprint/write restarts :stream nil))
+  ;;(printf "adding restart, intensity=%s, restarts=%s%n" intensity (pprint/write restarts :stream nil))
   (let [time-ms (monotonic-time-ms)
         restarts (take-while #(in-period? % time-ms period)
                              (cons time-ms restarts))
         state (assoc state ::restarts restarts)]
-    ;(printf "new restarts=%s%n" (pprint/write restarts :stream nil))
+    ;;(printf "new restarts=%s%n" (pprint/write restarts :stream nil))
     (if (> (count restarts) intensity)
       (do
-        ;(println "too many restarts, shutting sup down")
+        ;;(println "too many restarts, shutting sup down")
         [:shutdown state])
       (do
-        ;(println "restart is allowed")
+        ;;(println "restart is allowed")
         [:continue state]))))
 (spec-util/instrument `add-restart)
 
 (spec/fdef restart-child:one-for-one
-           :args (spec/cat :child ::child :state ::state)
-           :ret ::process/async)
+  :args (spec/cat :child ::child :state ::state)
+  :ret ::process/async)
 (defn- restart-child:one-for-one [{id ::id :as child} state]
-  ;(println "strategy is 'one-for-one', restarting only this child")
+  ;;(println "strategy is 'one-for-one', restarting only this child")
   (process/async
     (match (process/await! (start-child* child))
       [:ok new-child]
@@ -523,11 +522,11 @@
 (spec-util/instrument `restart-child:one-for-one)
 
 (spec/fdef restart-child:one-for-all
-           :args (spec/cat :child ::child :state ::state)
-           :ret ::process/async)
+  :args (spec/cat :child ::child :state ::state)
+  :ret ::process/async)
 (defn- restart-child:one-for-all
   [{id ::id :as child} {children ::children :as state}]
-  ;(println "strategy is 'one-for-all', restarting all children")
+  ;;(println "strategy is 'one-for-all', restarting all children")
   (process/async
     (let [terminated-children (process/await! (terminate-children children))]
       (match (process/await! (start-children terminated-children))
@@ -543,11 +542,11 @@
 (spec-util/instrument `restart-child:one-for-all)
 
 (spec/fdef restart-child:rest-for-one
-           :args (spec/cat :child ::child :state ::state)
-           :ret ::process/async)
+  :args (spec/cat :child ::child :state ::state)
+  :ret ::process/async)
 (defn- restart-child:rest-for-one
   [{id ::id :as child} {children ::children :as state}]
-  ;(println "strategy is 'rest-for-one', restarting rest children")
+  ;;(println "strategy is 'rest-for-one', restarting rest children")
   (process/async
     (let [[after before] (split-children-after id children)
           terminated-children (process/await! (terminate-children after))]
@@ -564,10 +563,10 @@
 (spec-util/instrument `restart-child:rest-for-one)
 
 (spec/fdef restart-child*
-           :args (spec/cat :child ::child :state ::state)
-           :ret ::process/async)
+  :args (spec/cat :child ::child :state ::state)
+  :ret ::process/async)
 (defn- restart-child* [{id ::id :as child} {strategy ::strategy :as state}]
-  ;(printf "restart child: id=%s, strategy=%s%n" id strategy)
+  ;;(printf "restart child: id=%s, strategy=%s%n" id strategy)
   (process/async
     (let [child (assoc child ::pid :restarting)
           state (update state ::children replace-child child)]
@@ -575,70 +574,70 @@
         [:continue new-state]
         (match strategy
           :one-for-one [:ok (process/await!
-                              (restart-child:one-for-one child new-state))]
+                             (restart-child:one-for-one child new-state))]
           :one-for-all [:ok (process/await!
-                              (restart-child:one-for-all child new-state))]
+                             (restart-child:one-for-all child new-state))]
           :rest-for-one [:ok (process/await!
-                               (restart-child:rest-for-one child new-state))])
+                              (restart-child:rest-for-one child new-state))])
         [:shutdown new-state]
         (do
-          ;(printf "too many restarts shutting down%n")
+          ;;(printf "too many restarts shutting down%n")
           (report-error
-            [:shutdown :reached-max-restart-intensity
-             (select-keys state [::intensity ::period ::strategy]) child])
+           [:shutdown :reached-max-restart-intensity
+            (select-keys state [::intensity ::period ::strategy]) child])
           [:shutdown
            (update new-state ::children delete-child-by-id (::id child))])))))
 (spec-util/instrument `restart-child*)
 
 (spec/fdef handle-child-exit
-           :args (spec/cat :child ::child
-                           :reason ::reason
-                           :state ::state)
-           :ret ::process/async)
+  :args (spec/cat :child ::child
+                  :reason ::reason
+                  :state ::state)
+  :ret ::process/async)
 (defn- handle-child-exit [{restart ::restart id ::id :as child} reason state]
   (process/async
     (match [restart reason]
       [:permanent _]
       (do
-        ;(println "permanent child, restarting")
+        ;;(println "permanent child, restarting")
         (report-error [:child-terminated reason child])
         (process/await! (restart-child* child state)))
 
       [_ (:or :normal :shutdown)]
       (do
-        ;(println "not persistent child exited normally, deleting")
+        ;;(println "not persistent child exited normally, deleting")
         [:ok (update state ::children delete-child-by-id (::id child))])
 
       [:transient _]
       (do
-        ;(println "transient child exited abnormally, restarting")
+        ;;(println "transient child exited abnormally, restarting")
         (report-error [:child-terminated reason child])
         (process/await! (restart-child* child state)))
 
       [:temporary _]
       (do
-        ;(println "temporary child, deleting")
+        ;;(println "temporary child, deleting")
         (report-error [:child-terminated reason child])
         [:ok (update state ::children delete-child-by-id (::id child))]))))
 (spec-util/instrument `handle-child-exit)
 
 (spec/fdef handle-exit
-           :args (spec/cat :pid ::process/pid
-                           :reason ::reason
-                           :state ::state)
-           :ret ::process/async)
+  :args (spec/cat :pid ::process/pid
+                  :reason ::reason
+                  :state ::state)
+  :ret ::process/async)
 (defn- handle-exit [pid reason {children ::children :as state}]
   (process/async
     (match (child-by-pid children pid)
       nil (do ;(println "child not found" )
-              [:ok state])
+            [:ok state])
       child (do ;(printf "child found id=%s%n" (::id child))
-                (process/await! (handle-child-exit child reason state))))))
+              (process/await! (handle-child-exit child reason state))))))
 (spec-util/instrument `handle-exit)
 
 (spec/fdef sup-flags
-           :args (spec/cat :spec ::sup-spec)
-           :ret ::sup-flags)
+  :args (spec/cat :spec ::sup-spec)
+  :ret ::sup-flags)
 (defn- sup-flags [{:keys [strategy intensity period]}]
   {::strategy (or strategy :one-for-one)
    ::intensity (or intensity 1)
@@ -646,8 +645,8 @@
 (spec-util/instrument `sup-flags)
 
 (spec/fdef handle-start-child
-           :args (spec/cat :spec any? :state ::state)
-           :ret ::process/async)
+  :args (spec/cat :spec any? :state ::state)
+  :ret ::process/async)
 (defn- handle-start-child [child-spec {children ::children :as state}]
   (process/async
     (match (check-spec ::child-spec child-spec :bad-child-spec)
@@ -672,8 +671,8 @@
 (spec-util/instrument `handle-start-child)
 
 (spec/fdef handle-restart-child
-           :args (spec/cat :id ::id :state ::state)
-           :ret ::process/async)
+  :args (spec/cat :id ::id :state ::state)
+  :ret ::process/async)
 (defn- handle-restart-child [id {children ::children :as state}]
   (process/async
     (match (child-by-id children id)
@@ -701,8 +700,8 @@
 (spec-util/instrument `handle-restart-child)
 
 (spec/fdef handle-terminate-child
-           :args (spec/cat :id ::id :state ::state)
-           :ret ::process/async)
+  :args (spec/cat :id ::id :state ::state)
+  :ret ::process/async)
 (defn- handle-terminate-child [id {children ::children :as state}]
   (process/async
     (match (child-by-id children id)
@@ -719,13 +718,13 @@
 (spec-util/instrument `handle-terminate-child)
 
 (spec/fdef handle-delete-child
-           :args (spec/cat :id ::id :state ::state)
-           :ret (spec/tuple
-                  (spec/or :success ::ok
-                           :failure (spec/tuple
-                                      ::error
-                                      #{:restarting :running :not-found}))
-                  ::state))
+  :args (spec/cat :id ::id :state ::state)
+  :ret (spec/tuple
+        (spec/or :success ::ok
+                 :failure (spec/tuple
+                           ::error
+                           #{:restarting :running :not-found}))
+        ::state))
 (defn- handle-delete-child [id {children ::children :as state}]
   (match (child-by-id children id)
     nil
@@ -749,8 +748,8 @@
 (defn- start-link* [sup-fn args spawn-opts]
   (process/async
     (gen-server/start-link-ns!
-      [sup-fn args] {:spawn-opt (merge spawn-opts {:flags {:trap-exit true}
-                                                   :name "supervisor"})})))
+     [sup-fn args] {:spawn-opt (merge spawn-opts {:flags {:trap-exit true}
+                                                  :name "supervisor"})})))
 (spec-util/instrument `start-link*)
 
 ;; ====================================================================
@@ -759,14 +758,14 @@
 (spec/fdef init
   :args (spec/cat :fn fn? :args (spec/nilable (spec/coll-of any?)))
   :ret ::process/async)
-(defn ^:no-doc init [sup-fn args]
-  ;(printf "sup init: %s%n" args)
+(defn- init [sup-fn args]
+  ;;(printf "sup init: %s%n" args)
   (process/async
     (match (process/async?-value! (apply sup-fn args))
       [:ok [sup-spec child-specs]]
       (do
-        ;(printf "sup init sup-spec: %s%n" (pprint/write sup-spec :level 3 :stream nil))
-        ;(printf "sup init child-specs: %s%n" (pprint/write child-specs :level 3 :stream nil))
+        ;;(printf "sup init sup-spec: %s%n" (pprint/write sup-spec :level 3 :stream nil))
+        ;;(printf "sup init child-specs: %s%n" (pprint/write child-specs :level 3 :stream nil))
         (match (check-spec ::sup-spec sup-spec :bad-supervisor-flags)
           :ok :ok
           [:error reason] (process/exit reason))
@@ -775,8 +774,8 @@
           [:error reason] (process/exit reason))
         (let [sup-flags (sup-flags sup-spec)
               children (map spec->child child-specs)]
-          ;(printf "sup init sup-flags: %s%n" (pprint/write sup-flags :level 3 :stream nil))
-          ;(printf "sup init children: %s%n" (pprint/write children :level 3 :stream nil))
+          ;;(printf "sup init sup-flags: %s%n" (pprint/write sup-flags :level 3 :stream nil))
+          ;;(printf "sup init children: %s%n" (pprint/write children :level 3 :stream nil))
           (match (process/await! (start-children children))
             [:ok started-children]
             [:ok (merge sup-flags
@@ -795,7 +794,7 @@
                   :from ::gen-server/from
                   :state ::state)
   :ret ::process/async)
-(defn ^:no-doc handle-call [request from {children ::children :as state}]
+(defn- handle-call [request from {children ::children :as state}]
   ;(printf "sup call: %s%n" request)
   (process/async
     (match request
@@ -820,7 +819,7 @@
   :args (spec/cat :request (spec/tuple #{:restart} ::id)
                   :state ::state)
   :ret ::process/async)
-(defn ^:no-doc handle-cast [request {children ::children :as state}]
+(defn- handle-cast [request {children ::children :as state}]
   ;(printf "sup cast: %s, children %s%n" request (pr-str children))
   ;(printf "child by id: %s%n" (child-by-id children (second request)))
   (process/async
@@ -839,7 +838,7 @@
   :args (spec/cat :request any?
                   :state ::state)
   :ret ::process/async)
-(defn ^:no-doc handle-info [request state]
+(defn- handle-info [request state]
   ;(printf "sup info: %s%n" request)
   (process/async
     (match request
@@ -855,7 +854,7 @@
 (spec/fdef terminate
   :args (spec/cat :reason ::reason :state ::state)
   :ret any?)
-(defn ^:no-doc terminate [reason {children ::children}]
+(defn- terminate [reason {children ::children}]
   ;(printf "sup %s terminate, reason=%s, children: %s%n" (process/self) reason (pprint/write children :level 3 :stream nil))
   (process/async
     (process/await! (terminate-children children))))
@@ -866,11 +865,11 @@
 
 (spec/fdef start-link!
   :args (spec/or
-          :noname (spec/cat :sup-fn fn?
-                            :args (spec/? (spec/nilable (spec/coll-of any?))))
-          :register (spec/cat :sup-name any?
-                              :sup-fn fn?
-                              :args (spec/nilable (spec/coll-of any?))))
+         :noname (spec/cat :sup-fn fn?
+                           :args (spec/? (spec/nilable (spec/coll-of any?))))
+         :register (spec/cat :sup-name any?
+                             :sup-fn fn?
+                             :args (spec/nilable (spec/coll-of any?))))
   :ret (spec/or :success (spec/tuple ::ok ::process/pid)
                 :failure (spec/tuple ::error ::reason)))
 (defmacro start-link!
@@ -916,11 +915,11 @@
 
 (spec/fdef start-link
   :args (spec/or
-          :noname (spec/cat :sup-fn fn?
-                            :args (spec/? (spec/nilable (spec/coll-of any?))))
-          :register (spec/cat :sup-name any?
-                              :sup-fn fn?
-                              :args (spec/nilable (spec/coll-of any?))))
+         :noname (spec/cat :sup-fn fn?
+                           :args (spec/? (spec/nilable (spec/coll-of any?))))
+         :register (spec/cat :sup-name any?
+                             :sup-fn fn?
+                             :args (spec/nilable (spec/coll-of any?))))
   :ret ::process/async)
 (defn start-link
   "The same as `start-link!` but returns async value."
@@ -941,9 +940,9 @@
   [spec]
   (match (check-spec ::child-specs spec :bad-child-specs)
     :ok (if-let [[id _] (->> spec
-                             (map :id)
-                             (frequencies)
-                             (some #(if (> (val %) 1) %)))]
+                          (map :id)
+                          (frequencies)
+                          (some #(if (> (val %) 1) %)))]
           [:error [:bad-child-specs [:duplicate-child-id id]]]
           :ok)
     error error))
