@@ -1193,7 +1193,7 @@
     (process/flag :trap-exit true)
     (let [done (async/chan)
           ex-class-name (.getName (class ex))
-          pid (process/spawn-opt (fn [] (throw ex)) [] {:link true})]
+          pid (process/spawn-opt (proc-fn [] (throw ex)) [] {:link true})]
       (is (match (<! (await-message 50))
             [:exit [pid [:exception {:class ex-class-name}]]]
             :ok)
@@ -1212,9 +1212,12 @@
           "process must exit when arguments to its proc-fn dont match arity"))))
 
 (deftest ^:parallel process-exits-abnormally-when-pfn-arity-doesnt-match-args
-  (process-exits-abnormally-when-pfn-arity-doesnt-match-args* (fn []) [:a 1])
-  (process-exits-abnormally-when-pfn-arity-doesnt-match-args* (fn [a b]) [])
-  (process-exits-abnormally-when-pfn-arity-doesnt-match-args* (fn [b]) [:a :b]))
+  (process-exits-abnormally-when-pfn-arity-doesnt-match-args*
+   (proc-fn []) [:a 1])
+  (process-exits-abnormally-when-pfn-arity-doesnt-match-args*
+   (proc-fn [a b]) [])
+  (process-exits-abnormally-when-pfn-arity-doesnt-match-args*
+   (proc-fn [b]) [:a :b]))
 
 ;(proc-util/execute-proc!!
 (def-proc-test ^:parallel process-is-linked-when-proc-fn-starts
