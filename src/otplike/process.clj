@@ -389,24 +389,25 @@
            timeout-chan# (u/timeout-chan ~timeout)
            message-q# (message-q* process#)
            message-chan# (message-chan* process#)
-           res# (loop [new-mq# (u/queue)]
-                  (if-let [[_# msg# :as m#] (peek @message-q#)]
-                    (let [res# (match msg# ~@select-clauses)]
-                      (swap! message-q# pop)
-                      (if (identical? res# :else)
-                        (recur (conj new-mq# m#))
-                        [m# res# new-mq#]))
-                    (let [[res# ch#] (~(if park? `async/alts! `async/alts!!)
-                                      [message-chan# timeout-chan#])]
-                      (if res#
-                        (recur new-mq#)
-                        (if (identical? ch# message-chan#)
-                          (throw (Exception. "noproc"))
-                          :timeout)))))]
-       (if (identical? res# :timeout)
+           [msg# clause-n# new-mq#]
+           (loop [new-mq# (u/queue)]
+             (if-let [[_# msg# :as m#] (peek @message-q#)]
+               (let [res# (match msg# ~@select-clauses)]
+                 (swap! message-q# pop)
+                 (if (identical? res# :else)
+                   (recur (conj new-mq# m#))
+                   [m# res# new-mq#]))
+               (let [[res# ch#] (~(if park? `async/alts! `async/alts!!)
+                                 [message-chan# timeout-chan#])]
+                 (if res#
+                   (recur new-mq#)
+                   (if (identical? ch# message-chan#)
+                     (throw (Exception. "noproc"))
+                     [:timeout nil new-mq#])))))]
+       (swap! message-q# #(into new-mq# %))
+       (if (identical? msg# :timeout)
          (do ~@or-body)
-         (let [[[context# ~msg-sym] clause-n# new-mq#] res#]
-           (swap! message-q# #(into new-mq# %))
+         (let [[context# ~msg-sym] msg#]
            (send-trace-event :receive {:message ~msg-sym})
            (update-message-context! context#)
            (case clause-n#
