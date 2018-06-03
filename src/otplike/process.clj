@@ -217,12 +217,12 @@
   (let [trap-exit (:trap-exit (.getFlags process))
         pid (.pid process)
         k (message 0)]
-    (case k
-      :stop
+    (cond
+      (identical? k :stop)
       (let [reason (message 1)]
         reason)
 
-      :exit
+      (identical? k :exit)
       (let [xpid (message 1)
             reason (message 2)]
         (if trap-exit
@@ -233,7 +233,7 @@
             :normal ::continue
             reason)))
 
-      :linked-exit
+      (identical? k :linked-exit)
       (let [xpid (message 1)
             reason (message 2)]
         (if (locking *global-lock
@@ -246,7 +246,10 @@
             (case reason
               :normal ::continue
               reason))
-          ::continue)))))
+          ::continue))
+
+      :else
+      (throw (Exception. "Unexpected control message")))))
 
 (defn- start-process [pid proc-func args]
   {:pre [(fn? proc-func)
@@ -331,7 +334,7 @@
                         (swap! control-q pop)
                         (dispatch-control process m))
                       (let [[v ch :as r] (async/alts! [control-chan result-ch])]
-                        (if (= result-ch ch)
+                        (if (identical? result-ch ch)
                           (if (some? v) v :nil)
                           (recur))))))]
             (case proceed?
@@ -384,17 +387,17 @@
                   (if-let [[_# msg# :as m#] (peek @message-q#)]
                     (let [res# (match msg# ~@select-clauses)]
                       (swap! message-q# pop)
-                      (if (= res# :else)
+                      (if (identical? res# :else)
                         (recur (conj new-mq# m#))
                         [m# res# new-mq#]))
                     (let [[res# ch#] (~(if park? `async/alts! `async/alts!!)
                                       [message-chan# timeout-chan#])]
                       (if res#
                         (recur new-mq#)
-                        (if (= ch# message-chan#)
+                        (if (identical? ch# message-chan#)
                           (throw (Exception. "noproc"))
                           :timeout)))))]
-       (if (= res# :timeout)
+       (if (identical? res# :timeout)
          (do ~@or-body)
          (let [[[context# ~msg-sym] clause-n# new-mq#] res#]
            (swap! message-q# #(into new-mq# %))
@@ -421,11 +424,11 @@
                   (if-let [[_# msg# :as m#] (peek mq#)]
                     (let [res# (match msg# ~@select-clauses)
                           mq# (pop mq#)]
-                      (if (= res# :else)
+                      (if (identical? res# :else)
                         (recur mq# (conj new-mq# m#))
                         [m# res# (into new-mq# mq#)]))
                     :miss))]
-       (if (= res# :miss)
+       (if (identical? res# :miss)
          (do ~@or-body)
          (let [[[context# ~msg-sym] clause-n# new-mq#] res#]
            (swap! message-q# #(into new-mq# %))
@@ -461,7 +464,7 @@
                     (do
                       (swap! mq# pop)
                       res#)
-                    (if (= ~timeout-sym :infinity)
+                    (if (identical? ~timeout-sym :infinity)
                       (case (~(if park? `<! `<!!) ~mchan-sym)
                         nil :noproc
                         (recur))
@@ -471,13 +474,14 @@
                           [nil ~mchan-sym] :noproc
                           [nil ~timeout-sym] :timeout
                           :else (recur))))))]
-       (case res#
-         :timeout
+       (cond
+         (identical? res# :timeout)
          (do ~@timeout-body)
 
-         :noproc
+         (identical? res# :noproc)
          (throw (Exception. "noproc"))
 
+         :else
          (let [[~context-sym ~msg-sym] res#]
            (send-trace-event :receive {:message ~msg-sym})
            (update-message-context! ~context-sym)
@@ -728,7 +732,7 @@
   (u/check-args [(pid? pid)])
   (let [^TProcess my-process (self-process)
         my-pid (.pid my-process)]
-    (if (= my-pid pid)
+    (if (identical? my-pid pid)
       true
       (if-let [^TProcess other-process (@*processes pid)]
         (try
@@ -837,7 +841,7 @@
   (let [my-pid (self)]
     (if-let [^TProcess other-process (@*processes (resolve-pid pid-or-name))]
       (let [other-pid (.pid other-process)]
-        (if (= my-pid other-pid)
+        (if (identical? my-pid other-pid)
           (new-monitor-ref)
           (let [mref (new-monitor-ref other-pid)]
             (if (locking *global-lock
