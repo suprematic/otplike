@@ -1,4 +1,3 @@
-(def core-async-version "0.4.474")
 (def project-version "0.5.0-alpha-SNAPSHOT")
 
 (defproject
@@ -9,22 +8,35 @@
             :url  "https://www.eclipse.org/legal/epl-v10.html"}
 
   :dependencies [[org.clojure/clojure "1.8.0"]
-                 [org.clojure/core.async ~core-async-version]
+                 [org.clojure/core.async "0.4.474"]
                  [org.clojure/core.match "0.3.0-alpha5"]
                  [clojure-future-spec "1.9.0-beta4"]]
 
-  :plugins [[lein-codox "0.10.3"]]
+  :plugins [[lein-codox "0.10.3"]
+            [lein-eftest "0.5.2"]]
 
   :source-paths  ["src"]
 
-  ;:main otplike.example.benchmarks
-  ;:source-paths  ["src" "examples"]
+  ;;:main otplike.example.benchmarks
+  ;;:source-paths  ["src" "examples"]
 
   :profiles {:test
              {:dependencies [[org.clojure/math.combinatorics "0.1.4"]]}
 
-             :parallel-test
-             {:dependencies [[org.clojure/core.async ~core-async-version]]}
+             :uberjar
+             {:aot :all}
+
+             :test-parallel
+             {:eftest {:multithread? :vars
+                       ;; :multithread? :namespaces
+                       ;; :multithread? false
+                       ;; :multithread? true
+                       }
+              :java-opts ["-Dclojure.core.async.pool-size=32"]}
+
+             :test-sequentially
+             {:eftest {:multithread? false}
+              :java-opts ["-Dclojure.core.async.pool-size=1"]}
 
              :test-1.8
              {:dependencies [[org.clojure/clojure "1.8.0"]]}
