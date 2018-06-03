@@ -2099,3 +2099,135 @@
 
 ;; ====================================================================
 ;; Other
+
+(deftest ^:parallel selective-receive!-receives-message
+  (let [done (async/chan)
+        pfn (proc-fn []
+              (is (= :msg (process/selective-receive! msg msg))
+                  "selective-receive! must receive message sent to a process")
+              (async/close! done))
+        pid (process/spawn pfn)]
+    (! pid :msg)
+    (await-completion!! done 150)))
+
+(def-proc-test ^:parallel selective-receive!-throws-if-process-exited
+  (let [done (async/chan)
+        pfn (proc-fn []
+              (process/exit (process/self) :abnormal)
+              (is (thrown? Exception (process/selective-receive! _ :ok)))
+              (async/close! done))
+        pid (process/spawn pfn)]
+    (await-completion! done 150)))
+
+(deftest ^:parallel selective-receive!-executes-after-clause
+  (let [done (async/chan)
+        pfn (proc-fn []
+              (is (= :timeout (process/selective-receive!
+                               _ :error
+                               (after 10
+                                 :timeout)))
+                  "selective-receive! must execute 'after' clause on timeout")
+              (async/close! done))
+        pid (process/spawn pfn)]
+    (await-completion!! done 150)))
+
+(deftest ^:parallel selective-receive!-requires-one-or-more-message-patterns
+  (is (thrown-with-msg?
+        AssertionError
+        #"requires one or more message patterns"
+        (eval `(process/selective-receive!))))
+  (is (thrown-with-msg?
+        AssertionError
+        #"requires one or more message patterns"
+        (eval `(process/selective-receive! (after 10 :ok))))))
+
+(deftest ^:parallel selective-receive!-accepts-infinity-timeout
+  (let [done (async/chan)
+        pfn (proc-fn []
+              (process/selective-receive!
+                :done (async/close! done)
+                (after :infinity
+                  (is false
+                      (str "expression for infinite timeout must never"
+                           " be executed")))))
+        pid (process/spawn pfn)]
+    (<!! (async/timeout 100))
+    (! pid :done)
+    (await-completion!! done 100)))
+
+(deftest ^:parallel selective-receive!-accepts-0-timeout
+  (let [done (async/chan)
+        pfn (proc-fn []
+              (process/selective-receive!
+                _ (is false
+                      (str "expression for message must not be executed"
+                           " when there is no message in inbox"))
+                (after 0
+                  (async/close! done))))
+        pid (process/spawn pfn)]
+    (await-completion!! done 50))
+  (let [done1 (async/chan)
+        done2 (async/chan)
+        pfn (proc-fn []
+              (await-completion! done1 150)
+              (process/selective-receive!
+                :done (async/close! done2)
+                (after 0
+                  (is false
+                      (str "expression for 0 timeout must not be executed"
+                           " when there is a message in inbox")))))
+        pid (process/spawn pfn)]
+    (! pid :done)
+    (<!! (async/timeout 50))
+    (async/close! done1)
+    (await-completion!! done2 50)))
+
+(deftest ^:parallel selective-receive!-leaves-non-matching-messages-untouched
+  (let [done (async/chan)
+        pfn (proc-fn []
+              (is (process/selective-receive! :msg3 :ok)
+                  "selective-receive! must receive the matching message")
+              (is (= :msg1 (process/receive! msg msg))
+                  (str "selective-receive! must  preserve the order"
+                       " of unmatching messages"))
+              (is (= :msg2 (process/receive! msg msg))
+                  (str "selective-receive! must  preserve the order"
+                       " of unmatching messages"))
+              (is (= :msg4 (process/receive! msg msg))
+                  (str "selective-receive! must  preserve the order"
+                       " of unmatching messages"))
+              (is (= :timeout (<! (await-message 50)))
+                  (str "selective-receive! must  preserve the order"
+                       " of unmatching messages"))
+              (async/close! done))
+        pid (process/spawn pfn)]
+    (! pid :msg1)
+    (! pid :msg2)
+    (! pid :msg3)
+    (! pid :msg4)
+    (await-completion!! done 150))
+  (let [done (async/chan)
+        pfn (proc-fn []
+              (is (process/selective-receive!
+                    :unmatching false
+                    (after 100
+                      :ok))
+                  "selective-receive! must not receive the unmatching message")
+              (is (= :msg1 (process/receive! msg msg))
+                  (str "selective-receive! must  preserve the order"
+                       " of unmatching messages"))
+              (is (= :msg2 (process/receive! msg msg))
+                  (str "selective-receive! must  preserve the order"
+                       " of unmatching messages"))
+              (is (= :msg3 (process/receive! msg msg))
+                  (str "selective-receive! must  preserve the order"
+                       " of unmatching messages"))
+              (async/close! done))
+        pid (process/spawn pfn)]
+    (! pid :msg1)
+    (! pid :msg2)
+    (! pid :msg3)
+    (await-completion!! done 250)))
+
+;; ====================================================================
+;; Other
