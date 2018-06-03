@@ -369,6 +369,12 @@
 (defn message-context []
   @*message-context*)
 
+(defn message-q* [^TProcess p]
+  (.message-q p))
+
+(defn message-chan* [^TProcess p]
+  (.message-chan p))
+
 (defmacro s-receive** [park? timeout match-clauses or-body]
   (let [patterns (take-nth 2 match-clauses)
         select-clauses (mapcat list patterns (range))
@@ -381,8 +387,8 @@
         case-clauses (mapcat list (range) by-clause-matches)]
     `(let [^TProcess process# (self-process)
            timeout-chan# (u/timeout-chan ~timeout)
-           message-q# (.message-q process#)
-           message-chan# (.message-chan process#)
+           message-q# (message-q* process#)
+           message-chan# (message-chan* process#)
            res# (loop [new-mq# (u/queue)]
                   (if-let [[_# msg# :as m#] (peek @message-q#)]
                     (let [res# (match msg# ~@select-clauses)]
@@ -417,7 +423,7 @@
         by-clause-matches (map #(concat [`match msg-sym] %) by-clause-clauses)
         case-clauses (mapcat list (range) by-clause-matches)]
     `(let [^TProcess process# (self-process)
-           message-q# (.message-q process#)
+           message-q# (message-q* process#)
            [mq# _#](reset-vals! message-q# (u/queue))
            res# (loop [mq# mq#
                        new-mq# (u/queue)]
@@ -456,8 +462,8 @@
         timeout-sym (gensym "timeout")
         mchan-sym (gensym "message-chan")]
     `(let [^TProcess process# (self-process)
-           ~mchan-sym (.message-chan process#)
-           mq# (.message-q process#)
+           ~mchan-sym (message-chan* process#)
+           mq# (message-q* process#)
            ~timeout-sym ~timeout
            res# (loop []
                   (if-let [res# (peek @mq#)]
@@ -497,7 +503,7 @@
         `(case ~timeout
              0
              (let [^TProcess process# (self-process)
-                   message-q# (.message-q process#)]
+                   message-q# (message-q* process#)]
                (if-let [[context# msg#] (peek @message-q#)]
                  (do
                    (swap! message-q# pop)
