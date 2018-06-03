@@ -293,10 +293,11 @@
       (after 100 (is false "exit must be sent just after timeout"))))
   (proc-util/execute-proc!!
     (process/flag :trap-exit true)
-    (let [pfn (process/proc-fn [] (process/receive! _ :ok))
-          pid (process/spawn-opt pfn [] {:link true :register :proc})
+    (let [reg-name (uuid-keyword)
+          pfn (process/proc-fn [] (process/receive! _ :ok))
+          pid (process/spawn-opt pfn [] {:link true :register reg-name})
           start (System/nanoTime)]
-      (timer/exit-after 100 :proc :test)
+      (timer/exit-after 100 reg-name :test)
       (process/receive!
         [:EXIT pid :test] (is (>= (ms-diff start) 100)
                             "exit must not be sent before timeout")
@@ -324,7 +325,7 @@
   (proc-util/execute-proc!!
     (process/flag :trap-exit true)
     (let [start (System/nanoTime)]
-      (timer/exit-after 0 :proc :test1)
+      (timer/exit-after 0 :not-existing-proc :test1)
       (timer/exit-after 100 :test2)
       (process/receive!
         [:EXIT _ :test2] (is (>= (ms-diff start) 100)
@@ -366,10 +367,11 @@
         (after 100 (is false "kill must be sent just after timeout")))))
   (proc-util/execute-proc!!
     (process/flag :trap-exit true)
-    (let [pfn (process/proc-fn [] (process/receive! _ :ok))
-          pid (process/spawn-opt pfn [] {:link true :register :proc})
+    (let [reg-name (uuid-keyword)
+          pfn (process/proc-fn [] (process/receive! _ :ok))
+          pid (process/spawn-opt pfn [] {:link true :register reg-name})
           start (System/nanoTime)]
-      (timer/kill-after 100 :proc)
+      (timer/kill-after 100 reg-name)
       (process/receive!
         [:EXIT pid :killed] (is (>= (ms-diff start) 100)
                             "kill must not be sent before timeout")
