@@ -1908,6 +1908,71 @@
     (await-completion!! done 150)))
 
 ;; ====================================================================
+;; (demonitor [mref opts])
+
+(deftest ^:parallel demonitor-flushes-down-message
+  (let [done (async/chan)
+        done1 (async/chan)
+        pid (process/spawn (proc-fn [] (is (await-completion! done1 100))))
+        pfn (proc-fn []
+               (let [mref (process/monitor pid)]
+                 (async/close! done1)
+                 (<! (async/timeout 50))
+                 (process/demonitor mref {:flush true})
+                 (is (= :timeout (<! (await-message 100)))
+                     (str "demonitor called after monitored process exited"
+                          " must not affect monitoring process"))
+                 (async/close! done)))]
+    (process/spawn pfn)
+    (await-completion!! done 300)))
+
+(deftest ^:parallel demonitor-doesnot-flush-when-flush-is-false
+  (let [done (async/chan)
+        done1 (async/chan)
+        pid (process/spawn (proc-fn [] (is (await-completion! done1 100))))
+        pfn (proc-fn []
+               (let [mref (process/monitor pid)]
+                 (async/close! done1)
+                 (<! (async/timeout 50))
+                 (process/demonitor mref {:flush false})
+                 (is (= [:down [mref pid :normal]]
+                        (<! (await-message 100)))
+                     (str "demonitor called after monitored process exited"
+                          " must not affect monitoring process"))
+                 (async/close! done)))]
+    (process/spawn pfn)
+    (await-completion!! done 300)))
+
+(deftest ^:parallel demonitor-works-when-there-is-no-message-to-flush
+  (let [done (async/chan)
+        done1 (async/chan)
+        pid (process/spawn (proc-fn [] (is (await-completion! done1 300))))
+        pfn (proc-fn []
+               (let [mref (process/monitor pid)]
+                 (process/demonitor mref {:flush true})
+                 (async/close! done1)
+                 (is (= :timeout (<! (await-message 100)))
+                     (str "demonitor called after monitored process exited"
+                          " must not affect monitoring process"))
+                 (async/close! done)))]
+    (process/spawn pfn)
+    (await-completion!! done 300))
+  (let [done (async/chan)
+        done1 (async/chan)
+        pid (process/spawn (proc-fn [] (is (await-completion! done1 300))))
+        pfn (proc-fn []
+               (let [mref (process/monitor pid)]
+                 (process/demonitor mref)
+                 (async/close! done1)
+                 (process/demonitor mref {:flush true})
+                 (is (= :timeout (<! (await-message 100)))
+                     (str "demonitor called after monitored process exited"
+                          " must not affect monitoring process"))
+                 (async/close! done)))]
+    (process/spawn pfn)
+    (await-completion!! done 300)))
+
+;; ====================================================================
 ;; (receive! [clauses])
 
 (deftest ^:parallel receive-receives-message
