@@ -429,9 +429,6 @@
   milliseconds to wait for a reply, or the keyword `:infinity` to wait
   indefinitely. Defaults to 5000. If no reply is received within the
   specified time, the function call fails.
-
-  As of now it's not the case but in future callers should expect the
-  following behaviour:
   If the caller catches the failure and continues running, and the server
   is just late with the reply, it can arrive at any time later into the
   message queue of the caller. The caller must in this case be prepared
