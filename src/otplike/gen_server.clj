@@ -265,18 +265,22 @@
     (impl-ns :guard #(instance? clojure.lang.Namespace %))
     (coerce-ns impl-ns)))
 
-(defn ^:no-doc call* [server request timeout-ms]
+(defn ^:no-doc call* [server request timeout-ms args]
   (process/async
     (let [mref (process/monitor server)]
       (! server [::call [mref (process/self)] request])
       (process/selective-receive!
-        [mref resp] (do
-                      (process/demonitor mref)
-                      [:ok resp])
-        [:DOWN mref _ _ reason] [:error reason]
+        [mref resp]
+        (do
+          (process/demonitor mref)
+          resp)
+
+        [:DOWN mref _ _ reason]
+        (process/exit [reason [`call args]])
+
         (after timeout-ms
           (process/demonitor mref {:flush true})
-          [:error :timeout])))))
+          (process/exit [:timeout [`call args]]))))))
 
 (defn- start*
   [server
@@ -439,23 +443,22 @@
   The call can fail for many reasons, including time-out and the called
   gen-server process dying before or during the call."
   ([server request]
-   `(match (process/await! (call* ~server ~request 5000))
-      [:ok ret#] ret#
-      [:error reason#] (process/exit [reason# ['call [~server ~request]]])))
+   `(let [server# ~server
+          request# ~request]
+      (process/await! (call* server# request# 5000 [server# request#]))))
   ([server request timeout-ms]
-   `(match (process/await! (call* ~server ~request ~timeout-ms))
-      [:ok ret#]
-      ret#
-
-      [:error reason#]
-      (process/exit [reason# ['call [~server ~request ~timeout-ms]]]))))
+   `(let [server# ~server
+          request# ~request
+          timeout-ms# ~timeout-ms]
+      (process/await!
+       (call* server# request# timeout-ms# [server# request# timeout-ms#])))))
 
 (defn call
   "The same as `call!` but returns async value."
   ([server request]
-   (process/async (call! server request)))
+   (call* server request [server request]))
   ([server request timeout-ms]
-   (process/async (call! server request timeout-ms))))
+   (call* server request timeout-ms [server request timeout-ms])))
 
 (defn cast
   "Sends an asynchronous request to the `server` and returns immediately,
