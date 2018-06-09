@@ -931,7 +931,7 @@
 (defn demonitor
   "If `mref` is a reference that the calling process obtained by
   calling monitor, this monitoring is turned off. If the monitoring
-  is already turned off, nothing happens. If `mref` was created by
+  is already turned off, nothing happens. If `mref` is created by
   other process, nothing happens.
 
   Once demonitor has returned, it is guaranteed that no
@@ -941,12 +941,25 @@
   the caller message queue before the call, though. It is therefore
   usually advisable to remove such a `:DOWN` message from the message
   queue after monitoring has been stopped.
+  `(demonitor mref {:flush true})` can be used instead of
+  `(demonitor mref)` if this cleanup is wanted.
+
+  When `:flush` option is `true`, removes (one) `:DOWN` message,
+  if there is one, from the caller message queue after monitoring
+  has been stopped. This is equivalent to the following:
+  ```
+  (demonitor mref)
+  (selective-receive!
+    [_ mref _ _ _] true
+    (after 0
+      true))
+  ```
 
   Returns `true`.
 
   Throws when called not in process context, `mref` is not a
   monitor-ref."
-  ([{:keys [self-pid other-pid] :as mref}]
+  ([mref]
    (demonitor mref {}))
   ([{:keys [self-pid other-pid] :as mref} {flush? :flush}]
    {:post [(= true %)]}
