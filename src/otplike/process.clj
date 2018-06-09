@@ -99,7 +99,7 @@
 
 (defn- ->nil [x])
 
-(defn send-trace-event [kind extra]
+(defn ^:no-doc send-trace-event [kind extra]
   (doseq [handler (vals @*trace-handlers)]
     (try
       (let [pid (self)]
@@ -359,23 +359,23 @@
                     (! pid (monitor-message mref object reason))))))))))
     pid))
 
-(defn update-message-context! [context]
+(defn ^:no-doc update-message-context! [context]
   (swap! *message-context* merge context))
 
-(defmacro with-message-context [context & body]
+(defmacro ^:no-doc with-message-context [context & body]
   `(binding [*message-context* (atom ~context)]
      ~@body))
 
-(defn message-context []
+(defn ^:no-doc message-context []
   @*message-context*)
 
-(defn message-q* [^TProcess p]
+(defn ^:no-doc message-q* [^TProcess p]
   (.message-q p))
 
-(defn message-chan* [^TProcess p]
+(defn ^:no-doc message-chan* [^TProcess p]
   (.message-chan p))
 
-(defmacro s-receive** [park? timeout match-clauses or-body]
+(defmacro ^:no-doc s-receive** [park? timeout match-clauses or-body]
   (let [patterns (take-nth 2 match-clauses)
         select-clauses (mapcat list patterns (range))
         select-clauses (case (last patterns)
@@ -413,7 +413,7 @@
            (case clause-n#
              ~@case-clauses))))))
 
-(defmacro select-message-or [match-clauses or-body]
+(defmacro ^:no-doc select-message-or [match-clauses or-body]
   (let [patterns (take-nth 2 match-clauses)
         select-clauses (mapcat list patterns (range))
         select-clauses (case (last patterns)
@@ -444,7 +444,7 @@
            (case clause-n#
              ~@case-clauses))))))
 
-(defmacro s-receive* [park? clauses]
+(defmacro ^:no-doc s-receive* [park? clauses]
   (assert (> (count clauses) 1)
           "Receive requires one or more message patterns")
   (if (even? (count clauses))
@@ -457,7 +457,7 @@
              (select-message-or ~match-clauses ~timeout-body)
              (s-receive** ~park? timeout# ~match-clauses ~timeout-body)))))))
 
-(defmacro take-message-or [match-clauses or-body]
+(defmacro ^:no-doc take-message-or [match-clauses or-body]
   `(let [^TProcess process# (self-process)
          message-q# (message-q* process#)]
      (if-let [[context# msg#] (peek @message-q#)]
@@ -468,7 +468,7 @@
          (match msg# ~@match-clauses))
        (do ~@or-body))))
 
-(defmacro receive-message-infinitely [park? match-clauses]
+(defmacro ^:no-doc receive-message-infinitely [park? match-clauses]
   (let [msg-sym (gensym "msg")
         context-sym (gensym "context")
         mchan-sym (gensym "message-chan")
@@ -492,7 +492,7 @@
            (update-message-context! ~context-sym)
            (match ~msg-sym ~@match-clauses))))))
 
-(defmacro receive-message [park? timeout match-clauses timeout-body]
+(defmacro ^:no-doc receive-message [park? timeout match-clauses timeout-body]
   (let [msg-sym (gensym "msg")
         context-sym (gensym "context")
         timeout-sym (gensym "timeout")
@@ -526,7 +526,7 @@
            (update-message-context! ~context-sym)
            (match ~msg-sym ~@match-clauses))))))
 
-(defmacro receive* [park? clauses]
+(defmacro ^:no-doc receive* [park? clauses]
   (assert (> (count clauses) 1) "Receive requires one or more message patterns")
   (if (even? (count clauses))
     `(receive-message-infinitely ~park? ~clauses)
@@ -544,8 +544,6 @@
               ~timeout
               ~match-clauses
               ~timeout-body)))))))
-
-(alter-meta! #'receive* assoc :no-doc true)
 
 (defmacro ^:no-doc proc-fn*
   [fname args & body]
