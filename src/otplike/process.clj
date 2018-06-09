@@ -918,10 +918,7 @@
       [:DOWN mref _1 _2 _3] :ok
       (after 0 :ok)))
    true))
-(macroexpand
- '(selective-receive!
-      [:DOWN mref _1 _2 _3] :ok
-      (after 0 :ok)))
+
 (defn spawn-opt
   "Returns the process identifier of a new process started by the
   application of `proc-fun` to `args`.
