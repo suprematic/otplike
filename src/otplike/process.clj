@@ -457,30 +457,62 @@
              (select-message-or ~match-clauses ~timeout-body)
              (s-receive** ~park? timeout# ~match-clauses ~timeout-body)))))))
 
-(defmacro receive-message [park? timeout clauses timeout-body]
+(defmacro take-message-or [match-clauses or-body]
+  `(let [^TProcess process# (self-process)
+         message-q# (message-q* process#)]
+     (if-let [[context# msg#] (peek @message-q#)]
+       (do
+         (swap! message-q# pop)
+         (send-trace-event :receive {:message msg#})
+         (update-message-context! context#)
+         (match msg# ~@match-clauses))
+       (do ~@or-body))))
+
+(defmacro receive-message-infinitely [park? match-clauses]
   (let [msg-sym (gensym "msg")
         context-sym (gensym "context")
-        timeout-sym (gensym "timeout")
-        mchan-sym (gensym "message-chan")]
+        mchan-sym (gensym "message-chan")
+        take (if park? `async/<! `async/<!!)
+        alts (if park? `async/alts! `async/alts!!)]
     `(let [^TProcess process# (self-process)
            ~mchan-sym (message-chan* process#)
            mq# (message-q* process#)
-           ~timeout-sym ~timeout
            res# (loop []
                   (if-let [res# (peek @mq#)]
                     (do
                       (swap! mq# pop)
                       res#)
-                    (if (identical? ~timeout-sym :infinity)
-                      (case (~(if park? `<! `<!!) ~mchan-sym)
-                        nil :noproc
-                        (recur))
-                      (let [[m# ch#] (~(if park? `async/alts! `async/alts!!)
-                                      [~mchan-sym ~timeout-sym])]
-                        (match [m# ch#]
-                          [nil ~mchan-sym] :noproc
-                          [nil ~timeout-sym] :timeout
-                          :else (recur))))))]
+                    (if (nil? (~take ~mchan-sym))
+                      :noproc
+                      (recur))))]
+       (if (identical? res# :noproc)
+         (throw (Exception. "noproc"))
+         (let [[~context-sym ~msg-sym] res#]
+           (send-trace-event :receive {:message ~msg-sym})
+           (update-message-context! ~context-sym)
+           (match ~msg-sym ~@match-clauses))))))
+
+(defmacro receive-message [park? timeout match-clauses timeout-body]
+  (let [msg-sym (gensym "msg")
+        context-sym (gensym "context")
+        timeout-sym (gensym "timeout")
+        mchan-sym (gensym "message-chan")
+        take (if park? `async/<! `async/<!!)
+        alts (if park? `async/alts! `async/alts!!)]
+    `(let [^TProcess process# (self-process)
+           ~mchan-sym (message-chan* process#)
+           mq# (message-q* process#)
+           ~timeout-sym (u/timeout-chan ~timeout)
+           res# (loop []
+                  (if-let [res# (peek @mq#)]
+                    (do
+                      (swap! mq# pop)
+                      res#)
+                    (let [[m# ch#] (~alts [~mchan-sym ~timeout-sym])]
+                      (match [m# ch#]
+                        [nil ~mchan-sym] :noproc
+                        [nil ~timeout-sym] :timeout
+                        :else (recur)))))]
        (cond
          (identical? res# :timeout)
          (do ~@timeout-body)
@@ -492,32 +524,26 @@
          (let [[~context-sym ~msg-sym] res#]
            (send-trace-event :receive {:message ~msg-sym})
            (update-message-context! ~context-sym)
-           (match ~msg-sym ~@clauses))))))
+           (match ~msg-sym ~@match-clauses))))))
 
 (defmacro receive* [park? clauses]
   (assert (> (count clauses) 1) "Receive requires one or more message patterns")
   (if (even? (count clauses))
-    `(receive-message ~park? :infinity ~clauses nil)
+    `(receive-message-infinitely ~park? ~clauses)
     (match (last clauses)
       (['after timeout & timeout-body] :seq)
-      (let [clauses1 (butlast clauses)]
-        `(case ~timeout
-             0
-             (let [^TProcess process# (self-process)
-                   message-q# (message-q* process#)]
-               (if-let [[context# msg#] (peek @message-q#)]
-                 (do
-                   (swap! message-q# pop)
-                   (send-trace-event :receive {:message msg#})
-                   (update-message-context! context#)
-                   (match msg# ~@(butlast clauses)))
-                 (do ~@timeout-body)))
-
-             :infinity
-             (receive-message ~park? :infinity ~clauses ~timeout-body)
-
+      (let [match-clauses (butlast clauses)]
+        (case timeout
+          0 `(take-message-or ~match-clauses ~timeout-body)
+          :infinity `(receive-message-infinitely ~park? ~match-clauses)
+          `(case ~timeout
+             0 (take-message-or ~match-clauses ~timeout-body)
+             :infinity (receive-message-infinitely ~park? ~match-clauses)
              (receive-message
-              ~park? (u/timeout-chan ~timeout) ~clauses ~timeout-body))))))
+              ~park?
+              ~timeout
+              ~match-clauses
+              ~timeout-body)))))))
 
 (alter-meta! #'receive* assoc :no-doc true)
 
