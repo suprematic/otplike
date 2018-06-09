@@ -851,6 +851,12 @@
     true))
 
 (defmacro selective-receive!
+  "The same as `receive!` but doesn't crash if the first message
+  doesn't match. Instead waits for the matching message, removes it
+  from the mailbox leaving all the rest messages in the original order.
+
+  When the timeout is `0`, checks all the messages in the mailbox
+  and not the first one only."
   [& clauses]
   `(selective-receive* ~clauses))
 
@@ -1025,8 +1031,8 @@
   `:infinity` - the process is to wait indefinitely for a matching
     message. This is the same as not using a timeout. This can be
     useful for timeout values that are calculated at runtime.
-  `0` - if there is no matching message in the mailbox, the timeout
-    occurs immediately.
+  `0` - if there is no messages in the mailbox, or the first message
+   doesn't match, the timeout occurs immediately.
 
   Returns the value of the evaluated expression."
   [& clauses]
