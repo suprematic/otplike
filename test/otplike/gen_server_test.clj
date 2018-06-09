@@ -2173,3 +2173,122 @@
     (is (await-completion! done 50)
         (str "the reason passed to terminate must containg the value returned"
              " from handle-info"))))
+
+;; ====================================================================
+;; (call [server request timeout])
+
+(deftest ^:parallel call.exits-just-after-server-exited
+  (let [done (async/chan)
+        server {:init (fn [] [:ok nil])
+                :handle-call (fn [x from state]
+                               (process/exit (process/self) :test)
+                               [:noreply state])}]
+    (process/spawn
+     (process/proc-fn []
+       (match (gs/start! server)
+         [:ok pid]
+         (do
+           (is (= [:EXIT [:test [`gs/call [pid :msg 500]]]]
+                  (process/ex-catch [:ok (gs/call! pid :msg 500)]))
+               "call must return the reason gen-server exited with")
+           (async/close! done)))))
+    (is (await-completion!! done 100)
+        "call must exit just after gen-server exited")))
+
+(deftest ^:parallel call.no-unexpected-monitor-mesages-arrive-after-the-call
+  (let [done (async/chan)
+        server {:init (fn [] [:ok nil])
+                :handle-call (fn [_ _ state]
+                               [:stop :test :ok state])}]
+    (process/spawn
+     (process/proc-fn []
+       (match (gs/start! server)
+         [:ok pid]
+         (case (gs/call! pid :msg 500)
+           :ok
+           (do
+             (is (= :timeout (<! (await-message 100)))
+                 "no unexpected messaeges must arrive after the call")
+             (async/close! done))))))
+    (await-completion!! done 300))
+  (let [done (async/chan)
+        done1 (async/chan)
+        server {:init (fn [] [:ok nil])
+                :handle-call (fn [_ _ state]
+                               [:reply :ok state 50])
+                :handle-info (fn [_ _]
+                               (async/close! done1)
+                               (process/exit :test))}]
+    (process/spawn
+     (process/proc-fn []
+       (match (gs/start! server)
+         [:ok pid]
+         (case (gs/call! pid :msg 500)
+           :ok
+           (do
+             (is (= :timeout (<! (await-message 200)))
+                 "no unexpected messaeges must arrive after the call")
+             (async/close! done))))))
+    (await-completion!! done1 100)
+    (await-completion!! done 300)))
+
+(deftest
+  ^:parallel call.messages-arrived-during-or-before-call-remain-untouched
+  (let [done (async/chan)
+        server {:init (fn [] [:ok nil])
+                :handle-call (fn [_ from state]
+                               [:noreply from 50])
+                :handle-info (fn [_ from]
+                               (gs/reply from :ok)
+                               [:noreply nil])}]
+    (process/spawn
+     (process/proc-fn []
+       (! (process/self) :msg)
+       (match (gs/start! server)
+         [:ok pid]
+         (case (gs/call! pid :msg 500)
+           :ok
+           (do
+             (is (= [:message :msg] (<! (await-message 50)))
+                 "message sent before the call must be received after the call")
+             (async/close! done))))))
+    (await-completion!! done 200))
+
+  (let [done (async/chan)
+        server {:init (fn [] [:ok nil])
+                :handle-call (fn [_ _ state]
+                               [:stop :test :ok state])}]
+    (process/spawn
+     (process/proc-fn []
+       (! (process/self) :msg)
+       (match (gs/start! server)
+         [:ok pid]
+         (case (gs/call! pid :msg 500)
+           :ok
+           (do
+             (is (= [:message :msg] (<! (await-message 50)))
+                 "message sent before the call must be received after the call")
+             (async/close! done))))))
+    (await-completion!! done 200))
+
+  (let [done (async/chan)
+        done1 (async/chan)
+        server {:init (fn [] [:ok nil])
+                :handle-call (fn [_ _ state]
+                               [:reply :ok state 50])
+                :handle-info (fn [_ _]
+                               (async/close! done1)
+                               (process/exit :test))}]
+    (process/spawn
+     (process/proc-fn []
+       (! (process/self) :msg)
+       (match (gs/start! server)
+         [:ok pid]
+         (case (gs/call! pid :msg 500)
+           :ok
+           (do
+             (is (= [:message :msg] (<! (await-message 50)))
+                 "message sent before the call must be received after the call")
+             (async/close! done))))))
+    (await-completion!! done1 100)
+    (await-completion!! done 200)))
