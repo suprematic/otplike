@@ -694,9 +694,6 @@
   "Sends a `message` to `dest`. `dest` can be a process identifier, or a
   registered name.
 
-  If sending results in `dest`'s inbox overflow, `dest` exits with reason
-  `:inbox-overflow`.
-
   Returns `true` if `message` was sent (process was alive), false
   otherwise.
 
