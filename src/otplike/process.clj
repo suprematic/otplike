@@ -570,14 +570,15 @@
         (case timeout
           0 `(take-message-or ~match-clauses ~timeout-body)
           :infinity `(receive-message-infinitely ~park? ~match-clauses)
-          `(case ~timeout
-             0 (take-message-or ~match-clauses ~timeout-body)
-             :infinity (receive-message-infinitely ~park? ~match-clauses)
-             (receive-message
-              ~park?
-              ~timeout
-              ~match-clauses
-              ~timeout-body)))))))
+          `(let [timeout# ~timeout]
+             (case timeout#
+               0 (take-message-or ~match-clauses ~timeout-body)
+               :infinity (receive-message-infinitely ~park? ~match-clauses)
+               (receive-message
+                ~park?
+                timeout#
+                ~match-clauses
+                ~timeout-body))))))))
 
 (defmacro ^:no-doc proc-fn*
   [fname args & body]
