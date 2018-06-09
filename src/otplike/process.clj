@@ -375,7 +375,7 @@
 (defn ^:no-doc message-chan* [^TProcess p]
   (.message-chan p))
 
-(defmacro ^:no-doc s-receive** [park? timeout match-clauses or-body]
+(defmacro ^:no-doc select-message [timeout match-clauses or-body]
   (let [patterns (take-nth 2 match-clauses)
         select-clauses (mapcat list patterns (range))
         select-clauses (case (last patterns)
@@ -397,8 +397,7 @@
                  (if (identical? res# :else)
                    (recur (conj new-mq# m#))
                    [m# res# new-mq#]))
-               (let [[res# ch#] (~(if park? `async/alts! `async/alts!!)
-                                 [message-chan# timeout-chan#])]
+               (let [[res# ch#] (async/alts! [message-chan# timeout-chan#])]
                  (if res#
                    (recur new-mq#)
                    (if (identical? ch# message-chan#)
@@ -412,6 +411,37 @@
            (update-message-context! context#)
            (case clause-n#
              ~@case-clauses))))))
+
+(defmacro ^:no-doc select-message-infinitely [match-clauses]
+  (let [patterns (take-nth 2 match-clauses)
+        select-clauses (mapcat list patterns (range))
+        select-clauses (case (last patterns)
+                         :else select-clauses
+                         (concat select-clauses [:else :else]))
+        msg-sym (gensym "msg")
+        by-clause-clauses (partition 2 match-clauses)
+        by-clause-matches (map #(concat [`match msg-sym] %) by-clause-clauses)
+        case-clauses (mapcat list (range) by-clause-matches)]
+    `(let [^TProcess process# (self-process)
+           message-q# (message-q* process#)
+           message-chan# (message-chan* process#)
+           [msg# clause-n# new-mq#]
+           (loop [new-mq# (u/queue)]
+             (if-let [[_# msg# :as m#] (peek @message-q#)]
+               (let [res# (match msg# ~@select-clauses)]
+                 (swap! message-q# pop)
+                 (if (identical? res# :else)
+                   (recur (conj new-mq# m#))
+                   [m# res# new-mq#]))
+               (if-let [res# (<! message-chan#)]
+                 (recur new-mq#)
+                 (throw (Exception. "noproc")))))]
+       (swap! message-q# #(into new-mq# %))
+       (let [[context# ~msg-sym] msg#]
+         (send-trace-event :receive {:message ~msg-sym})
+         (update-message-context! context#)
+         (case clause-n#
+           ~@case-clauses)))))
 
 (defmacro ^:no-doc select-message-or [match-clauses or-body]
   (let [patterns (take-nth 2 match-clauses)
@@ -444,18 +474,22 @@
            (case clause-n#
              ~@case-clauses))))))
 
-(defmacro ^:no-doc s-receive* [park? clauses]
+(defmacro ^:no-doc selective-receive* [clauses]
   (assert (> (count clauses) 1)
           "Receive requires one or more message patterns")
   (if (even? (count clauses))
-    `(s-receive** ~park? :infinity ~clauses nil)
+    `(select-message-infinitely ~clauses)
     (match (last clauses)
       (['after timeout & timeout-body] :seq)
       (let [match-clauses (butlast clauses)]
-        `(let [timeout# ~timeout]
-           (if (= 0 timeout#)
-             (select-message-or ~match-clauses ~timeout-body)
-             (s-receive** ~park? timeout# ~match-clauses ~timeout-body)))))))
+        (case timeout
+          0 `(select-message-or ~match-clauses ~timeout-body)
+          :infinity `(select-message-infinitely ~match-clauses)
+          `(let [timeout# ~timeout]
+             (case timeout#
+               0 (select-message-or ~match-clauses ~timeout-body)
+               :infinity (select-message-infinitely ~match-clauses)
+               (select-message timeout# ~match-clauses ~timeout-body))))))))
 
 (defmacro ^:no-doc take-message-or [match-clauses or-body]
   `(let [^TProcess process# (self-process)
@@ -817,7 +851,7 @@
 
 (defmacro selective-receive!
   [& clauses]
-  `(s-receive* true ~clauses))
+  `(selective-receive* ~clauses))
 
 (defn monitor
   "Sends a monitor request to the entity identified by `pid-or-name`.
