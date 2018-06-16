@@ -138,6 +138,7 @@
 (deftype TProcess
   [pid
    initial-call
+   start-ns
    message-chan
    message-q
    control-chan
@@ -164,6 +165,7 @@
   (let [id (swap! *next-pid inc)
         pname (or pname (str "proc" id))
         pid (Pid. id pname)
+        start-ns (System/nanoTime)
         message-chan (async/chan (async/sliding-buffer 1))
         message-q (atom (u/queue))
         control-chan (async/chan (async/sliding-buffer 1))
@@ -175,6 +177,7 @@
     (TProcess.
      pid
      initial-call
+     start-ns
      message-chan
      message-q
      control-chan
@@ -1195,7 +1198,7 @@
        :status (if (nil? @(.exit-reason process))
                  @(.status process)
                  :exiting)
-       ;; TODO time since start
+       :life-time-ms (quot (- (System/nanoTime) (.start-ns process)) 1000000)
        :initial-call (.initial-call process)
        :message-queue-len (count mq)
        :messages (map second mq)
