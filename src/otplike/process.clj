@@ -66,7 +66,7 @@
 (defn- pid?* [pid]
   (instance? Pid pid))
 
-(deftype Async [chan map-fns])
+(deftype Async [chan value map-fns])
 (alter-meta! #'->Async assoc :no-doc true)
 
 ;; ====================================================================
@@ -639,13 +639,16 @@
     `(let [a# ~x]
        (when-not (async? a#)
          (throw (IllegalArgumentException. "argument must be 'async' value")))
-       (let [[~k-sym ~res-sym] (~take (.chan a#))]
-         (case ~k-sym
-           :ok
-           (reduce #(%2 %1) ~res-sym (.map-fns a#))
+       (let [res# (if-let [ch# (.chan a#)]
+                    (let [[~k-sym ~res-sym] (~take ch#)]
+                      (case ~k-sym
+                        :ok
+                        ~res-sym
 
-           :EXIT
-           (exit ~res-sym))))))
+                        :EXIT
+                        (exit ~res-sym)))
+                    (.value a#))]
+         (reduce #(%2 %1) res# (.map-fns a#))))))
 
 (defn- !*
   [dest message]
@@ -1129,7 +1132,7 @@
 
   The returned value is to be passed to `await!`."
   [& body]
-  `(->Async (go (ex-catch [:ok (do ~@body)])) []))
+  `(->Async (go (ex-catch [:ok (do ~@body)])) nil []))
 
 (defmacro await!
   "Returns the value of the async operation represented by `x` or exits
@@ -1212,7 +1215,10 @@
 
 (defn map-async
   [f async-val]
-  (Async. (.chan async-val) (conj (.map-fns async-val) f)))
+  (Async.
+   (.chan async-val)
+   (.value async-val)
+   (conj (.map-fns async-val) f)))
 
 (defmacro with-async [[sym async-expr :as binding] & body]
   (assert (and (vector? binding)
@@ -1222,6 +1228,9 @@
   `(map-async
     (fn [~sym] ~@body)
     ~async-expr))
+
+(defn async-value [v]
+  (Async. nil v []))
 
 (defn untrace [t-ref]
   (swap! *trace-handlers dissoc t-ref))
