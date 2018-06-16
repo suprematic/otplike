@@ -1153,7 +1153,15 @@
      (nil? @(.exit-reason process))
      false)))
 
-(defn processes []
+(defn processes
+  "Returns a sequence of process identifiers corresponding to all
+  the processes currently existing.
+
+  Notice that an exiting process exists, but is not alive.
+  That is, `(alive? pid)` returns `false` for an exiting process,
+  but its process identifier is part of the result returned from
+  `(processes)`."
+  []
   (keys @*processes))
 
 (defn process-info [pid]
