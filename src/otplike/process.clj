@@ -134,6 +134,7 @@
    control-chan
    control-q
    exit-reason
+   status
    ^:unsynchronized-mutable monitors
    ^:unsynchronized-mutable linked
    ^:unsynchronized-mutable flags]
@@ -159,6 +160,7 @@
         control-chan (async/chan (async/sliding-buffer 1))
         control-q (atom (u/queue))
         exit-reason (atom nil)
+        status (atom :running)
         monitors {}
         linked #{}]
     (TProcess.
@@ -169,6 +171,7 @@
      control-chan
      control-q
      exit-reason
+     status
      monitors
      linked
      flags)))
@@ -248,32 +251,37 @@
       :else
       (throw (Exception. "Unexpected control message")))))
 
-(defn- start-process [pid proc-func args]
+(defn- sync-unregister [^TProcess process reason]
+  (let [^Pid pid (.pid process)
+        control-chan (.control-chan process)
+        message-chan (.message-chan process)
+        exit-reason (.exit-reason process)]
+    (swap! exit-reason #(if (nil? %) reason %))
+    (send-trace-event :terminate {:reason reason})
+    (when-let [register (@*registered-reverse pid)]
+      (swap! *registered dissoc register)
+      (swap! *registered-reverse dissoc pid))
+    (async/close! control-chan)
+    (async/close! message-chan)
+    (let [[linked monitors]
+          (locking *global-lock
+            (let [linked-val (.getLinked process)
+                  mrefs (.getMonitors process)]
+              (.setLinked process nil)
+              (.setMonitors process nil)
+              [linked-val mrefs]))]
+      (doseq [p linked]
+        (!control p [:linked-exit pid reason]))
+      (doseq [[mref [pid object]] monitors]
+        (! pid (monitor-message mref object reason))))))
+
+(defn ^:no-doc !exit [^TProcess process reason]
+  (swap! (.exit-reason process) #(if (nil? %) reason %))
+  (async/put! (.control-chan process) :go))
+
+(defn- start-process [^TProcess process proc-func args register link?]
   {:pre [(fn? proc-func)
-         (pid? pid)
          (sequential? args)]
-   :post [(satisfies? ap/ReadPort %)]}
-  ;; FIXME bindings from folded binding blocks are stacked, so no values
-  ;; bound between bottom and top folded binding blocks are garbage
-  ;; collected; see "ring" benchmark example
-  (binding [*self* pid
-            *message-context* (atom @*message-context*)]
-    (try
-      (apply proc-func args)
-      (catch Throwable t
-        (let [ch (async/chan 1)]
-          (async/put! ch (ex->reason t))
-          ch)))))
-
-(defn- resolve-proc-func [form]
-  {:pre [(or (fn? form) (symbol? form))]
-   :post [(fn? %)]}
-  (cond
-    (fn? form) form
-    (symbol? form) (some-> form resolve var-get)))
-
-(defn- sync-register [^TProcess process register link?]
-  {:pre [(instance? TProcess process)]
    :post []}
   (let [pid (.pid process)]
     (when link?
@@ -284,19 +292,28 @@
           (or (.updateLinked other-process #(if % (conj % pid)))
               (throw (Exception. "noproc"))))))
     (swap! *processes assoc pid process)
-    (when (some? register)
-      (when (@*registered register)
-        (throw (Exception. (str "already registered: " register))))
-      (swap! *registered assoc register pid)
-      (swap! *registered-reverse assoc pid register))))
+    ;; FIXME bindings from folded binding blocks are stacked, so no values
+    ;; bound between bottom and top folded binding blocks are garbage
+    ;; collected; see "ring" benchmark example
+    (binding [*self* (.pid process)
+              *message-context* (atom @*message-context*)]
+      (try
+        (when (some? register)
+          (when (@*registered register)
+            (throw (Exception. (str "already registered: " register))))
+          (swap! *registered assoc register pid)
+          (swap! *registered-reverse assoc pid register))
+        (apply proc-func args)
+        (catch Throwable t
+          (!exit process (ex->reason t))
+          (swap! *processes dissoc pid))))))
 
-(defn- sync-unregister [pid]
-  {:pre [(pid? pid)]
-   :post []}
-  (swap! *processes dissoc pid)
-  (when-let [register (@*registered-reverse pid)]
-    (swap! *registered dissoc register)
-    (swap! *registered-reverse dissoc pid)))
+(defn- resolve-proc-func [form]
+  {:pre [(or (fn? form) (symbol? form))]
+   :post [(fn? %)]}
+  (cond
+    (fn? form) form
+    (symbol? form) (some-> form resolve var-get)))
 
 (defn- spawn*
   [proc-func
@@ -312,49 +329,26 @@
   (let [proc-func (resolve-proc-func proc-func)
         flags (or flags {})
         ^TProcess process (new-process pname [proc-func args] flags)
-        pid (.pid process)
         control-chan (.control-chan process)
         control-q (.control-q process)
-        exit-reason (.exit-reason process)
-        message-chan (.message-chan process)]
-    (sync-register process register link)
-    (send-trace-event :spawn {:fn proc-func :args args :options options})
-    (go
-      (let [result-ch (start-process pid proc-func args)]
-        (loop []
-          (let [proceed?
-                (loop []
-                  (if-let [reason @exit-reason]
-                    reason
-                    (if-let [m (peek @control-q)]
-                      (do
-                        (swap! control-q pop)
-                        (dispatch-control process m))
-                      (let [[v ch :as r] (async/alts! [control-chan result-ch])]
-                        (if (identical? result-ch ch)
-                          (if (some? v) v :nil)
-                          (recur))))))]
-            (case proceed?
-              ::continue
-              (recur)
-
-              (let [reason proceed?]
-                (send-trace-event :terminate {:reason reason})
-                (sync-unregister pid)
-                (async/close! control-chan)
-                (async/close! message-chan)
-                (let [[linked monitors]
-                      (locking *global-lock
-                        (let [linked-val (.getLinked process)
-                              mrefs (.getMonitors process)]
-                          (.setLinked process nil)
-                          (.setMonitors process nil)
-                          [linked-val mrefs]))]
-                  (doseq [p linked]
-                    (!control p [:linked-exit pid reason]))
-                  (doseq [[mref [pid object]] monitors]
-                    (! pid (monitor-message mref object reason))))))))))
-    pid))
+        exit-reason (.exit-reason process)]
+    (start-process process proc-func args register link)
+    (go-loop []
+      (let [result
+            (loop []
+              (if-let [reason @exit-reason]
+                reason
+                (if-let [m (peek @control-q)]
+                  (do
+                    (swap! control-q pop)
+                    (dispatch-control process m))
+                  (do
+                    (<! control-chan)
+                    (recur)))))]
+        (if (identical? result ::continue)
+          (recur)
+          (sync-unregister process result))))
+    (.pid process)))
 
 (defn ^:no-doc update-message-context! [context]
   (swap! *message-context* merge context))
@@ -371,6 +365,13 @@
 
 (defn ^:no-doc message-chan* [^TProcess p]
   (.message-chan p))
+
+(defn ^:no-doc change-status [^TProcess process status]
+  (let [^:once swap-fn
+        #(case %
+           :running (case status :waiting :waiting)
+           :waiting (case status :running :running))]
+    (swap! (.status process) swap-fn)))
 
 (defmacro ^:no-doc select-message [timeout match-clauses or-body]
   (let [patterns (take-nth 2 match-clauses)
@@ -394,12 +395,15 @@
                  (if (identical? res# :else)
                    (recur (conj new-mq# m#))
                    [m# res# new-mq#]))
-               (let [[res# ch#] (async/alts! [message-chan# timeout-chan#])]
-                 (if res#
-                   (recur new-mq#)
-                   (if (identical? ch# message-chan#)
-                     (throw (Exception. "noproc"))
-                     [:timeout nil new-mq#])))))]
+               (do
+                 (change-status process# :waiting)
+                 (let [[res# ch#] (async/alts! [message-chan# timeout-chan#])]
+                   (change-status process# :running)
+                   (if res#
+                     (recur new-mq#)
+                     (if (identical? ch# message-chan#)
+                       (throw (Exception. "noproc"))
+                       [:timeout nil new-mq#]))))))]
        (swap! message-q# #(into new-mq# %))
        (if (identical? msg# :timeout)
          (do ~@or-body)
@@ -430,9 +434,13 @@
                  (if (identical? res# :else)
                    (recur (conj new-mq# m#))
                    [m# res# new-mq#]))
-               (if-let [res# (<! message-chan#)]
-                 (recur new-mq#)
-                 (throw (Exception. "noproc")))))]
+               (do
+                 (change-status process# :waiting)
+                 (let [res# (<! message-chan#)]
+                   (change-status process# :running)
+                   (if (some? res#)
+                     (recur new-mq#)
+                     (throw (Exception. "noproc")))))))]
        (swap! message-q# #(into new-mq# %))
        (let [[context# ~msg-sym] msg#]
          (send-trace-event :receive {:message ~msg-sym})
@@ -512,9 +520,13 @@
                     (do
                       (swap! mq# pop)
                       res#)
-                    (if (nil? (~take ~mchan-sym))
-                      :noproc
-                      (recur))))]
+                    (do
+                      (change-status process# :waiting)
+                      (let [res# (~take ~mchan-sym)]
+                        (change-status process# :running)
+                        (if (nil? res#)
+                          :noproc
+                          (recur))))))]
        (if (identical? res# :noproc)
          (throw (Exception. "noproc"))
          (let [[~context-sym ~msg-sym] res#]
@@ -537,11 +549,14 @@
                     (do
                       (swap! mq# pop)
                       res#)
-                    (let [[m# ch#] (~alts [~mchan-sym ~timeout-sym])]
-                      (match [m# ch#]
-                        [nil ~mchan-sym] :noproc
-                        [nil ~timeout-sym] :timeout
-                        :else (recur)))))]
+                    (do
+                      (change-status process# :waiting)
+                      (let [[m# ch#] (~alts [~mchan-sym ~timeout-sym])]
+                        (change-status process# :running)
+                        (match [m# ch#]
+                          [nil ~mchan-sym] :noproc
+                          [nil ~timeout-sym] :timeout
+                          :else (recur))))))]
        (cond
          (identical? res# :timeout)
          (do ~@timeout-body)
@@ -574,6 +589,12 @@
                 timeout#
                 ~match-clauses
                 ~timeout-body))))))))
+(defn ^:no-doc !finish [reason]
+  (let [^Pid self-pid *self*
+        process (@*processes self-pid)]
+    (!exit process reason)
+    (swap! *processes dissoc self-pid)))
+
 
 (defmacro ^:no-doc proc-fn*
   [fname args & body]
@@ -583,13 +604,14 @@
           (format "Variadic arguments are not supported" args))
   (let [arg-names (vec (repeatedly (count args) #(gensym "argname")))]
     `(fn ~@(if fname [fname arg-names] [arg-names])
+       (send-trace-event :spawn {:fn ~fname :ns ~*ns* :args ~arg-names})
        (go
          (try
            (loop ~(vec (interleave args arg-names))
              ~@body)
-           :normal
+           (!finish :normal)
            (catch Throwable t#
-             (ex->reason t#)))))))
+             (!finish (ex->reason t#))))))))
 
 (defmacro ^:no-doc await* [park? x]
   (let [take (if park? `<! `<!!)
@@ -674,8 +696,10 @@
   Throws when called not in process context."
   []
   {:post [(pid? %)]}
-  (if (@*processes *self*)
-    *self*
+  (if-let [^TProcess process (@*processes *self*)]
+    (if (nil? @(.exit-reason process))
+      *self*
+      (throw (Exception. "noproc")))
     (throw (Exception. "noproc"))))
 
 (defn whereis
@@ -732,8 +756,7 @@
      (case reason
        :kill (if-let [^TProcess process (@*processes pid)]
                (do
-                 (swap! (.exit-reason process) #(if (some? %) % :killed))
-                 (async/close! (.control-chan process))
+                 (!exit process :killed)
                  true)
                false)
        (!control pid [:exit self-pid reason])))))
@@ -1121,6 +1144,10 @@
        ;; :monitors TODO
        :monitored-by (->> (.getMonitors process) (vals) (map first))
        :registered-name (@*registered-reverse pid)
+       :status (if (nil? @(.exit-reason process))
+                 @(.status process)
+                 :exiting)
+       ;; TODO time since start
        :initial-call (.initial-call process)
        :message-queue-len (count mq)
        :messages (map second mq)

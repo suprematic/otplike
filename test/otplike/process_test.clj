@@ -462,7 +462,10 @@
         (async/close! done)))
     (await-completion! done 100)))
 
-(def-proc-test ^:parallel exit-self-reason-is-process-exit-reason
+;; Excluded from 0.5.0-alpha due to changed behavior of
+;; `(exit [pid reason])`. Called on self doesn't ensure the process'
+;; exit reason is the same as passed to `exit` (when trap-exit is false).
+#_(def-proc-test ^:parallel exit-self-reason-is-process-exit-reason
   (process/flag :trap-exit true)
   (let [pfn (proc-fn [] (process/exit (process/self) :abnormal))
         pid (process/spawn-link pfn)]
@@ -475,7 +478,9 @@
   (let [done (async/chan)
         pfn (proc-fn []
               (is (await-completion! done 50))
-              (process/exit (process/self) :abnormal))
+              (process/exit (process/self) :abnormal)
+              (process/receive!
+                _ (is false "process must exit")))
         pid (process/spawn pfn)]
     (process/link pid)
     (async/close! done)
@@ -1050,12 +1055,12 @@
     (await-completion!! done 200)))
 
 (def-proc-test ^:parallel
-  unlink-does-not-prevent-exit-message-after-it-has-been-placed-to-inbox
+  unlink-does-not-prevent-exit-message-after-it-has-been-placed-into-inbox
   (let [done (async/chan)
         done1 (async/chan)
         pfn1 (proc-fn []
                (is (await-completion! done1 100))
-               (process/exit (process/self) :abnormal))
+               (process/exit :abnormal))
         pid (process/spawn pfn1)
         pfn2 (proc-fn []
                (process/flag :trap-exit true)
@@ -1280,14 +1285,23 @@
         "spawn must register proces when called with :register option")
     (async/close! done)))
 
-(deftest ^:parallel spawn-throws-when-reg-name-already-registered
+(deftest ^:parallel spawned-process-exits-when-reg-name-already-registered
   (let [reg-name (uuid-keyword)
         done (async/chan)
         pfn (proc-fn [] (is (await-completion! done 50)))]
     (process/spawn-opt pfn [] {:register reg-name})
-    (is (thrown? Exception
-                 (process/spawn-opt (proc-fn []) [] {:register reg-name}))
-        "spawn must throw when name to register is already registered")
+    (process/spawn-opt
+     (proc-fn []
+       (let [pid (process/spawn-opt
+                  (proc-fn []) [] {:register reg-name :link true})]
+         (process/receive!
+           [:EXIT [:already-registered reg-name]] :ok
+           (after 50
+             (is false
+                 (str "spawned process must exit when name to register"
+                      " is already registered"))))
+         (async/close! done)))
+     {:flags {:trap-exit true}})
     (async/close! done)))
 
 (def-proc-test ^:parallel spawned-process-does-not-trap-exits-by-default
@@ -1355,7 +1369,7 @@
 
 (def-proc-test ^:parallel spawn-link-links-to-spawned-process
   (let [done (async/chan)
-        pfn (proc-fn [] (is (process/exit (process/self) :abnormal)))
+        pfn (proc-fn [] (process/exit :abnormal))
         pfn1 (proc-fn []
                (process/spawn-link pfn [])
                (is (match (<! (await-message 50)) [:noproc _] :ok :else nil)
@@ -1365,7 +1379,7 @@
     (process/spawn pfn1)
     (await-completion! done 100))
   (let [done (async/chan)
-        pfn (proc-fn [] (is (process/exit (process/self) :abnormal)))
+        pfn (proc-fn [] (process/exit :abnormal))
         pfn1 (proc-fn []
                (let [pid (process/spawn-link pfn)]
                  (is (=  [:exit [pid :abnormal]] (<! (await-message 50)))
