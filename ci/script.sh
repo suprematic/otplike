@@ -10,11 +10,9 @@ git clone https://$GITHUB_TOKEN@github.com/suprematic/suprematic.github.io.git
 ln -s suprematic.github.io/otplike/api docs
 lein codox
 cd suprematic.github.io
-set +e
-git diff --quiet
-if [ $? -ne 0 ]; then
-  set -e
-  git add ./*
+STATUS=`git status -s`
+if [ ${#STATUS} -ne 0 ]; then
+  git add otplike/api
   git commit -m 'otplike: update api docs'
   git push
   cd -
