@@ -120,7 +120,11 @@
     (process/receive!
       [:result r] [:nodes (inc r)])))
 
-#_(time (start-process-tree 18))
+;; On my machine (Core i7 2.6GHz, LPDDR3 2133MHz, java 10.0.1)
+;;; Pony version finishes in 0.7s
+;;; Erlang version finishes in 1.4s
+;;; Otplike versoin finishes in ~45s
+#_(time (start-process-tree 20))
 
 #_(let [tref (otplike.trace/event some? #(str %))]
     (time (start-process-tree 18))
