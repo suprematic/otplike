@@ -580,15 +580,22 @@
         (case timeout
           0 `(take-message-or ~match-clauses ~timeout-body)
           :infinity `(receive-message-infinitely ~park? ~match-clauses)
-          `(let [timeout# ~timeout]
-             (case timeout#
-               0 (take-message-or ~match-clauses ~timeout-body)
-               :infinity (receive-message-infinitely ~park? ~match-clauses)
-               (receive-message
-                ~park?
-                timeout#
-                ~match-clauses
-                ~timeout-body))))))))
+          (if (int? timeout)
+            `(receive-message
+              ~park?
+              ~timeout
+              ~match-clauses
+              ~timeout-body)
+            `(let [timeout# ~timeout]
+               (case timeout#
+                 0 (take-message-or ~match-clauses ~timeout-body)
+                 :infinity (receive-message-infinitely ~park? ~match-clauses)
+                 (receive-message
+                  ~park?
+                  timeout#
+                  ~match-clauses
+                  ~timeout-body)))))))))
+
 (defn ^:no-doc !finish [reason]
   (let [^Pid self-pid *self*
         process (@*processes self-pid)]
