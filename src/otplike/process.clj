@@ -1,36 +1,45 @@
 (ns otplike.process
-  "This namespace implements core process concepts like spawning,
-  linking, monitoring, message passing, exiting, and other.
+  "This namespace implements core process concepts such as spawning,
+  linking, monitoring, message passing and exiting.
 
   ### Process context
 
-  All calls made from process function directly or indirectly after
-  it has been spawned are made in process context.
-  Note: for now process context exists until process function finishes
-  its execution and isn't bound to process exit.
+  All the calls made from process function directly or indirectly after
+  it has been spawned happen in the context of the process (i.e., are
+  issued by the process).
 
   ### Process exit
 
-  - process' inbox becomes closed, so no future messages appear in it
-    (but those alredy in inbox can be received)
-  - all linked/monitoring processes receive exit/down signal
-  - process can not be reached by its pid
-  - process is no longer registered
+  A process exits when:
+
+  - it receives exit signal with reason `:kill`,
+  - it receives exit signal with the reason other than `:kill`, and it
+    doesn't trap exits,
+  - its initial function ends (returning a value or with exception).
 
   As there is no way to force process function to stop execution after
-  its process has exited, there can be cases when exited process tries
-  to communicate with other processes. If some function behaves
-  different in such cases, it should be said in its documentation.
+  its process has exited, a process can be _alive_ or _exiting_:
+
+  - a process is alive until it exits for any reason,
+  - a process becomes exiting after it exited until it's initial
+    function returns.
+
+  There can be cases when exiting process tries to communicate with
+  other processes. In such cases exception with the reason `:noproc`
+  is thrown.
+
+  The following happens when a process exits:
+
+  - its mailbox becomes closed so that no future messages can be received,
+  - all linked/monitoring processes receive exit/down signal,
+  - it can not be reached using its pid,
+  - it is no longer registered.
 
   ### Signals (control messages)
 
   Signals are used internally to manage processes. Exiting, monitoring,
-  linking and some other operations require sending signals.
-  Sometimes a lot of signals must be sent to a process simultaneously
-  (e.g. a process monitors 1000 linked processes and one of them exits).
-  In such cases control message queue of a process can overflow. When
-  it happens, the process exits immediately with reason
-  `:control-overflow`."
+  linking and some other operations require sending signals (not messages)
+  to involved processes."
   (:require [clojure.core.async :as async :refer [<!! <! >! put! go go-loop]]
             [clojure.core.async.impl.protocols :as ap]
             [clojure.core.match :refer [match]]
