@@ -52,14 +52,14 @@
   (equals [^Pid self other]
     (and (= (type self) (type other))
          (= (.id self) (.id ^Pid other)))))
-(alter-meta! #'->Pid assoc :no-doc true)
+(alter-meta! #'->Pid assoc :private true)
 
 (defn- pid?* [pid]
   (instance? Pid pid))
 
 (defrecord Async [chan])
 (alter-meta! #'->Async assoc :no-doc true)
-(alter-meta! #'map->Async assoc :no-doc true)
+(alter-meta! #'map->Async assoc :private true)
 
 ;; ====================================================================
 ;; Specs
@@ -111,8 +111,8 @@
 
 (defrecord MonitorRef [id self-pid other-pid])
 
-(alter-meta! #'->MonitorRef assoc :no-doc true)
-(alter-meta! #'map->MonitorRef assoc :no-doc true)
+(alter-meta! #'->MonitorRef assoc :private true)
+(alter-meta! #'map->MonitorRef assoc :private true)
 
 (defmethod print-method Pid [o w]
   (print-simple (pid->str o) w))
