@@ -738,7 +738,15 @@
   (!* dest [(if (bound? #'*message-context*) @*message-context* {}) message]))
 
 (defn exit
-  "Sends an exit signal with the reason `reason` to the process
+  "### When called with one argument (reason)
+
+  Throws special exception (which can be caught). When the exception
+  leaves process' initial function, it causes the process to exit with
+  the specified reason.
+
+  ### When called with two arguments (pid and reason)
+
+  Sends an exit signal with the reason `reason` to the process
   identified by `pid`. If `pid` is not provided exits the calling
   process immediately.
 
@@ -757,12 +765,15 @@
   If reason is `:kill`, an untrappable exit signal is sent to pid,
   which unconditionally exits with reason `:killed`.
 
+  Notice that process can exit with other reason before exit signal is
+  processed.
+
   Returns `true` if exit signal was sent (process was alive), `false`
   otherwise.
 
   Throws when called not in process context, if `pid` is not a pid, or
   reason is `nil`."
-  ([reason] ;FIXME docs
+  ([reason]
    (throw (ex-info "exit" {::exit-reason reason})))
   ([pid reason]
    {:post [(or (true? %) (false? %))]}
