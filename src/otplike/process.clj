@@ -1216,8 +1216,7 @@
 
 (defmacro with-async [[sym async-expr :as binding] & body]
   (assert (and (vector? binding)
-               (= 2 (count binding))
-               (symbol? sym))
+               (= 2 (count binding)))
           (str "binding must be a vector of two elements: a symbol and"
                " an expression returning async value."))
   `(map-async
