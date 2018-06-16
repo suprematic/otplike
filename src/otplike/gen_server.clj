@@ -125,9 +125,9 @@
 (defn- dispatch [impl parent state message]
   (match message
     [::call from ::get-state]
-    (process/async
+    (do
       (reply from state)
-      :recur)
+      (process/async-value :recur))
 
     [::call from request]
     (do-handle-call impl from request state)

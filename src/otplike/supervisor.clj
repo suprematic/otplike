@@ -327,8 +327,9 @@
 (defn- do-terminate-child
   [{pid ::pid restart ::restart :as child} reason timeout]
   ;;(printf "sup terminating child, id=%s, reason=%s, timeout=%s%n" (::id child) reason timeout)
-  (process/async
-    (match (process/await! (shutdown pid reason timeout))
+  (process/with-async
+    [res (shutdown pid reason timeout)]
+    (match res
       [:ok reason] :ok
       [:error other-reason]
       (when (or (not= other-reason :normal) (= restart :permanent))
@@ -345,7 +346,7 @@
     (match how
       :brutal-kill (do-terminate-child child :kill :infinity)
       timeout (do-terminate-child child :shutdown timeout))
-    (process/async (assoc child ::pid nil))))
+    (process/async-value (assoc child ::pid nil))))
 (spec-util/instrument `terminate-child*)
 
 (spec/fdef terminate-children
@@ -393,16 +394,15 @@
   :ret ::process/async)
 (defn- start-child* [{[f args] ::start :as child}]
   ;;(printf "sup starting child, id=%s%n" (::id child))
-  (process/async
-    (match (process/ex-catch [:ok (apply f args)])
-      [:ok (async :guard process/async?)]
-      (dispatch-child-start child (process/await! async))
+  (match (process/ex-catch [:ok (apply f args)])
+    [:ok (async :guard process/async?)]
+    (process/map-async #(dispatch-child-start child %) async)
 
-      [:ok res]
-      (dispatch-child-start child res)
+    [:ok res]
+    (process/async-value (dispatch-child-start child res))
 
-      [:EXIT reason]
-      [:error reason])))
+    [:EXIT reason]
+    (process/async-value [:error reason])))
 (spec-util/instrument `start-child*)
 
 (spec/fdef start-children
@@ -510,8 +510,9 @@
   :ret ::process/async)
 (defn- restart-child:one-for-one [{id ::id :as child} state]
   ;;(println "strategy is 'one-for-one', restarting only this child")
-  (process/async
-    (match (process/await! (start-child* child))
+  (process/with-async
+    [res (start-child* child)]
+    (match res
       [:ok new-child]
       (update state ::children replace-child new-child)
 
@@ -567,26 +568,32 @@
   :ret ::process/async)
 (defn- restart-child* [{id ::id :as child} {strategy ::strategy :as state}]
   ;;(printf "restart child: id=%s, strategy=%s%n" id strategy)
-  (process/async
-    (let [child (assoc child ::pid :restarting)
-          state (update state ::children replace-child child)]
-      (match (add-restart state)
-        [:continue new-state]
-        (match strategy
-          :one-for-one [:ok (process/await!
-                             (restart-child:one-for-one child new-state))]
-          :one-for-all [:ok (process/await!
-                             (restart-child:one-for-all child new-state))]
-          :rest-for-one [:ok (process/await!
-                              (restart-child:rest-for-one child new-state))])
-        [:shutdown new-state]
-        (do
-          ;;(printf "too many restarts shutting down%n")
-          (report-error
-           [:shutdown :reached-max-restart-intensity
-            (select-keys state [::intensity ::period ::strategy]) child])
-          [:shutdown
-           (update new-state ::children delete-child-by-id (::id child))])))))
+  (let [child (assoc child ::pid :restarting)
+        state (update state ::children replace-child child)]
+    (match (add-restart state)
+      [:continue new-state]
+      (match strategy
+        :one-for-one
+        (process/with-async [res (restart-child:one-for-one child new-state)]
+          [:ok res])
+
+        :one-for-all
+        (process/with-async [res (restart-child:one-for-all child new-state)]
+          [:ok res])
+
+        :rest-for-one
+        (process/with-async [res (restart-child:rest-for-one child new-state)]
+          [:ok res]))
+
+      [:shutdown new-state]
+      (do
+        ;;(printf "too many restarts shutting down%n")
+        (report-error
+         [:shutdown :reached-max-restart-intensity
+          (select-keys state [::intensity ::period ::strategy]) child])
+        (process/async-value
+         [:shutdown
+          (update new-state ::children delete-child-by-id (::id child))])))))
 (spec-util/instrument `restart-child*)
 
 (spec/fdef handle-child-exit
@@ -595,30 +602,31 @@
                   :state ::state)
   :ret ::process/async)
 (defn- handle-child-exit [{restart ::restart id ::id :as child} reason state]
-  (process/async
-    (match [restart reason]
-      [:permanent _]
-      (do
-        ;;(println "permanent child, restarting")
-        (report-error [:child-terminated reason child])
-        (process/await! (restart-child* child state)))
+  (match [restart reason]
+    [:permanent _]
+    (do
+      ;;(println "permanent child, restarting")
+      (report-error [:child-terminated reason child])
+      (restart-child* child state))
 
-      [_ (:or :normal :shutdown)]
-      (do
-        ;;(println "not persistent child exited normally, deleting")
-        [:ok (update state ::children delete-child-by-id (::id child))])
+    [_ (:or :normal :shutdown)]
+    (do
+      ;;(println "not persistent child exited normally, deleting")
+      (process/async-value
+       [:ok (update state ::children delete-child-by-id (::id child))]))
 
-      [:transient _]
-      (do
-        ;;(println "transient child exited abnormally, restarting")
-        (report-error [:child-terminated reason child])
-        (process/await! (restart-child* child state)))
+    [:transient _]
+    (do
+      ;;(println "transient child exited abnormally, restarting")
+      (report-error [:child-terminated reason child])
+      (restart-child* child state))
 
-      [:temporary _]
-      (do
-        ;;(println "temporary child, deleting")
-        (report-error [:child-terminated reason child])
-        [:ok (update state ::children delete-child-by-id (::id child))]))))
+    [:temporary _]
+    (do
+      ;;(println "temporary child, deleting")
+      (report-error [:child-terminated reason child])
+      (process/async-value
+       [:ok (update state ::children delete-child-by-id (::id child))]))))
 (spec-util/instrument `handle-child-exit)
 
 (spec/fdef handle-exit
@@ -627,12 +635,11 @@
                   :state ::state)
   :ret ::process/async)
 (defn- handle-exit [pid reason {children ::children :as state}]
-  (process/async
-    (match (child-by-pid children pid)
-      nil (do ;(println "child not found" )
-            [:ok state])
-      child (do ;(printf "child found id=%s%n" (::id child))
-              (process/await! (handle-child-exit child reason state))))))
+  (match (child-by-pid children pid)
+    nil (do ;(println "child not found" )
+          (process/async-value [:ok state]))
+    child (do ;(printf "child found id=%s%n" (::id child))
+            (handle-child-exit child reason state))))
 (spec-util/instrument `handle-exit)
 
 (spec/fdef sup-flags
@@ -648,39 +655,39 @@
   :args (spec/cat :spec any? :state ::state)
   :ret ::process/async)
 (defn- handle-start-child [child-spec {children ::children :as state}]
-  (process/async
-    (match (check-spec ::child-spec child-spec :bad-child-spec)
-      :ok
-      (match (child-by-id children (:id child-spec))
-        nil
-        (match (process/await! (start-child* (spec->child child-spec)))
+  (match (check-spec ::child-spec child-spec :bad-child-spec)
+    :ok
+    (match (child-by-id children (:id child-spec))
+      nil
+      (process/with-async [res (start-child* (spec->child child-spec))]
+        (match res
           [:ok child] [[:ok (::pid child)]
                        (update state ::children #(cons child %))]
           [:ok child info] [[:ok (::pid child) info]
                             (update state ::children #(cons child %))]
-          [:error reason] [[:error reason] state])
+          [:error reason] [[:error reason] state]))
 
-        {::pid (pid :guard process/pid?)}
-        [[:error [:already-started pid]] state]
+      {::pid (pid :guard process/pid?)}
+      (process/async-value [[:error [:already-started pid]] state])
 
-        _
-        [[:error :already-present] state])
+      _
+      (process/async-value [[:error :already-present] state]))
 
-      error
-      [error state])))
+    error
+    (process/async-value [error state])))
 (spec-util/instrument `handle-start-child)
 
 (spec/fdef handle-restart-child
   :args (spec/cat :id ::id :state ::state)
   :ret ::process/async)
 (defn- handle-restart-child [id {children ::children :as state}]
-  (process/async
-    (match (child-by-id children id)
-      nil
-      [[:error :not-found] state]
+  (match (child-by-id children id)
+    nil
+    (process/async-value [[:error :not-found] state])
 
-      ({::pid nil} :as child)
-      (match (process/await! (start-child* child))
+    ({::pid nil} :as child)
+    (process/with-async [res (start-child* child)]
+      (match res
         [:ok started-child]
         [[:ok (::pid started-child)]
          (update state ::children replace-child started-child)]
@@ -690,26 +697,26 @@
          (update state ::children replace-child started-child)]
 
         [:error reason]
-        [[:error reason] state])
+        [[:error reason] state]))
 
-      {::pid :restarting}
-      [[:error :restarting] state]
+    {::pid :restarting}
+    (process/async-value [[:error :restarting] state])
 
-      {::pid (_ :guard process/pid?)}
-      [[:error :running] state])))
+    {::pid (_ :guard process/pid?)}
+    (process/async-value [[:error :running] state])))
 (spec-util/instrument `handle-restart-child)
 
 (spec/fdef handle-terminate-child
   :args (spec/cat :id ::id :state ::state)
   :ret ::process/async)
 (defn- handle-terminate-child [id {children ::children :as state}]
-  (process/async
-    (match (child-by-id children id)
-      nil
-      [[:error :not-found] state]
+  (match (child-by-id children id)
+    nil
+    (process/async-value [[:error :not-found] state])
 
-      child
-      (match (process/await! (terminate-child* child))
+    child
+    (process/with-async [res (terminate-child* child)]
+      (match res
         {::restart :temporary}
         [:ok (update state ::children delete-child-by-id id)]
 
@@ -746,10 +753,9 @@
                   :spawn-opts map?)
   :ret ::process/async)
 (defn- start-link* [sup-fn args spawn-opts]
-  (process/async
-    (gen-server/start-link-ns!
-     [sup-fn args] {:spawn-opt (merge spawn-opts {:flags {:trap-exit true}
-                                                  :name "supervisor"})})))
+  (gen-server/start-link-ns
+   [sup-fn args] {:spawn-opt (merge spawn-opts {:flags {:trap-exit true}
+                                                :name "supervisor"})}))
 (spec-util/instrument `start-link*)
 
 ;; ====================================================================
@@ -795,24 +801,23 @@
                   :state ::state)
   :ret ::process/async)
 (defn- handle-call [request from {children ::children :as state}]
-  ;(printf "sup call: %s%n" request)
-  (process/async
-    (match request
-      [:start-child child-spec]
-      (match (process/await! (handle-start-child child-spec state))
-        [res new-state] [:reply res new-state])
+  ;;(printf "sup call: %s%n" request)
+  (match request
+    [:start-child child-spec]
+    (process/with-async [[res new-state] (handle-start-child child-spec state)]
+      [:reply res new-state])
 
-      [:restart-child id]
-      (match (process/await! (handle-restart-child id state))
-             [res new-state] [:reply res new-state])
+    [:restart-child id]
+    (process/with-async [[res new-state] (handle-restart-child id state)]
+      [:reply res new-state])
 
-      [:terminate-child id]
-      (match (process/await! (handle-terminate-child id state))
-             [res new-state] [:reply res new-state])
+    [:terminate-child id]
+    (process/with-async [[res new-state] (handle-terminate-child id state)]
+      [:reply res new-state])
 
-      [:delete-child id]
-      (match (handle-delete-child id state)
-             [res new-state] [:reply res new-state]))))
+    [:delete-child id]
+    (let [[res new-state] (handle-delete-child id state)]
+      (process/async-value [:reply res new-state]))))
 (spec-util/instrument `handle-call)
 
 (spec/fdef handle-cast
@@ -820,18 +825,19 @@
                   :state ::state)
   :ret ::process/async)
 (defn- handle-cast [request {children ::children :as state}]
-  ;(printf "sup cast: %s, children %s%n" request (pr-str children))
-  ;(printf "child by id: %s%n" (child-by-id children (second request)))
-  (process/async
-    (match request
-      [:restart id]
-      (match (child-by-id children id)
-        ({::pid (pid :guard #{:restarting})} :as child) ;FIXME: replace guard with value
-        (match (process/await! (restart-child* child state))
+  ;;(printf "sup cast: %s, children %s%n" request (pr-str children))
+  ;;(printf "child by id: %s%n" (child-by-id children (second request)))
+  (match request
+    [:restart id]
+    (match (child-by-id children id)
+      ({::pid (pid :guard #{:restarting})} :as child) ;FIXME: replace guard with value
+      (process/with-async [res (restart-child* child state)]
+        (match res
           [:ok new-state] [:noreply new-state]
-          [:shutdown new-state] [:stop :shutdown new-state])
+          [:shutdown new-state] [:stop :shutdown new-state]))
 
-        _ [:noreply state]))))
+      _
+      (process/async-value [:noreply state]))))
 (spec-util/instrument `handle-cast)
 
 (spec/fdef handle-info
@@ -839,25 +845,25 @@
                   :state ::state)
   :ret ::process/async)
 (defn- handle-info [request state]
-  ;(printf "sup info: %s%n" request)
-  (process/async
-    (match request
-      [:EXIT pid reason]
-      (match (process/await! (handle-exit pid reason state))
+  ;;(printf "sup info: %s%n" request)
+  (match request
+    [:EXIT pid reason]
+    (process/with-async [res (handle-exit pid reason state)]
+      (match res
         [:ok new-state] [:noreply new-state]
-        [:shutdown new-state] [:stop :shutdown new-state])
-      message
-      (do ;(printf "sup %s -unexpected message: %s%n" (process/self) message)
-          [:noreply state]))))
+        [:shutdown new-state] [:stop :shutdown new-state]))
+    
+    message
+    (do ;;(printf "sup %s -unexpected message: %s%n" (process/self) message)
+      (process/async-value [:noreply state]))))
 (spec-util/instrument `handle-info)
 
 (spec/fdef terminate
   :args (spec/cat :reason ::reason :state ::state)
   :ret any?)
 (defn- terminate [reason {children ::children}]
-  ;(printf "sup %s terminate, reason=%s, children: %s%n" (process/self) reason (pprint/write children :level 3 :stream nil))
-  (process/async
-    (process/await! (terminate-children children))))
+  ;;(printf "sup %s terminate, reason=%s, children: %s%n" (process/self) reason (pprint/write children :level 3 :stream nil))
+  (terminate-children children))
 (spec-util/instrument `terminate)
 
 ;; ====================================================================
