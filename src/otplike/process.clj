@@ -503,8 +503,7 @@
   (let [msg-sym (gensym "msg")
         context-sym (gensym "context")
         mchan-sym (gensym "message-chan")
-        take (if park? `async/<! `async/<!!)
-        alts (if park? `async/alts! `async/alts!!)]
+        take (if park? `async/<! `async/<!!)]
     `(let [^TProcess process# (self-process)
            ~mchan-sym (message-chan* process#)
            mq# (message-q* process#)
@@ -528,7 +527,6 @@
         context-sym (gensym "context")
         timeout-sym (gensym "timeout")
         mchan-sym (gensym "message-chan")
-        take (if park? `async/<! `async/<!!)
         alts (if park? `async/alts! `async/alts!!)]
     `(let [^TProcess process# (self-process)
            ~mchan-sym (message-chan* process#)
