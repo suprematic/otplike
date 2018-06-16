@@ -127,7 +127,7 @@
     [::call from ::get-state]
     (process/async
       (reply from state)
-      [:recur state])
+      :recur)
 
     [::call from request]
     (do-handle-call impl from request state)
@@ -145,10 +145,14 @@
   (process/async
     (loop [state state
            timeout timeout]
-      (let [message (process/receive!
+      (let [timeout (if (pos-int? timeout)
+                      (async/timeout timeout)
+                      timeout)
+            message (process/receive!
                       message message
                       (after timeout :timeout))]
         (match (process/await! (dispatch impl parent state message))
+          :recur (recur state timeout)
           [:recur new-state new-timeout] (recur new-state new-timeout)
           [:terminate :normal _new-state] :ok
           [:terminate reason _new-state] (process/exit reason))))))
