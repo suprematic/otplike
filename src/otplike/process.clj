@@ -57,9 +57,8 @@
 (defn- pid?* [pid]
   (instance? Pid pid))
 
-(defrecord Async [chan])
+(deftype Async [chan map-fns])
 (alter-meta! #'->Async assoc :no-doc true)
-(alter-meta! #'map->Async assoc :private true)
 
 ;; ====================================================================
 ;; Specs
@@ -606,7 +605,7 @@
        (let [[~k-sym ~res-sym] (~take (.chan a#))]
          (case ~k-sym
            :ok
-           ~res-sym
+           (reduce #(%2 %1) ~res-sym (.map-fns a#))
 
            :EXIT
            (exit ~res-sym))))))
@@ -1081,7 +1080,7 @@
 
   The returned value is to be passed to `await!`."
   [& body]
-  `(->Async (go (ex-catch [:ok (do ~@body)] ))))
+  `(->Async (go (ex-catch [:ok (do ~@body)])) []))
 
 (defmacro await!
   "Returns the value of the async operation represented by `x` or exits
@@ -1136,6 +1135,20 @@
         handler #(if (pred %) (handler %))]
     (swap! *trace-handlers assoc t-ref handler)
     t-ref))
+
+(defn map-async
+  [f async-val]
+  (Async. (.chan async-val) (conj (.map-fns async-val) f)))
+
+(defmacro with-async [[sym async-expr :as binding] & body]
+  (assert (and (vector? binding)
+               (= 2 (count binding))
+               (symbol? sym))
+          (str "binding must be a vector of two elements: a symbol and"
+               " an expression returning async value."))
+  `(map-async
+    (fn [~sym] ~@body)
+    ~async-expr))
 
 (defn untrace [t-ref]
   (swap! *trace-handlers dissoc t-ref))
