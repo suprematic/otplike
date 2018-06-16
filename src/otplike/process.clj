@@ -741,13 +741,13 @@
   (!* dest [(if (bound? #'*message-context*) @*message-context* {}) message]))
 
 (defn exit
-  "### When called with one argument (reason)
+  "**When called with one argument (reason)**
 
   Throws special exception (which can be caught). When the exception
   leaves process' initial function, it causes the process to exit with
   the specified reason.
 
-  ### When called with two arguments (pid and reason)
+  **When called with two arguments (pid and reason)**
 
   Sends an exit signal with the reason `reason` to the process
   identified by `pid`. If `pid` is not provided exits the calling
