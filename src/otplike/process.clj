@@ -1140,6 +1140,19 @@
        (async? res#) (await! res#)
        :else res#)))
 
+(defn alive?
+  "Returns `true` if the process exists and is alive, that is,
+  is not exiting and has not exited. Otherwise returns `false`.
+
+  When called without arguments, returns information about the calling
+  process."
+  ([]
+   (alive? *self*))
+  ([^Pid pid]
+   (if-let [^TProcess process (@*processes *self*)]
+     (nil? @(.exit-reason process))
+     false)))
+
 (defn processes []
   (keys @*processes))
 
