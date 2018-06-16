@@ -173,9 +173,7 @@
      linked
      flags)))
 
-(defn self-process
-  "Returns the process identifier of the calling process.
-  Throws when called not in process context."
+(defn ^:no-doc self-process
   []
   {:post [(instance? TProcess %)]}
   (or (@*processes *self*)
