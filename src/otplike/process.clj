@@ -52,7 +52,7 @@
 
 (declare pid->str pid? self whereis monitor-ref? ! ex->reason exit async?)
 
-(deftype Pid [^Long id ^String pname]
+(deftype Pid [^Long id]
   Object
   (toString [self]
     (pid->str self))
@@ -159,13 +159,11 @@
   (getFlags [_] flags)
   (updateFlags [_ f] (set! flags (f flags))))
 
-(defn- new-process [pname initial-call flags]
-  {:pre [(or (nil? pname) (string? pname))
-         (map? flags)]
+(defn- new-process [initial-call flags]
+  {:pre [(map? flags)]
    :post [(instance? TProcess %)]}
   (let [id (swap! *next-pid inc)
-        pname (or pname (str "proc" id))
-        pid (Pid. id pname)
+        pid (Pid. id)
         start-ns (System/nanoTime)
         message-chan (async/chan (async/sliding-buffer 1))
         message-q (atom (u/queue))
@@ -332,7 +330,7 @@
 (defn- spawn*
   [proc-func
    args
-   {:keys [flags link register] pname :name :as options}]
+   {:keys [flags link register] :as options}]
   {:post [(pid? %)]}
   (u/check-args [(or (fn? proc-func) (symbol? proc-func))
                  (sequential? args)
@@ -342,7 +340,7 @@
                  (not (pid? register))])
   (let [proc-func (resolve-proc-func proc-func)
         flags (or flags {})
-        ^TProcess process (new-process pname [proc-func args] flags)
+        ^TProcess process (new-process [proc-func args] flags)
         control-chan (.control-chan process)
         control-q (.control-q process)
         exit-reason (.exit-reason process)]
@@ -713,9 +711,7 @@
   [^Pid pid]
   {:post [(string? %)]}
   (u/check-args [(pid? pid)])
-  (let [pname (.pname pid)
-        id (.id pid)]
-    (str "<" (if pname (str pname "@" id) id) ">")))
+  (format "<%d>" (.id pid)))
 
 (defn self
   "Returns the process identifier of the calling process.
