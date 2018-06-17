@@ -1166,6 +1166,38 @@
        (async? res#) (await! res#)
        :else res#)))
 
+(defn map-async
+  "Creates a copy of `async-val` adding `f` to the list of its
+  transformation functions."
+  [f ^Async async-val]
+  {:pre [(fn? f) (async? async-val)]
+   :post (async? %)}
+  (Async.
+   (.chan async-val)
+   (.value async-val)
+   (conj (.map-fns async-val) f)))
+
+(defmacro with-async
+  "Wraps `body` into a function with binding-form as its single
+  argument.
+
+  Returns `(map-async body-fn async-expr-result)`.
+
+  Works as a recursion point for `body`."
+  [[binding-form async-expr :as bindings] & body]
+  (assert (and (vector? bindings)
+               (= 2 (count bindings)))
+          (str "binding must be a vector of two elements: a symbol and"
+               " an expression returning async value."))
+  `(map-async
+    (fn [~binding-form] ~@body)
+    ~async-expr))
+
+(defn async-value
+  "Wraps `value` into async value."
+  [value]
+  (Async. nil value []))
+
 (defn alive?
   "Returns `true` if the process exists and is alive, that is,
   is not exiting and has not exited. Otherwise returns `false`.
@@ -1212,25 +1244,6 @@
         handler #(if (pred %) (handler %))]
     (swap! *trace-handlers assoc t-ref handler)
     t-ref))
-
-(defn map-async
-  [f async-val]
-  (Async.
-   (.chan async-val)
-   (.value async-val)
-   (conj (.map-fns async-val) f)))
-
-(defmacro with-async [[sym async-expr :as binding] & body]
-  (assert (and (vector? binding)
-               (= 2 (count binding)))
-          (str "binding must be a vector of two elements: a symbol and"
-               " an expression returning async value."))
-  `(map-async
-    (fn [~sym] ~@body)
-    ~async-expr))
-
-(defn async-value [v]
-  (Async. nil v []))
 
 (defn untrace [t-ref]
   (swap! *trace-handlers dissoc t-ref))
