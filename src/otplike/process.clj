@@ -101,21 +101,22 @@
 
 (def ^:private *control-timeout 100)
 
-(def ^:private ^:dynamic *self* nil)
+(def ^:no-doc ^:dynamic *self* nil)
 
 (def ^:dynamic ^:no-doc *message-context* (atom {}))
 
 (defn- ->nil [x])
 
-(defn ^:no-doc send-trace-event [kind extra]
-  (doseq [handler (vals @*trace-handlers)]
-    (try
-      (let [pid (self)]
-        (handler {:pid pid
-                  :reg-name (@*registered-reverse pid)
-                  :kind kind
-                  :extra extra}))
-      (catch Throwable _))))
+(defn ^:no-doc send-trace-event [pid kind extra]
+  (if-let [handlers (seq (vals @*trace-handlers))]
+    (let [reg-name(@*registered-reverse pid)]
+      (doseq [handler handlers]
+        (try
+          (handler {:pid pid
+                    :reg-name reg-name
+                    :kind kind
+                    :extra extra})
+          (catch Throwable _))))))
 
 (defrecord MonitorRef [id self-pid other-pid])
 
@@ -269,7 +270,7 @@
         message-chan (.message-chan process)
         exit-reason (.exit-reason process)]
     (swap! exit-reason #(if (nil? %) reason %))
-    (send-trace-event :terminate {:reason reason})
+    (send-trace-event pid :exiting {:reason reason})
     (when-let [register (@*registered-reverse pid)]
       (swap! *registered dissoc register)
       (swap! *registered-reverse dissoc pid))
@@ -296,6 +297,7 @@
          (sequential? args)]
    :post []}
   (let [pid (.pid process)]
+    (send-trace-event pid :spawn {:fn proc-func :args args})
     (when link?
       (locking *global-lock
         (let [^TProcess other-process (self-process)
@@ -420,7 +422,7 @@
        (if (identical? msg# :timeout)
          (do ~@or-body)
          (let [[context# ~msg-sym] msg#]
-           (send-trace-event :receive {:message ~msg-sym})
+           (send-trace-event (.pid process#) :receive {:message ~msg-sym})
            (update-message-context! context#)
            (case clause-n#
              ~@case-clauses))))))
@@ -455,7 +457,7 @@
                      (throw (Exception. "noproc")))))))]
        (swap! message-q# #(into new-mq# %))
        (let [[context# ~msg-sym] msg#]
-         (send-trace-event :receive {:message ~msg-sym})
+         (send-trace-event (.pid process#) :receive {:message ~msg-sym})
          (update-message-context! context#)
          (case clause-n#
            ~@case-clauses)))))
@@ -486,7 +488,7 @@
          (do ~@or-body)
          (let [[[context# ~msg-sym] clause-n# new-mq#] res#]
            (swap! message-q# #(into new-mq# %))
-           (send-trace-event :receive {:message ~msg-sym})
+           (send-trace-event (.pid process#) :receive {:message ~msg-sym})
            (update-message-context! context#)
            (case clause-n#
              ~@case-clauses))))))
@@ -514,7 +516,7 @@
      (if-let [[context# msg#] (peek @message-q#)]
        (do
          (swap! message-q# pop)
-         (send-trace-event :receive {:message msg#})
+         (send-trace-event (.pid process#) :receive {:message msg#})
          (update-message-context! context#)
          (match msg# ~@match-clauses))
        (do ~@or-body))))
@@ -542,7 +544,7 @@
        (if (identical? res# :noproc)
          (throw (Exception. "noproc"))
          (let [[~context-sym ~msg-sym] res#]
-           (send-trace-event :receive {:message ~msg-sym})
+           (send-trace-event (.pid process#) :receive {:message ~msg-sym})
            (update-message-context! ~context-sym)
            (match ~msg-sym ~@match-clauses))))))
 
@@ -578,7 +580,7 @@
 
          :else
          (let [[~context-sym ~msg-sym] res#]
-           (send-trace-event :receive {:message ~msg-sym})
+           (send-trace-event (.pid process#) :receive {:message ~msg-sym})
            (update-message-context! ~context-sym)
            (match ~msg-sym ~@match-clauses))))))
 
@@ -611,6 +613,7 @@
 (defn ^:no-doc !finish [reason]
   (let [^Pid self-pid *self*
         process (@*processes self-pid)]
+    (send-trace-event self-pid :exit {:reason reason})
     (!exit process reason)
     (swap! *processes dissoc self-pid)))
 
@@ -623,7 +626,8 @@
           (format "Variadic arguments are not supported" args))
   (let [arg-names (vec (repeatedly (count args) #(gensym "argname")))]
     `(fn ~@(if fname [fname arg-names] [arg-names])
-       (send-trace-event :spawn {:fn ~fname :ns ~*ns* :args ~arg-names})
+       (send-trace-event
+         *self* :spawned {:fn ~fname :ns ~*ns* :args ~arg-names})
        (go
          (try
            (loop ~(vec (interleave args arg-names))
@@ -655,7 +659,7 @@
   {:post [(or (true? %) (false? %))]}
   (u/check-args [(some? dest)
                  (some? message)])
-  (send-trace-event :send {:destination dest :message message})
+  (send-trace-event *self* :send {:destination dest :message message})
   (if-let [^TProcess process (find-process dest)]
     (do
       (swap! (.message-q process) conj message)
