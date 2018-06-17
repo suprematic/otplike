@@ -1491,8 +1491,8 @@
 (deftest ^:parallel monitor-returns-ref
   (let [done (async/chan)
         pfn (proc-fn []
-              (is (process/monitor-ref? (process/monitor (process/self)))
-                  (str "monitor must return monitor-ref when called with self"
+              (is (process/ref? (process/monitor (process/self)))
+                  (str "monitor must return ref when called with self"
                        " as argument"))
               (async/close! done))]
     (process/spawn pfn)
@@ -1501,8 +1501,8 @@
         pfn1 (proc-fn [] (is (await-completion! done 50)))
         pid1 (process/spawn pfn1)
         pfn (proc-fn []
-              (is (process/monitor-ref? (process/monitor pid1))
-                  (str "monitor must return monitor-ref when called with pid"
+              (is (process/ref? (process/monitor pid1))
+                  (str "monitor must return ref when called with pid"
                        " of alive process as argument"))
               (async/close! done))]
     (process/spawn pfn)
@@ -1512,8 +1512,8 @@
         pfn1 (proc-fn [] (is (await-completion! done 50)))
         pid1 (process/spawn-opt pfn1 {:register reg-name})
         pfn (proc-fn []
-              (is (process/monitor-ref? (process/monitor reg-name))
-                  (str "monitor must return monitor-ref when called with"
+              (is (process/ref? (process/monitor reg-name))
+                  (str "monitor must return ref when called with"
                        " reg-name of alive process as argument"))
               (async/close! done))]
     (process/spawn pfn)
@@ -1522,8 +1522,8 @@
         pid (process/spawn (proc-fn []))
         pfn (proc-fn []
               (<! (async/timeout 50))
-              (is (process/monitor-ref? (process/monitor pid))
-                  (str "monitor must return monitor-ref when called with pid"
+              (is (process/ref? (process/monitor pid))
+                  (str "monitor must return ref when called with pid"
                        " of terminated process as argument"))
               (async/close! done))]
     (process/spawn pfn)
@@ -1533,8 +1533,8 @@
         _pid (process/spawn-opt (proc-fn []) {:register reg-name})
         pfn (proc-fn []
               (<! (async/timeout 50))
-              (is (process/monitor-ref? (process/monitor reg-name))
-                  (str "monitor must return monitor-ref when called with"
+              (is (process/ref? (process/monitor reg-name))
+                  (str "monitor must return ref when called with"
                        " reg-name of terminated process as argument"))
               (async/close! done))]
     (process/spawn pfn)
@@ -1542,8 +1542,8 @@
   (let [reg-name (uuid-keyword)
         done (async/chan)
         pfn (proc-fn []
-              (is (process/monitor-ref? (process/monitor reg-name))
-                  (str "monitor must return monitor-ref when called with"
+              (is (process/ref? (process/monitor reg-name))
+                  (str "monitor must return ref when called with"
                        " never registered name as argument"))
               (async/close! done))]
     (process/spawn pfn)
@@ -1812,7 +1812,7 @@
         pid1 (process/spawn pfn1)
         pfn2 (proc-fn []
                (let [[_ mref] (<! (await-message 100))]
-                 (is (process/monitor-ref? mref))
+                 (is (process/ref? mref))
                  (is (= true (process/demonitor mref))
                      (str "demonitor must return true when called byj"
                           " process other than process called monitor"))
@@ -1857,7 +1857,7 @@
               (is (await-completion! done 100)))]
     (process/spawn pfn)
     (match (async/alts!! [mref-chan (async/timeout 100)])
-      [(mref :guard #(process/monitor-ref? %)) mref-chan]
+      [(mref :guard #(process/ref? %)) mref-chan]
       (is (thrown? Exception (process/demonitor mref))
           (str "demonitor must throw when called not in process context"
                " when both processes are alive")))
@@ -1871,7 +1871,7 @@
               (is (await-completion! done 100)))]
     (process/spawn pfn)
     (match (async/alts!! [mref-chan (async/timeout 100)])
-      [(mref :guard #(process/monitor-ref? %)) mref-chan]
+      [(mref :guard #(process/ref? %)) mref-chan]
       (is (thrown? Exception (process/demonitor mref))
           (str "demonitor must throw when called not in process context"
                " when monitoring processes is alive")))
@@ -1883,7 +1883,7 @@
     (process/spawn (proc-fn [] (>! mref-chan (process/monitor pid))))
     (<!! (async/timeout 50))
     (match (async/alts!! [mref-chan (async/timeout 100)])
-      [(mref :guard #(process/monitor-ref? %)) mref-chan]
+      [(mref :guard #(process/ref? %)) mref-chan]
       (is (thrown? Exception (process/demonitor mref))
           (str "demonitor must throw when called not in process context"
                " when monitored processes is alive")))
@@ -1896,9 +1896,9 @@
         done1 (async/chan)
         pfn1 (proc-fn []
                (let [[_ mref] (<! (await-message 100))]
-                 (is (process/monitor-ref? mref) "testf failed")
+                 (is (process/ref? mref) "testf failed")
                  (is (process/demonitor mref)
-                     (str "demonitor return true when called with monitor-ref"
+                     (str "demonitor return true when called with ref"
                           " of monitoring started by other process"))
                  (<! (async/timeout 50))
                  (async/close! done1)))

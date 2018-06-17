@@ -123,7 +123,7 @@
 ;; On my machine (Core i7 2.6GHz, LPDDR3 2133MHz, java 10.0.1)
 ;;; Pony - 0.7s
 ;;; Erlang - 1.4s
-;;; Otplike - ~35s
+;;; otplike - ~38s
 #_(time (start-process-tree 20))
 
 #_(let [tref (otplike.trace/event some? #(str %))]
