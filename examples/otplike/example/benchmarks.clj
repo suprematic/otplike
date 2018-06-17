@@ -51,7 +51,7 @@
         (process/spawn proc2)
         (recur (dec i))))))
 
-#_(time (start-spawn 200000))
+#_(time (start-spawn 1000000))
 
 (defn start-go [n]
   (loop [i n]
@@ -78,7 +78,7 @@
           (process/receive! :ok :ok))))
     (println "done" n)))
 
-#_(time (start-spawn:ping-pong 100000))
+#_(time (start-spawn:ping-pong 1000000))
 
 ;---
 
@@ -98,7 +98,7 @@
           1 (println "done" n0)
           n (recur (dec n)))))))
 
-#_(time (start-ping-pong 100000))
+#_(time (start-ping-pong 1000000))
 
 ;---
 
@@ -123,7 +123,7 @@
 ;; On my machine (Core i7 2.6GHz, LPDDR3 2133MHz, java 10.0.1)
 ;;; Pony - 0.7s
 ;;; Erlang - 1.4s
-;;; Otplike - ~45s
+;;; Otplike - ~35s
 #_(time (start-process-tree 20))
 
 #_(let [tref (otplike.trace/event some? #(str %))]

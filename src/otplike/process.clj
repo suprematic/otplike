@@ -43,6 +43,7 @@
   (:require [clojure.core.async :as async :refer [<!! <! >! put! go go-loop]]
             [clojure.core.async.impl.protocols :as ap]
             [clojure.core.match :refer [match]]
+            [clojure.data.int-map :as imap]
             [clojure.spec.alpha :as spec]
             [otplike.util :as u]))
 
@@ -91,13 +92,13 @@
   (atom {}))
 
 (def ^:private *processes
-  (atom {}))
+  (atom (imap/int-map)))
 
 (def ^:private *registered
   (atom {}))
 
 (def ^:private *registered-reverse
-  (atom {}))
+  (atom (imap/int-map)))
 
 (def ^:private *control-timeout 100)
 
@@ -107,9 +108,9 @@
 
 (defn- ->nil [x])
 
-(defn ^:no-doc send-trace-event [pid kind extra]
+(defn ^:no-doc send-trace-event [^Pid pid kind extra]
   (if-let [handlers (seq (vals @*trace-handlers))]
-    (let [reg-name(@*registered-reverse pid)]
+    (let [reg-name (@*registered-reverse (.id pid))]
       (doseq [handler handlers]
         (try
           (handler {:pid pid
@@ -190,7 +191,7 @@
 (defn ^:no-doc self-process
   []
   {:post [(instance? TProcess %)]}
-  (or (@*processes *self*)
+  (or (@*processes (.id ^Pid *self*))
       (throw (Exception. "noproc"))))
 
 (defn- new-monitor-ref
@@ -204,15 +205,15 @@
   {:pre [(some? id)]
    :post [(or (nil? %) (instance? TProcess %))]}
   (if (pid? id)
-    (@*processes id)
-    (when-let [pid (whereis id)]
-      (@*processes pid))))
+    (@*processes (.id ^Pid id))
+    (when-let [^Pid pid (whereis id)]
+      (@*processes (.id pid)))))
 
-(defn- !control [pid message]
+(defn- !control [^Pid pid message]
   {:pre [(pid? pid)
          (vector? message) (keyword? (first message))]
    :post [(or (true? %) (false? %))]}
-  (if-let [^TProcess process (@*processes pid)]
+  (if-let [^TProcess process (@*processes (.id pid))]
     (do
       (swap! (.control-q process) conj message)
       (async/put! (.control-chan process) :go))
@@ -269,9 +270,9 @@
         exit-reason (.exit-reason process)]
     (swap! exit-reason #(if (nil? %) reason %))
     (send-trace-event pid :exiting {:reason reason})
-    (when-let [register (@*registered-reverse pid)]
+    (when-let [register (@*registered-reverse (.id pid))]
       (swap! *registered dissoc register)
-      (swap! *registered-reverse dissoc pid))
+      (swap! *registered-reverse dissoc (.id pid)))
     (async/close! control-chan)
     (async/close! message-chan)
     (let [[linked monitors]
@@ -294,7 +295,7 @@
   {:pre [(fn? proc-func)
          (sequential? args)]
    :post []}
-  (let [pid (.pid process)]
+  (let [^Pid pid (.pid process)]
     (send-trace-event pid :spawn {:fn proc-func :args args})
     (when link?
       (locking *global-lock
@@ -303,7 +304,7 @@
           (.updateLinked process #(conj % other-pid))
           (or (.updateLinked other-process #(if % (conj % pid)))
               (throw (Exception. "noproc"))))))
-    (swap! *processes assoc pid process)
+    (swap! *processes assoc (.id pid) process)
     ;; FIXME bindings from folded binding blocks are stacked, so no values
     ;; bound between bottom and top folded binding blocks are garbage
     ;; collected; see "ring" benchmark example
@@ -314,11 +315,11 @@
           (when (@*registered register)
             (throw (Exception. (str "already registered: " register))))
           (swap! *registered assoc register pid)
-          (swap! *registered-reverse assoc pid register))
+          (swap! *registered-reverse assoc (.id pid) register))
         (apply proc-func args)
         (catch Throwable t
           (!exit process (ex->reason t))
-          (swap! *processes dissoc pid))))))
+          (swap! *processes dissoc (.id pid)))))))
 
 (defn- resolve-proc-func [form]
   {:pre [(or (fn? form) (symbol? form))]
@@ -610,10 +611,10 @@
 
 (defn ^:no-doc !finish [reason]
   (let [^Pid self-pid *self*
-        process (@*processes self-pid)]
+        process (@*processes (.id self-pid))]
     (send-trace-event self-pid :exit {:reason reason})
     (!exit process reason)
-    (swap! *processes dissoc self-pid)))
+    (swap! *processes dissoc (.id self-pid))))
 
 
 (defmacro ^:no-doc proc-fn*
@@ -718,7 +719,7 @@
   Throws when called not in process context."
   []
   {:post [(pid? %)]}
-  (if-let [^TProcess process (@*processes *self*)]
+  (if-let [^TProcess process (@*processes (.id ^Pid *self*))]
     (if (nil? @(.exit-reason process))
       *self*
       (throw (Exception. "noproc")))
@@ -781,13 +782,13 @@
   reason is `nil`."
   ([reason]
    (throw (ex-info "exit" {::exit-reason reason})))
-  ([pid reason]
+  ([^Pid pid reason]
    {:post [(or (true? %) (false? %))]}
    (u/check-args [(pid? pid)
                   (some? reason)])
    (let [self-pid (self)]
      (case reason
-       :kill (if-let [^TProcess process (@*processes pid)]
+       :kill (if-let [^TProcess process (@*processes (.id pid))]
                (do
                  (!exit process :killed)
                  true)
@@ -841,14 +842,14 @@
 
   Throws when called not in process context, or by exited process,
   or `pid` is not a pid."
-  [pid]
+  [^Pid pid]
   {:post [(true? %)]}
   (u/check-args [(pid? pid)])
   (let [^TProcess my-process (self-process)
         my-pid (.pid my-process)]
     (if (identical? my-pid pid)
       true
-      (if-let [^TProcess other-process (@*processes pid)]
+      (if-let [^TProcess other-process (@*processes (.id pid))]
         (try
           (locking *global-lock
             (or (.updateLinked my-process #(if % (conj % pid)))
@@ -886,13 +887,13 @@
 
   Throws when called not in process context, or called by exited
   process, or `pid` is not a pid."
-  [pid]
+  [^Pid pid]
   {:post [(true? %)]}
   (u/check-args [(pid? pid)])
   (let [^TProcess my-process (self-process)
         my-pid (.pid my-process)]
     (if (not= pid my-pid)
-      (if-let [^TProcess other-process (@*processes pid)]
+      (if-let [^TProcess other-process (@*processes (.id pid))]
         (locking *global-lock
           (.updateLinked my-process #(disj % pid))
           (.updateLinked other-process #(disj % my-pid)))))
@@ -959,7 +960,9 @@
   [pid-or-name]
   {:post [(monitor-ref? %)]}
   (let [my-pid (self)]
-    (if-let [^TProcess other-process (@*processes (resolve-pid pid-or-name))]
+    (if-let [^TProcess other-process
+             (if-let [^Pid pid (resolve-pid pid-or-name)]
+               (@*processes (.id pid)))]
       (let [other-pid (.pid other-process)]
         (if (identical? my-pid other-pid)
           (new-monitor-ref)
@@ -1009,11 +1012,11 @@
   monitor-ref."
   ([mref]
    (demonitor mref {}))
-  ([{:keys [self-pid other-pid] :as mref} {flush? :flush}]
+  ([{:keys [self-pid ^Pid other-pid] :as mref} {flush? :flush}]
    {:post [(= true %)]}
    (u/check-args [(monitor-ref? mref)])
    (if (and (= self-pid (self)) other-pid)
-     (if-let [^TProcess other-process (@*processes other-pid)]
+     (if-let [^TProcess other-process (@*processes (.id other-pid))]
        (locking *global-lock (.updateMonitors other-process #(dissoc % mref)))))
    (if flush?
      (selective-receive!
@@ -1207,7 +1210,7 @@
   ([]
    (alive? *self*))
   ([^Pid pid]
-   (if-let [^TProcess process (@*processes *self*)]
+   (if-let [^TProcess process (@*processes (.id ^Pid *self*))]
      (nil? @(.exit-reason process))
      false)))
 
@@ -1220,16 +1223,16 @@
   but its process identifier is part of the result returned from
   `(processes)`."
   []
-  (keys @*processes))
+  (map #(.pid ^TProcess %) (vals @*processes)))
 
-(defn process-info [pid]
+(defn process-info [^Pid pid]
   (u/check-args [(pid? pid)])
-  (if-let [^TProcess process (@*processes pid)]
+  (if-let [^TProcess process (@*processes (.id pid))]
     (let [mq @(.message-q process)]
       {:links (.getLinked process)
        ;; :monitors TODO
        :monitored-by (->> (.getMonitors process) (vals) (map first))
-       :registered-name (@*registered-reverse pid)
+       :registered-name (@*registered-reverse (.id pid))
        :status (if (nil? @(.exit-reason process))
                  @(.status process)
                  :exiting)
