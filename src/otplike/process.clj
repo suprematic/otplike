@@ -659,7 +659,8 @@
   {:post [(or (true? %) (false? %))]}
   (u/check-args [(some? dest)
                  (some? message)])
-  (send-trace-event *self* :send {:destination dest :message message})
+  (if-let [self-pid *self*]
+    (send-trace-event self-pid :send {:destination dest :message message}))
   (if-let [^TProcess process (find-process dest)]
     (do
       (swap! (.message-q process) conj message)
