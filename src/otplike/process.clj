@@ -296,7 +296,7 @@
          (sequential? args)]
    :post []}
   (let [^Pid pid (.pid process)]
-    (send-trace-event pid :spawn {:fn proc-func :args args})
+    (send-trace-event *self* :spawn {:fn proc-func :args args})
     (when link?
       (let [^TProcess other-process (self-process)
             other-pid (.pid other-process)]
