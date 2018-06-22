@@ -731,8 +731,7 @@
   Throws if any of arguments is `nil`."
   [dest message]
   {:post [(or (true? %) (false? %))]}
-  (u/check-args [(some? dest)
-                 (some? message)])
+  (u/check-args [(some? dest)])
   (send-trace-event *self* :send {:destination dest :message message})
   (let [wrapped-message [(if (bound? #'*message-context*)
                            @*message-context* {}) message]]

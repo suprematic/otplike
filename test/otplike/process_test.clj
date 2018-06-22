@@ -144,13 +144,18 @@
         "! must return false sending to terminated process")))
 
 ; TODO allow sending nil
-(deftest ^:parallel !-throws-on-nil-arguments
+(deftest ^:parallel !-throws-on-nil-pid
   (is (thrown? Exception (! nil :msg))
       "! must throw on when dest argument is nil")
-  (is (thrown? Exception (! (process/spawn (proc-fn [])) nil))
-      "! must throw on when message argument is nil")
   (is (thrown? Exception (! nil nil))
       "! must throw on when both arguments are nil"))
+
+(deftest ^:parallel !-allows-sending-nil
+  (let [done (async/chan)
+        pid (process/spawn
+             (proc-fn [] (process/receive! _ (async/close! done))))]
+    (! pid nil)
+    (await-completion!! done 100)))
 
 (deftest ^:parallel !-delivers-message-sent-by-pid-to-alive-process
   (let [done (async/chan)
@@ -2026,6 +2031,24 @@
     (! pid :msg)
     (await-completion!! done 150)))
 
+(deftest ^:parallel receive-receives-nil
+  (let [done (async/chan)
+        pfn (proc-fn []
+              (is (= nil (process/receive! msg msg))
+                  "selective-receive! must receive nil sent to a process")
+              (async/close! done))
+        pid (process/spawn pfn)]
+    (! pid nil)
+    (await-completion!! done 150))
+  (let [done (async/chan)
+        pfn (proc-fn []
+              (process/receive! nil :ok)
+              (async/close! done))
+        pid (process/spawn pfn)]
+    (! pid nil)
+    (is (await-completion!! done 150)
+        "selective-receive! must receive nil sent to a process")))
+
 (def-proc-test ^:parallel receive-throws-if-process-exited
   (let [done (async/chan)
         pfn (proc-fn []
@@ -2204,7 +2227,7 @@
       (await-completion!! done 50))))
 
 ;; ====================================================================
-;; Other
+;; (selective-receive! [clauses])
 
 (deftest ^:parallel selective-receive!-receives-message
   (let [done (async/chan)
@@ -2215,6 +2238,33 @@
         pid (process/spawn pfn)]
     (! pid :msg)
     (await-completion!! done 150)))
+
+(deftest ^:parallel selective-receive!-receives-nil
+  (let [done (async/chan)
+        pfn (proc-fn []
+              (is (= nil (process/selective-receive! msg msg))
+                  "selective-receive! must receive nil sent to a process")
+              (async/close! done))
+        pid (process/spawn pfn)]
+    (! pid nil)
+    (await-completion!! done 150))
+  (let [done (async/chan)
+        pfn (proc-fn []
+              (process/selective-receive! nil :ok)
+              (async/close! done))
+        pid (process/spawn pfn)]
+    (! pid nil)
+    (is (await-completion!! done 150)
+        "selective-receive! must receive nil sent to a process"))
+  (let [done (async/chan)
+        pfn (proc-fn []
+              (process/selective-receive! nil :ok)
+              (async/close! done))
+        pid (process/spawn pfn)]
+    (! pid :msg)
+    (! pid nil)
+    (is (await-completion!! done 150)
+        "selective-receive! must receive nil sent to a process")))
 
 (def-proc-test ^:parallel selective-receive!-throws-if-process-exited
   (let [done (async/chan)
