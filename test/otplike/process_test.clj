@@ -174,6 +174,13 @@
     (! reg-name :msg)
     (await-completion!! done 100)))
 
+(deftest ^:parallel !-send-a-message-when-called-not-by-process
+  (let [done (async/chan)
+        pid (process/spawn
+             (proc-fn [] (process/receive! :msg (async/close! done))))]
+    (! pid :msg)
+    (is (await-completion!! done 100))))
+
 #_(def-proc-test ^:parallel process-killed-when-inbox-is-overflowed
   (process/flag :trap-exit true)
   (let [done (async/chan)
