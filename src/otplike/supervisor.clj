@@ -767,7 +767,7 @@
 (defn- init [sup-fn args]
   ;;(printf "sup init: %s%n" args)
   (process/async
-    (match (process/async?-value! (apply sup-fn args))
+    (match (process/await?! (apply sup-fn args))
       [:ok [sup-spec child-specs]]
       (do
         ;;(printf "sup init sup-spec: %s%n" (pprint/write sup-spec :level 3 :stream nil))

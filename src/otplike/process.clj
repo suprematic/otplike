@@ -1158,7 +1158,7 @@
   [x]
   (instance? Async x))
 
-(defmacro async?-value!
+(defmacro await?!
   "If `x` is returned by `async`, returns the value of the corresponding
   async operation (parks if needed). If `x` is a regular value, returns
   `x`."

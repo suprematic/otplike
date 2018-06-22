@@ -50,7 +50,7 @@
 (defn- do-terminate [impl reason state]
   (process/async
     (match (process/ex-catch
-            [:ok (process/async?-value! (terminate impl reason state))])
+            [:ok (process/await?! (terminate impl reason state))])
       [:ok _] [:terminate reason state]
       [:EXIT exit-reason] [:terminate exit-reason state])))
 
@@ -60,7 +60,7 @@
                           ::cast [handle-cast 'handle-cast]
                           ::info [handle-info 'handle-info])]
       (match (process/ex-catch
-              [:ok (process/async?-value! (rqfn impl message state))])
+              [:ok (process/await?! (rqfn impl message state))])
         [:ok [:noreply new-state]]
         [:recur new-state :infinity]
 
@@ -80,7 +80,7 @@
 (defn- do-handle-call [impl from request state]
   (process/async
     (match (process/ex-catch
-            [:ok (process/async?-value! (handle-call impl request from state))])
+            [:ok (process/await?! (handle-call impl request from state))])
       [:ok [:reply response new-state]]
       (do
         (reply from response)
@@ -159,7 +159,7 @@
 
 (process/proc-defn gen-server-proc [impl init-args parent response]
   (match (process/ex-catch
-          [:ok (process/async?-value! (init impl init-args))])
+          [:ok (process/await?! (init impl init-args))])
     [:ok [:ok initial-state]]
     (do
       (put!* response :ok)
