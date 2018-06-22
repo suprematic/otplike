@@ -654,18 +654,6 @@
                     (.value a#))]
          (reduce #(%2 %1) res# (.map-fns a#))))))
 
-(defn- !*
-  [dest message]
-  {:post [(or (true? %) (false? %))]}
-  (u/check-args [(some? dest)
-                 (some? message)])
-  (send-trace-event *self* :send {:destination dest :message message})
-  (if-let [^TProcess process (find-process dest)]
-    (do
-      (swap! (.message-q process) conj message)
-      (async/put! (.message-chan process) :go))
-    false))
-
 ;; ====================================================================
 ;; API
 
@@ -742,8 +730,17 @@
 
   Throws if any of arguments is `nil`."
   [dest message]
-  (u/check-args [(some? message)])
-  (!* dest [(if (bound? #'*message-context*) @*message-context* {}) message]))
+  {:post [(or (true? %) (false? %))]}
+  (u/check-args [(some? dest)
+                 (some? message)])
+  (send-trace-event *self* :send {:destination dest :message message})
+  (let [wrapped-message [(if (bound? #'*message-context*)
+                           @*message-context* {}) message]]
+    (if-let [^TProcess process (find-process dest)]
+      (do
+        (swap! (.message-q process) conj wrapped-message)
+        (async/put! (.message-chan process) :go))
+      false)))
 
 (defn exit
   "**When called with one argument (reason)**
