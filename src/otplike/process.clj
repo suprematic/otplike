@@ -297,7 +297,7 @@
          (sequential? args)]
    :post []}
   (let [^Pid pid (.pid process)]
-    (send-trace-event *self* :spawn {:fn proc-func :args args})
+    (send-trace-event *self* :spawn {:fn (-> proc-func meta :name) :args args})
     (when link?
       (let [^TProcess other-process (self-process)
             other-pid (.pid other-process)]
@@ -323,26 +323,18 @@
           (!exit process (ex->reason t))
           (swap! *processes dissoc (.id pid)))))))
 
-(defn- resolve-proc-func [form]
-  {:pre [(or (fn? form) (symbol? form))]
-   :post [(fn? %)]}
-  (cond
-    (fn? form) form
-    (symbol? form) (some-> form resolve var-get)))
-
 (defn- spawn*
   [proc-func
    args
    {:keys [flags link register] :as options}]
   {:post [(pid? %)]}
-  (u/check-args [(or (fn? proc-func) (symbol? proc-func))
+  (u/check-args [(fn? proc-func)
                  (sequential? args)
                  (map? options) ;FIXME check for unknown options
                  (or (nil? link) (boolean? link))
                  (or (nil? flags) (map? flags)) ;FIXME check for unknown flags
                  (not (pid? register))])
-  (let [proc-func (resolve-proc-func proc-func)
-        flags (or flags {})
+  (let [flags (or flags {})
         ^TProcess process (new-process [proc-func args] flags)
         control-chan (.control-chan process)
         control-q (.control-q process)
@@ -625,17 +617,20 @@
           (format "Parameter declaration %s should be a vector" args))
   (assert (not (some #{'&} args))
           (format "Variadic arguments are not supported" args))
-  (let [arg-names (vec (repeatedly (count args) #(gensym "argname")))]
-    `(fn ~@(if fname [fname arg-names] [arg-names])
-       (send-trace-event
-         *self* :spawned {:fn ~fname :ns ~*ns* :args ~arg-names})
-       (go
-         (try
-           (loop ~(vec (interleave args arg-names))
-             ~@body)
-           (!finish :normal)
-           (catch Throwable t#
-             (!finish (ex->reason t#))))))))
+  (let [arg-names (vec (repeatedly (count args) #(gensym "argname")))
+        fname (or fname (gensym "proc-fn-"))
+        ns-fname (symbol (str *ns* "/" fname))]
+    `(with-meta
+       (fn ~fname ~arg-names
+         (send-trace-event *self* :spawned {:fn '~ns-fname :args ~arg-names})
+         (go
+           (try
+             (loop ~(vec (interleave args arg-names))
+               ~@body)
+             (!finish :normal)
+             (catch Throwable t#
+               (!finish (ex->reason t#))))))
+       {:name '~ns-fname})))
 
 (defmacro ^:no-doc await* [park? x]
   (let [take (if park? `<! `<!!)
