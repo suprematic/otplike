@@ -117,15 +117,16 @@
 
 (defn- ->nil [x])
 
+(defrecord TraceMessage [pid reg-name kind extra])
+(alter-meta! #'->TraceMessage assoc :private true)
+(alter-meta! #'map->TraceMessage assoc :private true)
+
 (defn ^:no-doc send-trace-event [^Pid pid kind extra]
   (if-let [handlers (seq (vals @*trace-handlers))]
     (let [reg-name (if pid (@*registered-reverse (.id pid)))]
       (doseq [handler handlers]
         (try
-          (handler {:pid pid
-                    :reg-name reg-name
-                    :kind kind
-                    :extra extra})
+          (handler (TraceMessage. pid reg-name kind extra))
           (catch Throwable _))))))
 
 (defmethod print-method Pid [o w]
