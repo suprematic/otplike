@@ -1205,7 +1205,7 @@
   ([]
    (alive? *self*))
   ([^Pid pid]
-   (if-let [^TProcess process (@*processes (.id ^Pid *self*))]
+   (if-let [^TProcess process (@*processes (.id pid))]
      (nil? @(.exit-reason process))
      false)))
 
