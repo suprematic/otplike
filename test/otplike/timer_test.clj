@@ -23,14 +23,14 @@
         start (System/nanoTime)]
     (timer/apply-after 100 async/close! [done])
     (is (match (await-completion!! done 200)
-               :closed (is (>= (ms-diff start) 100)
+               :closed (is (>= (ms-diff start) 99)
                            "fn must not be applied before timeout"))
         "fn must be applied just after timeout"))
   (let [done (async/chan)
         start (System/nanoTime)]
     (timer/apply-after 100 #(async/close! done) [])
     (is (match (await-completion!! done 200)
-               :closed (is (>= (ms-diff start) 100)
+               :closed (is (>= (ms-diff start) 99)
                            "fn must not be applied before timeout"))
         "fn must be applied just after timeout")))
 
@@ -243,14 +243,14 @@
         pid (process/spawn pfn)
         start (System/nanoTime)]
     (timer/send-after 100 pid :msg)
-    (is (= :closed (await-completion!! done 200))
+    (is (= :closed (await-completion!! done 199))
         "message must be sent just after timeout")
-    (is (>= (ms-diff start) 100) "message must not be sent before timeout"))
+    (is (>= (ms-diff start) 99) "message must not be sent before timeout"))
   (proc-util/execute-proc!!
     (let [start (System/nanoTime)]
       (timer/send-after 100 :msg)
       (process/receive!
-        :msg (is (>= (ms-diff start) 100)
+        :msg (is (>= (ms-diff start) 99)
                  "message must not be sent before timeout")
         (after 200 (is false "message must be sent just after timeout"))))))
 
@@ -260,7 +260,7 @@
       (timer/send-after 0 :proc :msg1)
       (timer/send-after 100 :msg2)
       (process/receive!
-        :msg2 (is (>= (ms-diff start) 100)
+        :msg2 (is (>= (ms-diff start) 99)
                  "message must not be sent before timeout")
         (after 200 (is false "message must be sent just after timeout")))))
   (proc-util/execute-proc!!
@@ -269,7 +269,7 @@
           start (System/nanoTime)]
       (timer/send-after 100 :msg2)
       (process/receive!
-        :msg2 (is (>= (ms-diff start) 100)
+        :msg2 (is (>= (ms-diff start) 99)
                  "message must not be sent before timeout")
         (after 200 (is false "message must be sent just after timeout"))))))
 
@@ -299,7 +299,7 @@
           start (System/nanoTime)]
       (timer/exit-after 100 reg-name :test)
       (process/receive!
-        [:EXIT pid :test] (is (>= (ms-diff start) 100)
+        [:EXIT pid :test] (is (>= (ms-diff start) 99)
                             "exit must not be sent before timeout")
         (after 200 (is false "exit must be sent just after timeout")))))
   (proc-util/execute-proc!!
@@ -309,7 +309,7 @@
           start (System/nanoTime)]
       (timer/exit-after 100 pid :test)
       (process/receive!
-        [:EXIT pid :test] (is (>= (ms-diff start) 100)
+        [:EXIT pid :test] (is (>= (ms-diff start) 99)
                             "exit must not be sent before timeout")
         (after 200 (is false "exit must be sent just after timeout")))))
   (proc-util/execute-proc!!
@@ -317,7 +317,7 @@
     (let [start (System/nanoTime)]
       (timer/exit-after 100 :test)
       (process/receive!
-        [:EXIT _ :test] (is (>= (ms-diff start) 100)
+        [:EXIT _ :test] (is (>= (ms-diff start) 99)
                             "exit must not be sent before timeout")
         (after 200 (is false "exit must be sent just after timeout"))))))
 
@@ -328,7 +328,7 @@
       (timer/exit-after 0 :not-existing-proc :test1)
       (timer/exit-after 100 :test2)
       (process/receive!
-        [:EXIT _ :test2] (is (>= (ms-diff start) 100)
+        [:EXIT _ :test2] (is (>= (ms-diff start) 99)
                              "exit must not be sent before timeout")
         (after 200 (is false "exit must be sent just after timeout")))))
   (proc-util/execute-proc!!
@@ -338,7 +338,7 @@
           start (System/nanoTime)]
       (timer/exit-after 200 :test2)
       (process/receive!
-        [:EXIT _ :test2] (is (>= (ms-diff start) 200)
+        [:EXIT _ :test2] (is (>= (ms-diff start) 199)
                              "exit must not be sent before timeout")
         (after 300 (is false "exit must be sent just after timeout"))))))
 
@@ -373,7 +373,7 @@
           start (System/nanoTime)]
       (timer/kill-after 100 reg-name)
       (process/receive!
-        [:EXIT pid :killed] (is (>= (ms-diff start) 100)
+        [:EXIT pid :killed] (is (>= (ms-diff start) 99)
                             "kill must not be sent before timeout")
         (after 200 (is false "kill must be sent just after timeout")))))
   (proc-util/execute-proc!!
@@ -383,7 +383,7 @@
           start (System/nanoTime)]
       (timer/kill-after 100 pid)
       (process/receive!
-        [:EXIT pid :killed] (is (>= (ms-diff start) 100)
+        [:EXIT pid :killed] (is (>= (ms-diff start) 99)
                             "kill must not be sent before timeout")
         (after 200 (is false "kill must be sent just after timeout")))))
   (proc-util/execute-proc!!
@@ -394,7 +394,7 @@
           pid (process/spawn-link pfn)
           start (System/nanoTime)]
       (process/receive!
-        [:EXIT pid :killed] (is (>= (ms-diff start) 100)
+        [:EXIT pid :killed] (is (>= (ms-diff start) 99)
                                 "kill must not be sent before timeout")
         (after 200 (is false "kill must be sent just after timeout"))))))
 
@@ -407,7 +407,7 @@
           start (System/nanoTime)]
       (timer/kill-after 100 pid)
       (process/receive!
-        [:EXIT pid :killed] (is (>= (ms-diff start) 100)
+        [:EXIT pid :killed] (is (>= (ms-diff start) 99)
                                 "kill must not be sent before timeout")
         (after 200 (is false "kill must be sent just after timeout")))))
   (proc-util/execute-proc!!
@@ -420,7 +420,7 @@
           start (System/nanoTime)]
       (timer/kill-after 200 pid2)
       (process/receive!
-        [:EXIT pid :killed] (is (>= (ms-diff start) 200)
+        [:EXIT pid :killed] (is (>= (ms-diff start) 199)
                                 "kill must not be sent before timeout")
         (after 300 (is false "kill must be sent just after timeout"))))))
 
@@ -450,7 +450,7 @@
       (timer/apply-interval 100 f [:msg])
       (dotimes [n 3]
         (process/receive!
-          :msg (is (>= (ms-diff start) (* 100 (inc n)))
+          :msg (is (>= (ms-diff start) (* 99 (inc n)))
                    "fn must not be applied before timeout")
           (after 200 (is false "fn must be applied just after timeout")))))))
 
@@ -552,7 +552,7 @@
       (timer/send-interval 100 pid :msg1)
       (dotimes [n 3]
         (process/receive!
-          :msg2 (is (>= (ms-diff start) (* 100 (inc n)))
+          :msg2 (is (>= (ms-diff start) (* 99 (inc n)))
                     "message must not be sent before timeout")
           (after 200 (is false "message must be sent just after timeout")))))))
 
