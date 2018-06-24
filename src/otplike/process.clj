@@ -41,10 +41,10 @@
   linking and some other operations require sending signals (not messages)
   to involved processes."
   (:require [clojure.core.async :as async :refer [<!! <! >! put! go go-loop]]
-            [clojure.core.async.impl.protocols :as ap]
             [clojure.core.match :refer [match]]
             [clojure.data.int-map :as imap]
             [clojure.spec.alpha :as spec]
+            [otplike.async-ext :as async-ext]
             [otplike.util :as u]))
 
 (when (and (= 1 (:major *clojure-version*))
@@ -165,9 +165,9 @@
   (let [id (swap! *next-pid inc)
         pid (Pid. id)
         start-ns (System/nanoTime)
-        message-chan (async/chan (async/sliding-buffer 1))
+        message-chan (async-ext/notify-chan) ;;(async/chan (async/sliding-buffer 1))
         message-q (atom (u/queue))
-        control-chan (async/chan (async/sliding-buffer 1))
+        control-chan (async-ext/notify-chan) ;;(async/chan (async/sliding-buffer 1))
         control-q (atom (u/queue))
         exit-reason (atom nil)
         status (atom :running)

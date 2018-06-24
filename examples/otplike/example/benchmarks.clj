@@ -20,7 +20,7 @@
 
 #_(time (start-ring 100000))
 
-;---
+;;---
 
 (process/proc-defn proc1 [n done]
   (if (= 0 n)
@@ -38,7 +38,7 @@
 
 #_(time (start-ring:no-parent 100000))
 
-;---
+;;---
 
 (process/proc-defn proc2 [] :ok)
 
@@ -64,7 +64,7 @@
 
 #_(time (start-go 2000000))
 
-;---
+;;---
 
 (process/proc-defn proc3 []
   (process/receive! pid (! pid :ok)))
@@ -80,7 +80,7 @@
 
 #_(time (start-spawn:ping-pong 1000000))
 
-;---
+;;---
 
 (process/proc-defn proc4 [parent]
   (process/receive!
@@ -98,21 +98,26 @@
           1 (println "done" n0)
           n (recur (dec n)))))))
 
+;; using standart channels with sliding buffer - 34s
+;; using NotifyChannel - 27s
 #_(time (start-ping-pong 1000000))
 
-;---
+;;---
 
 (process/proc-defn node [parent]
   (process/receive!
-    [:spread 1] (! parent [:result 1])
-    [:spread n] (let [args [(process/self)]
-                      msg [:spread (dec n)]]
-                  (! (process/spawn node args) msg)
-                  (! (process/spawn node args) msg)
-                  (process/receive!
-                    [:result r1]
-                    (process/receive!
-                      [:result r2] (! parent [:result (+ 1 r1 r2)]))))))
+    [:spread 1]
+    (! parent [:result 1])
+
+    [:spread n]
+    (let [args [(process/self)]
+          msg [:spread (dec n)]]
+      (! (process/spawn node args) msg)
+      (! (process/spawn node args) msg)
+      (process/receive!
+        [:result r1]
+        (process/receive!
+          [:result r2] (! parent [:result (+ 1 r1 r2)]))))))
 
 (defn start-process-tree [depth]
   (proc-util/execute-proc!!
@@ -123,14 +128,39 @@
 ;; On my machine (Core i7 2.6GHz, LPDDR3 2133MHz, java 10.0.1)
 ;;; Pony - 0.7s
 ;;; Erlang - 1.4s
-;;; otplike - ~40s
+;;; otplike - ~36s
 #_(time (start-process-tree 20))
 
 #_(let [tref (otplike.trace/event some? #(str %))]
     (time (start-process-tree 18))
     (otplike.trace/untrace tref))
 
-#_(def tref (process/trace ptrace/crashed? println))
+;;---
+
+(process/proc-defn linking-node [parent]
+  (process/receive!
+    [:spread 1]
+    (! parent [:result 1])
+
+    [:spread n]
+    (let [args [(process/self)]
+          msg [:spread (dec n)]]
+      (! (process/spawn-link linking-node args) msg)
+      (! (process/spawn-link linking-node args) msg)
+      (process/receive!
+        [:result r1]
+        (process/receive!
+          [:result r2] (! parent [:result (+ 1 r1 r2)]))))))
+
+(defn start-link-process-tree [depth]
+  (proc-util/execute-proc!!
+    (! (process/spawn-link linking-node [(process/self)]) [:spread depth])
+    (process/receive!
+      [:result r] [:nodes (inc r)])))
+
+#_(time (start-link-process-tree 20))
+
+#_(def tref (process/trace some? clojure.pprint/pprint))
 #_(process/untrace tref)
 
 (defn -main [& args]
