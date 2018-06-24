@@ -81,6 +81,18 @@
          (= id (.id ^TRef other)))))
 (alter-meta! #'->TRef assoc :private true)
 
+(defprotocol IProcFn
+  (call [_ pid args]))
+
+(deftype TProcFn [f name]
+  IProcFn
+  (call [this pid args]
+    (apply f this pid args))
+  Object
+  (toString [_]
+    (format "TProcFn<%s>" name)))
+(alter-meta! #'->TProcFn assoc :no-doc true)
+
 ;; ====================================================================
 ;; Specs
 
@@ -292,14 +304,13 @@
   (swap! (.exit-reason process) #(if (nil? %) reason %))
   (async/put! (.control-chan process) :go))
 
-(defn- start-process [^TProcess process proc-func args register link?]
-  {:pre [(fn? proc-func)
-         (sequential? args)]
-   :post []}
-  (let [^Pid pid (.pid process)]
-    (send-trace-event *self* :spawn {:fn (-> proc-func meta :name) :args args})
+(defn- start-process [^TProcess process ^TProcFn proc-fn args register link?]
+  (let [^Pid pid (.pid process)
+        ^Pid self-pid *self*]
+    (send-trace-event self-pid :spawn {:fn (.name proc-fn) :args args})
     (when link?
-      (let [^TProcess other-process (self-process)
+      (let [^TProcess other-process (or (@*processes (.id self-pid))
+                                        (exit :noproc))
             other-pid (.pid other-process)]
         (swap! (.linked process) conj other-pid)
         (let [[old] (swap-vals! (.linked other-process) #(if % (conj % pid)))]
@@ -318,28 +329,25 @@
             (exit :already-registered))
           (swap! *registered assoc register pid)
           (swap! *registered-reverse assoc (.id pid) register))
-        (apply proc-func args)
+        (call proc-fn pid args)
         (catch Throwable t
           (!exit process (ex->reason t))
           (swap! *processes dissoc (.id pid)))))))
 
-(defn- spawn*
-  [proc-func
-   args
-   {:keys [flags link register] :as options}]
+(defn- spawn* [^TProcFn proc-fn args {:keys [flags link register] :as options}]
   {:post [(pid? %)]}
-  (u/check-args [(fn? proc-func)
-                 (sequential? args)
+  (u/check-args [(sequential? args)
+                 (instance? TProcFn proc-fn)
                  (map? options) ;FIXME check for unknown options
                  (or (nil? link) (boolean? link))
                  (or (nil? flags) (map? flags)) ;FIXME check for unknown flags
                  (not (pid? register))])
   (let [flags (or flags {})
-        ^TProcess process (new-process [proc-func args] flags)
+        ^TProcess process (new-process [(.name proc-fn) args] flags)
         control-chan (.control-chan process)
         control-q (.control-q process)
         exit-reason (.exit-reason process)]
-    (start-process process proc-func args register link)
+    (start-process process proc-fn args register link)
     (go-loop []
       (let [result
             (loop []
@@ -603,34 +611,41 @@
                   ~match-clauses
                   ~timeout-body)))))))))
 
-(defn ^:no-doc !finish [reason]
-  (let [^Pid self-pid *self*
-        process (@*processes (.id self-pid))]
+(defn ^:no-doc !finish [^Pid self-pid reason]
+  (let [process (@*processes (.id self-pid))]
     (send-trace-event self-pid :exit {:reason reason})
     (!exit process reason)
     (swap! *processes dissoc (.id self-pid))))
 
-
 (defmacro ^:no-doc proc-fn*
-  [fname args & body]
+  [proc-fn-name fname args & body]
   (assert (vector? args)
           (format "Parameter declaration %s should be a vector" args))
   (assert (not (some #{'&} args))
           (format "Variadic arguments are not supported" args))
-  (let [arg-names (vec (repeatedly (count args) #(gensym "argname")))
-        fname (or fname (gensym "proc-fn-"))
-        ns-fname (symbol (str *ns* "/" fname))]
-    `(with-meta
-       (fn ~fname ~arg-names
-         (send-trace-event *self* :spawned {:fn '~ns-fname :args ~arg-names})
-         (go
-           (try
-             (loop ~(vec (interleave args arg-names))
-               ~@body)
-             (!finish :normal)
-             (catch Throwable t#
-               (!finish (ex->reason t#))))))
-       {:name '~ns-fname})))
+  (let [proc-fn-name (or proc-fn-name
+                         (gensym (if fname (str (name fname) "_") "proc-fn_")))
+        arg-names (vec (repeatedly (count args) #(gensym "argname")))
+        this-proc-fn-sym (gensym "this-proc-fn-")
+        self-pid-sym (gensym "self-pid-")
+        fn-arg-names (into [this-proc-fn-sym self-pid-sym] arg-names)
+        ns-fname (symbol (str *ns* "/" proc-fn-name))]
+    `(->TProcFn
+      (fn ~@(if fname [fname]) ~fn-arg-names
+        (send-trace-event
+         ~self-pid-sym :spawned {:fn '~ns-fname :args ~arg-names})
+        (go
+          (try
+            ~(if fname
+               `(let [~fname ~this-proc-fn-sym]
+                  (loop ~(vec (interleave args arg-names))
+                    ~@body))
+               `(loop ~(vec (interleave args arg-names))
+                 ~@body))
+            (!finish ~self-pid-sym :normal)
+            (catch Throwable t#
+              (!finish ~self-pid-sym (ex->reason t#)))))) 
+      '~ns-fname)))
 
 (defmacro ^:no-doc await* [park? x]
   (let [take (if park? `<! `<!!)
@@ -704,9 +719,11 @@
   Throws when called not in process context."
   []
   {:post [(pid? %)]}
-  (if-let [^TProcess process (@*processes (.id ^Pid *self*))]
-    (if (nil? @(.exit-reason process))
-      *self*
+  (if-let [^Pid self-pid *self*]
+    (if-let [^TProcess process (@*processes (.id self-pid))]
+      (if (nil? @(.exit-reason process))
+        self-pid
+        (exit :noproc))
       (exit :noproc))
     (exit :noproc)))
 
@@ -1104,8 +1121,10 @@
 
 (defmacro proc-fn
   "Creates process function which can be passed to `spawn`."
-  [args & body]
-  `(proc-fn* nil ~args ~@body))
+  [name-or-args & args-body]
+  (if (symbol? name-or-args)
+    `(proc-fn* nil ~name-or-args ~(first args-body) ~@(rest args-body))
+    `(proc-fn* nil nil ~name-or-args ~@args-body)))
 
 (defmacro proc-defn
   "The same as `(def fname (proc-fn args body))`."
@@ -1117,7 +1136,7 @@
         arglists (list 'quote (list args))
         fname (vary-meta fname assoc :arglists arglists)
         fname (if doc-string (vary-meta fname assoc :doc doc-string) fname)]
-    `(def ~fname (proc-fn* ~fname ~args ~@body))))
+    `(def ~fname (proc-fn* ~fname ~fname ~args ~@body))))
 
 (defmacro proc-defn-
   "The same as proc-defn, but defines a private var."
