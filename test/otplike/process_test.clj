@@ -2344,16 +2344,16 @@
               (is (process/selective-receive! :msg3 :ok)
                   "selective-receive! must receive the matching message")
               (is (= :msg1 (process/receive! msg msg))
-                  (str "selective-receive! must  preserve the order"
+                  (str "selective-receive! must preserve the order"
                        " of unmatching messages"))
               (is (= :msg2 (process/receive! msg msg))
-                  (str "selective-receive! must  preserve the order"
+                  (str "selective-receive! must preserve the order"
                        " of unmatching messages"))
               (is (= :msg4 (process/receive! msg msg))
-                  (str "selective-receive! must  preserve the order"
+                  (str "selective-receive! must preserve the order"
                        " of unmatching messages"))
               (is (= :timeout (<! (await-message 50)))
-                  (str "selective-receive! must  preserve the order"
+                  (str "selective-receive! must preserve the order"
                        " of unmatching messages"))
               (async/close! done))
         pid (process/spawn pfn)]
@@ -2368,15 +2368,15 @@
                     :unmatching false
                     (after 100
                       :ok))
-                  "selective-receive! must not receive the unmatching message")
+                  "selective-receive! must not receive unmatching message")
               (is (= :msg1 (process/receive! msg msg))
-                  (str "selective-receive! must  preserve the order"
+                  (str "selective-receive! must preserve the order"
                        " of unmatching messages"))
               (is (= :msg2 (process/receive! msg msg))
-                  (str "selective-receive! must  preserve the order"
+                  (str "selective-receive! must preserve the order"
                        " of unmatching messages"))
               (is (= :msg3 (process/receive! msg msg))
-                  (str "selective-receive! must  preserve the order"
+                  (str "selective-receive! must preserve the order"
                        " of unmatching messages"))
               (async/close! done))
         pid (process/spawn pfn)]
