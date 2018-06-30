@@ -641,11 +641,12 @@
 ;; ====================================================================
 ;; (registered [])
 
-(deftest ^:serial registered-returns-empty-seq-when-nothing-registered
+(deftest ^:eftest/synchronized
+  registered-returns-empty-seq-when-nothing-registered
   (is (empty? (process/registered))
       "registered must return empty seq of names when nothing registered"))
 
-(deftest ^:serial registered-returns-registered-names
+(deftest ^:eftest/synchronized registered-returns-registered-names
   (let [n1 (uuid-keyword)
         n2 (uuid-keyword)
         n3 (uuid-keyword)
@@ -659,7 +660,8 @@
       "registered must return registered names")
     (async/close! done)))
 
-(deftest ^:serial registered-returns-empty-seq-after-registered-terminated
+(deftest ^:eftest/synchronized
+  registered-returns-empty-seq-after-registered-terminated
   (let [pfn (proc-fn [])]
     (process/spawn-opt pfn {:register (uuid-keyword)})
     (process/spawn-opt pfn {:register (uuid-keyword)})
