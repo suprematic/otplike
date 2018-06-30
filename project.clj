@@ -46,7 +46,8 @@
              {:dependencies [[org.clojure/clojure "1.9.0"]]}
 
              :repl
-             {:dependencies [[org.clojure/math.combinatorics "0.1.4"]]
+             {:dependencies [[org.clojure/math.combinatorics "0.1.4"]
+                             [eftest "0.5.2"]]
               :source-paths  ["src" "examples"]}}
 
   :codox
