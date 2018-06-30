@@ -207,15 +207,21 @@
     (when-let [^Pid pid (whereis id)]
       (@*processes (.id pid)))))
 
+(defn- !control* [^TProcess process message]
+  (swap! (.control-q process) conj message)
+  (async/put! (.control-chan process) :go-control))
+
 (defn- !control [^Pid pid message]
   {:pre [(pid? pid)
          (vector? message) (keyword? (first message))]
    :post [(or (true? %) (false? %))]}
   (if-let [^TProcess process (@*processes (.id pid))]
-    (do
-      (swap! (.control-q process) conj message)
-      (async/put! (.control-chan process) :go))
+    (!control* process message)
     false))
+
+(defn- !* [^TProcess process msg]
+  (swap! (.message-q process) conj msg)
+  (async/put! (.message-chan process) :go-!))
 
 (defn- monitor-message [mref object reason]
   {:pre [(ref? mref)]}
@@ -272,9 +278,7 @@
         (locking my-mrefs
           (let [[old] (swap-vals! my-mrefs dissoc mref)]
             (when-let [[_ obj] (get old mref)]
-              (swap!
-               (.message-q process) conj [{} (monitor-message mref obj reason)])
-              (async/put! (.message-chan process) :go))))
+              (!* process [{} (monitor-message mref obj reason)]))))
         ::continue)
 
       :else
@@ -302,7 +306,7 @@
 
 (defn ^:no-doc !exit [^TProcess process reason]
   (swap! (.exit-reason process) #(if (nil? %) reason %))
-  (async/put! (.control-chan process) :go))
+  (async/put! (.control-chan process) :go-exit))
 
 (defn- start-process [^TProcess process ^TProcFn proc-fn args register link?]
   (let [^Pid pid (.pid process)
@@ -381,12 +385,13 @@
 (defn ^:no-doc message-chan* [^TProcess p]
   (.message-chan p))
 
-(defn ^:no-doc change-status [^TProcess process status]
-  (let [^:once swap-fn
-        #(case %
-           :running (case status :waiting :waiting)
-           :waiting (case status :running :running))]
-    (swap! (.status process) swap-fn)))
+(defn- swap-status [status new-status]
+  (case status
+    :running (case new-status :waiting :waiting)
+    :waiting (case new-status :running :running)))
+
+(defn ^:no-doc change-status [^TProcess process new-status]
+  (swap! (.status process) swap-status new-status))
 
 (defmacro ^:no-doc select-message [timeout match-clauses or-body]
   (let [patterns (take-nth 2 match-clauses)
@@ -626,6 +631,7 @@
   (let [proc-fn-name (or proc-fn-name
                          (gensym (if fname (str (name fname) "_") "proc-fn_")))
         arg-names (vec (repeatedly (count args) #(gensym "argname")))
+        loop-args (vec (interleave args arg-names))
         this-proc-fn-sym (gensym "this-proc-fn-")
         self-pid-sym (gensym "self-pid-")
         fn-arg-names (into [this-proc-fn-sym self-pid-sym] arg-names)
@@ -638,10 +644,10 @@
           (try
             ~(if fname
                `(let [~fname ~this-proc-fn-sym]
-                  (loop ~(vec (interleave args arg-names))
+                  (loop ~loop-args
                     ~@body))
-               `(loop ~(vec (interleave args arg-names))
-                 ~@body))
+               `(loop ~loop-args
+                  ~@body))
             (!finish ~self-pid-sym :normal)
             (catch Throwable t#
               (!finish ~self-pid-sym (ex->reason t#)))))) 
@@ -749,9 +755,7 @@
   (let [wrapped-message [(if (bound? #'*message-context*)
                            @*message-context* {}) message]]
     (if-let [^TProcess process (find-process dest)]
-      (do
-        (swap! (.message-q process) conj wrapped-message)
-        (async/put! (.message-chan process) :go))
+      (!* process wrapped-message)
       false)))
 
 (defn exit
@@ -870,8 +874,8 @@
                        (.linked other-process) #(if % (conj % my-pid)))]
             (when (nil? old)
               (swap! (.linked my-process) disj pid)
-              (!control my-pid [:exit pid :noproc]))))
-        (!control my-pid [:exit pid :noproc])))
+              (!control* my-process [:exit pid :noproc]))))
+        (!control* my-process [:exit pid :noproc])))
     true))
 
 (defn unlink
