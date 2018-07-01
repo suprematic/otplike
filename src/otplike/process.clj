@@ -417,7 +417,9 @@
                    [m# res# new-mq#]))
                (do
                  (change-status process# :waiting)
-                 (let [[res# ch#] (async/alts! [message-chan# timeout-chan#])]
+                 (let [[res# ch#] (async/alts!
+                                   [message-chan# timeout-chan#]
+                                   :priority true)]
                    (change-status process# :running)
                    (if res#
                      (recur new-mq#)
@@ -571,7 +573,9 @@
                       res#)
                     (do
                       (change-status process# :waiting)
-                      (let [[m# ch#] (~alts [~mchan-sym ~timeout-sym])]
+                      (let [[m# ch#] (~alts
+                                      [~mchan-sym ~timeout-sym]
+                                      :priority true)]
                         (change-status process# :running)
                         (match [m# ch#]
                           [nil ~mchan-sym] :noproc
