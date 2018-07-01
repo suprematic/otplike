@@ -509,9 +509,11 @@
     (match (last clauses)
       (['after timeout & timeout-body] :seq)
       (let [match-clauses (butlast clauses)]
-        (case timeout
-          0 `(select-message-or ~match-clauses ~timeout-body)
-          :infinity `(select-message-infinitely ~match-clauses)
+        (cond
+          (= timeout 0) `(select-message-or ~match-clauses ~timeout-body)
+          (= timeout :infinity) `(select-message-infinitely ~match-clauses)
+          (int? timeout) `(select-message ~timeout ~match-clauses ~timeout-body)
+          :else
           `(let [timeout# ~timeout]
              (case timeout#
                0 (select-message-or ~match-clauses ~timeout-body)
