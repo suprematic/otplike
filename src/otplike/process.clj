@@ -133,7 +133,7 @@
 (alter-meta! #'->TraceMessage assoc :private true)
 (alter-meta! #'map->TraceMessage assoc :private true)
 
-(defn ^:no-doc send-trace-event [^Pid pid kind extra]
+(defn ^:no-doc trace-event [^Pid pid kind extra]
   (if-let [handlers (seq (vals @*trace-handlers))]
     (let [reg-name (if pid (@*registered-reverse (.id pid)))]
       (doseq [handler handlers]
@@ -290,7 +290,7 @@
         message-chan (.message-chan process)
         exit-reason (.exit-reason process)]
     (swap! exit-reason #(if (nil? %) reason %))
-    (send-trace-event pid :exiting {:reason reason})
+    (trace-event pid :exiting {:reason reason})
     (when-let [register (@*registered-reverse (.id pid))]
       (swap! *registered dissoc register)
       (swap! *registered-reverse dissoc (.id pid)))
@@ -311,7 +311,7 @@
 (defn- start-process [^TProcess process ^TProcFn proc-fn args register link?]
   (let [^Pid pid (.pid process)
         ^Pid self-pid *self*]
-    (send-trace-event self-pid :spawn {:fn (.name proc-fn) :args args})
+    (trace-event self-pid :spawn {:fn (.name proc-fn) :args args})
     (when link?
       (let [^TProcess other-process (or (@*processes (.id self-pid))
                                         (exit :noproc))
@@ -430,7 +430,7 @@
        (if (identical? msg# :timeout)
          (do ~@or-body)
          (let [[context# ~msg-sym] msg#]
-           (send-trace-event (.pid process#) :receive {:message ~msg-sym})
+           (trace-event (.pid process#) :receive {:message ~msg-sym})
            (update-message-context! context#)
            (case clause-n#
              ~@case-clauses))))))
@@ -465,7 +465,7 @@
                      (exit :noproc))))))]
        (swap! message-q# #(into new-mq# %))
        (let [[context# ~msg-sym] msg#]
-         (send-trace-event (.pid process#) :receive {:message ~msg-sym})
+         (trace-event (.pid process#) :receive {:message ~msg-sym})
          (update-message-context! context#)
          (case clause-n#
            ~@case-clauses)))))
@@ -496,7 +496,7 @@
          (do ~@or-body)
          (let [[[context# ~msg-sym] clause-n# new-mq#] res#]
            (swap! message-q# #(into new-mq# %))
-           (send-trace-event (.pid process#) :receive {:message ~msg-sym})
+           (trace-event (.pid process#) :receive {:message ~msg-sym})
            (update-message-context! context#)
            (case clause-n#
              ~@case-clauses))))))
@@ -526,7 +526,7 @@
      (if-let [[context# msg#] (peek @message-q#)]
        (do
          (swap! message-q# pop)
-         (send-trace-event (.pid process#) :receive {:message msg#})
+         (trace-event (.pid process#) :receive {:message msg#})
          (update-message-context! context#)
          (match msg# ~@match-clauses))
        (do ~@or-body))))
@@ -554,7 +554,7 @@
        (if (identical? res# :noproc)
          (exit :noproc)
          (let [[~context-sym ~msg-sym] res#]
-           (send-trace-event (.pid process#) :receive {:message ~msg-sym})
+           (trace-event (.pid process#) :receive {:message ~msg-sym})
            (update-message-context! ~context-sym)
            (match ~msg-sym ~@match-clauses))))))
 
@@ -592,7 +592,7 @@
 
          :else
          (let [[~context-sym ~msg-sym] res#]
-           (send-trace-event (.pid process#) :receive {:message ~msg-sym})
+           (trace-event (.pid process#) :receive {:message ~msg-sym})
            (update-message-context! ~context-sym)
            (match ~msg-sym ~@match-clauses))))))
 
@@ -624,7 +624,7 @@
 
 (defn ^:no-doc !finish [^Pid self-pid reason]
   (let [process (@*processes (.id self-pid))]
-    (send-trace-event self-pid :exit {:reason reason})
+    (trace-event self-pid :exit {:reason reason})
     (!exit process reason)
     (swap! *processes dissoc (.id self-pid))))
 
@@ -644,8 +644,7 @@
         ns-fname (symbol (str *ns* "/" proc-fn-name))]
     `(->TProcFn
       (fn ~@(if fname [fname]) ~fn-arg-names
-        (send-trace-event
-         ~self-pid-sym :spawned {:fn '~ns-fname :args ~arg-names})
+        (trace-event ~self-pid-sym :spawned {:fn '~ns-fname :args ~arg-names})
         (go
           (try
             ~(if fname
@@ -757,7 +756,7 @@
   [dest message]
   {:post [(or (true? %) (false? %))]}
   (u/check-args [(some? dest)])
-  (send-trace-event *self* :send {:destination dest :message message})
+  (trace-event *self* :send {:destination dest :message message})
   (let [wrapped-message [(if (bound? #'*message-context*)
                            @*message-context* {}) message]]
     (if-let [^TProcess process (find-process dest)]
