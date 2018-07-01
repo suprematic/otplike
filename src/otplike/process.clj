@@ -196,6 +196,13 @@
   (or (@*processes (.id ^Pid *self*))
       (exit :noproc)))
 
+(defn- alive?* [^TProcess process]
+  (nil? @(.exit-reason process)))
+
+(defn- require-alive [process]
+  (if-not (alive?* process)
+    (exit :noproc)))
+
 (defn- make-ref []
   (TRef. (swap! *refids inc)))
 
@@ -316,6 +323,7 @@
       (let [^TProcess other-process (or (@*processes (.id self-pid))
                                         (exit :noproc))
             other-pid (.pid other-process)]
+        (require-alive other-process)
         (swap! (.linked process) conj other-pid)
         (let [[old] (swap-vals! (.linked other-process) #(if % (conj % pid)))]
           (when (nil? old)
@@ -727,16 +735,12 @@
 
 (defn self
   "Returns the process identifier of the calling process.
-  Throws when called not in process context."
+  Throws when called not in process context, or process is not alive."
   []
   {:post [(pid? %)]}
-  (if-let [^Pid self-pid *self*]
-    (if-let [^TProcess process (@*processes (.id self-pid))]
-      (if (nil? @(.exit-reason process))
-        self-pid
-        (exit :noproc))
-      (exit :noproc))
-    (exit :noproc)))
+  (let [^TProcess process (self-process)]
+    (require-alive process)
+    (.pid process)))
 
 (defn whereis
   "Returns the process identifier with the registered name `reg-name`,
@@ -797,8 +801,8 @@
   Returns `true` if exit signal was sent (process was alive), `false`
   otherwise.
 
-  Throws when called not in process context, if `pid` is not a pid, or
-  reason is `nil`."
+  Throws when called not in process context, if calling process is not
+  alive, if `pid` is not a pid, or reason is `nil`."
   ([reason]
    (throw (ex-info "exit" {::exit-reason reason})))
   ([^Pid pid reason]
@@ -832,7 +836,8 @@
   [flag value]
   {:post []}
   (u/check-args [(keyword? flag)])
-  (if-let [^TProcess process (self-process)]
+  (let [^TProcess process (self-process)]
+    (require-alive process)
     (case flag
       :trap-exit
       (let [value (boolean value)
@@ -840,8 +845,7 @@
                    (.flags process) #(if % (assoc % :trap-exit value)))]
         (if (nil? old)
           (exit :noproc))
-        (-> old :trap-exit boolean)))
-    (exit :noproc)))
+        (-> old :trap-exit boolean)))))
 
 (defn registered
  "Returns a set of names of the processes that have been registered."
@@ -862,13 +866,14 @@
 
   Returns `true`.
 
-  Throws when called not in process context, or by exited process,
-  or `pid` is not a pid."
+  Throws when called not in process context, or calling process is
+  not alive, or `pid` is not a pid."
   [^Pid pid]
   {:post [(true? %)]}
   (u/check-args [(pid? pid)])
   (let [^TProcess my-process (self-process)
         my-pid (.pid my-process)]
+    (require-alive my-process)
     (if (= my-pid pid)
       true
       (if-let [^TProcess other-process (@*processes (.id pid))]
@@ -905,13 +910,14 @@
   it can be appropriate to clean up the message queue when trapping
   exits after the call to unlink.
 
-  Throws when called not in process context, or called by exited
-  process, or `pid` is not a pid."
+  Throws when called not in process context, or calling process
+  is not alive, or `pid` is not a pid."
   [^Pid pid]
   {:post [(true? %)]}
   (u/check-args [(pid? pid)])
   (let [^TProcess my-process (self-process)
         my-pid (.pid my-process)]
+    (require-alive my-process)
     (if (not= pid my-pid)
       (if-let [^TProcess other-process (@*processes (.id pid))]
         (let [[old] (swap-vals! (.linked my-process) disj pid)]
@@ -977,11 +983,13 @@
 
   Returns `monitor-ref`.
 
-  Throws when called not in process context."
+  Throws when called not in process context, or if calling process
+  is not alive."
   [pid-or-name]
   {:post [(ref? %)]}
   (let [^Pid other-pid (resolve-pid pid-or-name)
         ^TProcess my-process (self-process)
+        _ (require-alive my-process)
         ^Pid my-pid (.pid my-process)
         mref (make-ref)]
     (if other-pid
@@ -1027,13 +1035,15 @@
 
   Returns `true`.
 
-  Throws when called not in process context, `mref` is not a ref."
+  Throws when called not in process context, or calling process is
+  not alive, or `mref` is not a ref."
   ([mref]
    (demonitor mref {}))
   ([mref {flush? :flush}]
    {:post [(= true %)]}
    (u/check-args [(ref? mref)])
    (let [^TProcess my-process (self-process)
+         _ (require-alive my-process)
          my-refs (.monitors my-process)]
      (let [[old] (locking my-refs (swap-vals! my-refs dissoc mref))]
        (if-let [[^Pid other-pid] (get old mref)]
@@ -1077,7 +1087,8 @@
   calling process and the new process, atomically. Otherwise works
   like `spawn`.
 
-  Throws when called not in process context."
+  Throws when called not in process context, or calling process
+  is not alive."
   ([proc-func]
    (spawn-link proc-func []))
   ([proc-func args]
@@ -1234,7 +1245,7 @@
    (alive? *self*))
   ([^Pid pid]
    (if-let [^TProcess process (@*processes (.id pid))]
-     (nil? @(.exit-reason process))
+     (alive?* process)
      false)))
 
 (defn processes
