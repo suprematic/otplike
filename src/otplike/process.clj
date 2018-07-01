@@ -753,7 +753,7 @@
   "Sends a `message` to `dest`. `dest` can be a process identifier, or a
   registered name.
 
-  Returns `true` if `message` was sent (process was alive), false
+  Returns `true` if `message` was sent (`dest` process existed), false
   otherwise.
 
   Throws if any of arguments is `nil`."
@@ -798,8 +798,8 @@
   Notice that process can exit with other reason before exit signal is
   processed.
 
-  Returns `true` if exit signal was sent (process was alive), `false`
-  otherwise.
+  Returns `true` if exit signal was sent (`dest` process existed),
+  `false` otherwise.
 
   Throws when called not in process context, if calling process is not
   alive, if `pid` is not a pid, or reason is `nil`."
