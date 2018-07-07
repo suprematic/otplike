@@ -355,7 +355,7 @@
                  (or (nil? flags) (map? flags)) ;FIXME check for unknown flags
                  (not (pid? register))])
   (let [flags (or flags {})
-        ^TProcess process (new-process [(.name proc-fn) args] flags)
+        ^TProcess process (new-process [(.name proc-fn) (count args)] flags)
         control-chan (.control-chan process)
         control-q (.control-q process)
         exit-reason (.exit-reason process)]
