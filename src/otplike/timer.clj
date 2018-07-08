@@ -1,6 +1,12 @@
 (ns otplike.timer
   "This namespace contains helper functions to perform process-related
-  actions (like sending a message, or exit signal) with a delay."
+  actions (like sending a message, or exit signal) with a delay.
+
+  >**Warning!** The functions in this namespace use `core.async`'s
+  >timer internally. As of now the resolution of the timer is 10 ms.
+  >Which only says when the operation, waiting for the timeout,
+  >will be _queued_ for execution. The actual execution begins
+  >even later."
   (:require [clojure.core.match :refer [match]]
             [clojure.core.async :as async :refer [<! >! put! go go-loop]]
             [clojure.core.async.impl.protocols :as ap]

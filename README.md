@@ -89,8 +89,6 @@ _Leiningen_ dependency information:
 
 * A chain of N processes, when each next process is created by the previous
 one, holds amount of memory proportional to N until the **last** process' exit
-* Timers can fire with significant delay (up to 20 ms) for the first time
-after appilcation start
 
 ## Plans
 
