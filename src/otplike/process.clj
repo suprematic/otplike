@@ -684,6 +684,32 @@
                     (.value a#))]
          (reduce #(%2 %1) res# (.map-fns a#))))))
 
+(defn- process-info* [^TProcess process items info-tuples]
+  (if (not (empty? items))
+    (recur
+     process
+     (rest items)
+     (conj
+      info-tuples
+      (match (first items)
+        :links [:links @(.linked process)]
+        :monitors [:monitors (->> @(.monitors process) vals)]
+        :monitored-by [:monitored-by (->> @(.monitored-by process) vals)]
+        :registered-name [:registered-name
+                          (@*registered-reverse (.id ^Pid (.pid process)))]
+        :status [:status
+                 (if (nil? @(.exit-reason process))
+                   @(.status process)
+                   :exiting)]
+        :life-time-ms [:life-time-ms
+                       (quot (- (System/nanoTime) (.start-ns process)) 1000000)]
+        :initial-call [:initial-call (.initial-call process)]
+        :message-queue-len [:message-queue-len (count @(.message-q process))]
+        :messages [:messages (map second @(.message-q process))]
+        :flags [:flags @(.flags process)]
+        k (exit [:undefined-info-item k]))))
+    info-tuples))
+
 ;; ====================================================================
 ;; API
 
@@ -1259,22 +1285,14 @@
   []
   (map #(.pid ^TProcess %) (vals @*processes)))
 
-(defn process-info [^Pid pid]
-  (u/check-args [(pid? pid)])
-  (if-let [^TProcess process (@*processes (.id pid))]
-    (let [mq @(.message-q process)]
-      {:links @(.linked process)
-       :monitors (->> @(.monitors process) vals)
-       :monitored-by (->> @(.monitored-by process) vals)
-       :registered-name (@*registered-reverse (.id pid))
-       :status (if (nil? @(.exit-reason process))
-                 @(.status process)
-                 :exiting)
-       :life-time-ms (quot (- (System/nanoTime) (.start-ns process)) 1000000)
-       :initial-call (.initial-call process)
-       :message-queue-len (count mq)
-       :messages (map second mq)
-       :flags @(.flags process)})))
+(defn process-info
+  ([^Pid pid]
+   (process-info pid [:initial-call :status :message-queue-len :links :flags]))
+  ([^Pid pid item-or-list]
+   (u/check-args [(pid? pid)])
+   (if-let [process (@*processes (.id pid))]
+     (let [items (if (coll? item-or-list) item-or-list [item-or-list])]
+       (process-info* process items [])))))
 
 (defn trace [pred handler]
   (let [t-ref (make-ref)
