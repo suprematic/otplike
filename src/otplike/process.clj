@@ -1286,6 +1286,101 @@
   (map #(.pid ^TProcess %) (vals @*processes)))
 
 (defn process-info
+  "## `(process-info pid)`
+
+  Returns a map containing information about the process identified
+  by `pid`, or `nil` if the process is not alive.
+
+  All items are **not** mandatory. The set of info-tuples being part
+  of the result can be changed without prior notice.
+
+  The following info-tuples are part of the result: `:initial-call`,
+  `:status`, `:message-queue-len`, `:links`, `:flags`.
+
+  If the process identified by `pid` has a registered name, also
+  an info-tuple for `:registered-name` is included.
+
+  >**Warning!** This function is intended for debugging only.
+  >For all other purposes, use `(process-info pid item-or-list)`.
+
+  Throws if `pid` is not a pid.
+
+  ## `(process-info pid item-or-list)`
+
+  Returns information about the process identified by `pid`, as
+  specified by into-key or info-key list. Returns `nil` if the
+  process is not alive.
+
+  If the process is alive and a single info-key is specified, the
+  returned value is the corresponding info-tuple.
+
+  ```clojure
+  (process-info pid :messages)
+  => [:messages [:msg1 [:msg2] {:msg3 3}]]
+  ```
+
+  If a list of info-keys is specified, the result is a list of
+  info-tuples. The info-tuples in the list are included in the same
+  order as the keys were included in info-key list. Valid items can
+  be included multiple times in item-key list.
+
+  Info-tuples:
+
+  `[:initial-call [fn-symbol arity]]`
+
+  `fn-symbol`, `arity` is the initial function call with which
+  the process was spawned.
+
+  `[:links pids]`
+
+  `pids` is a list of process identifiers, with processes to which
+  the process has a link.
+
+  `[:message-queue-len message-queue-len]`
+
+  `message-queue-len` is the number of messages currently in
+  the message queue of the process. This is the length of the list
+  `message-queue` returned as the information item messages
+  (see below).
+
+  `[:messages message-queue]`
+
+  `message-queue` is a list of the messages to the process,which
+  have not yet been processed.
+
+  `[:monitored-by pids]`
+
+  A list of process identifiers monitoring the process.
+
+  `[:monitors monitors]`
+
+  A list of monitors that are active for the process.
+  The list consists of pids and registered names.
+
+  `[:registered-name reg-name]`
+
+  `reg-name` is the registered process name or `nil` if the process
+  has no registered name.
+
+  `[:status status]`
+
+  `status` is the status of the process and is one of the following:
+
+  - `:exiting`
+  - `:waiting` (for a message)
+  - `:running`
+
+  `[:trace trace-flags]`
+
+  A map of trace flags set for the process.
+  _This info-tuple is not available now but it is reserved for
+  future._
+
+  `[:flags flags]`
+
+  A map of flags set for the process (e.g., `{:trap-exit true}`).
+
+  Throws if `pid` is not a pid, or specified info-key doesn't exist."
   ([^Pid pid]
    (process-info pid [:initial-call :status :message-queue-len :links :flags]))
   ([^Pid pid item-or-list]
