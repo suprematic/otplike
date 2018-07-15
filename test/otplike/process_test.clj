@@ -2451,14 +2451,41 @@
 ;; ====================================================================
 ;; (alive?)
 
-(deftest alive?-returns-information-about-current-process
-  )
+(def-proc-test alive?-returns-information-about-current-process
+  (let [done1 (async/chan)
+        done2 (async/chan)
+        done (async/chan)
+        pid (process/spawn
+             (proc-fn []
+               (is (process/alive?)
+                   "alive? must return true when process is alive")
+               (async/close! done1)
+               (is (await-completion! done2 100))
+               (async/<! (async/timeout 50))
+               (is (not (process/alive?))
+                   "alive? must return false when process is exiting")
+               (async/close! done)))]
+    (await-completion! done1 100)
+    (process/exit pid :test)
+    (async/close! done2)
+    (await-completion! done 1000)))
 
 ;; ====================================================================
 ;; (alive? pid)
 
-(deftest alive?-returns-information-about-pid
-  )
+(def-proc-test alive?-returns-information-about-pid
+  (let [done (async/chan)
+        pid (process/spawn (proc-fn []
+                             (is (await-completion! done 1000))))]
+    (is (process/alive? pid) "alive? must return true when process is alive")
+    (process/exit pid :test)
+    (async/<! (async/timeout 50))
+    (is (not (process/alive? pid))
+        "alive? must return false when process is exiting")
+    (async/close! done)
+    (async/<! (async/timeout 50))
+    (is (not (process/alive? pid))
+        "alive? must return false when process has exited")))
 
 ;; ====================================================================
 ;; (map-async f async-value)
