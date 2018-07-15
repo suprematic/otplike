@@ -2439,14 +2439,48 @@
 ;; ====================================================================
 ;; (processes)
 
-(deftest processes-returns-a-list-of-pids-of-all-existing-processes
-  )
+(deftest processes-returns-a-list-of-pids-including-alive-process-pid
+  (let [done (async/chan)
+        pid1 (process/spawn (proc-fn [] (is (await-completion! done 1000))))
+        pid2 (process/spawn (proc-fn [] (is (await-completion! done 1000))))
+        pids (set (process/processes))]
+    (is (contains? pids pid1)
+        (str "list of pids returned by (processes) must contain"
+             " the pid of alive process"))
+    (is (contains? pids pid2)
+        (str "list of pids returned by (processes) must contain"
+             " the pid of alive process"))
+    (async/close! done)))
 
 (deftest processes-doesnot-return-exited-process-pids
-  )
+  (let [done (async/chan)
+        pid1 (process/spawn (proc-fn []))
+        pid2 (process/spawn (proc-fn []))
+        _ (Thread/sleep 50)
+        pids (set (process/processes))]
+    (is (not (contains? pids pid1))
+        (str "list of pids returned by (processes) must not contain"
+             " the pid of existed process"))
+    (is (not (contains? pids pid2))
+        (str "list of pids returned by (processes) must not contain"
+             " the pid of exited process"))
+    (async/close! done)))
 
-(deftest processes-returns-a-list-with-exiting-process-pids-included
-  )
+(def-proc-test processes-returns-a-list-with-exiting-process-pids-included
+  (let [done (async/chan)
+        pid1 (process/spawn (proc-fn [] (is (await-completion! done 1000))))
+        pid2 (process/spawn (proc-fn [] (is (await-completion! done 1000))))]
+    (process/exit pid1 :test)
+    (process/exit pid2 :test)
+    (<! (async/timeout 50))
+    (let [pids (set (process/processes))]
+      (is (contains? pids pid1)
+          (str "list of pids returned by (processes) must contain"
+               " the pid of exiting process"))
+      (is (contains? pids pid2)
+          (str "list of pids returned by (processes) must contain"
+               " the pid of exiting process")))
+    (async/close! done)))
 
 ;; ====================================================================
 ;; (alive?)
