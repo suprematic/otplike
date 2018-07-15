@@ -193,8 +193,10 @@
 (defn ^:no-doc self-process
   []
   {:post [(instance? TProcess %)]}
-  (or (@*processes (.id ^Pid *self*))
-      (exit :noproc)))
+  (if-let [self-pid *self*]
+    (or (@*processes (.id ^Pid self-pid))
+        (exit :noproc))
+    (exit :noproc)))
 
 (defn- alive?* [^TProcess process]
   (nil? @(.exit-reason process)))
