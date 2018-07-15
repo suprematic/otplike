@@ -803,8 +803,7 @@
   **When called with two arguments (pid and reason)**
 
   Sends an exit signal with the reason `reason` to the process
-  identified by `pid`. If `pid` is not provided exits the calling
-  process immediately.
+  identified by `pid`.
 
   If reason is any term, except `:normal` or `:kill`:
 
