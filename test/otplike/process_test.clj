@@ -30,6 +30,9 @@
   (is (thrown? Exception (process/self))
       "self must throw when called not in process context"))
 
+(deftest self-fails-when-process-is-exiting
+  )
+
 ;; ====================================================================
 ;; (pid? [term])
 
@@ -543,6 +546,9 @@
     (process/exit pid :abnormal)
     (await-completion! done 100)))
 
+(deftest exit-fails-when-called-by-exiting-process
+  )
+
 ;; ====================================================================
 ;; (flag [flag value])
 
@@ -642,6 +648,9 @@
       "flag must throw when called not in process context")
   (is (thrown? Exception (process/flag :trap-exit false))
       "flag must throw when called not in process context"))
+
+(deftest flag-fails-when-called-by-exiting-process
+  )
 
 ;; ====================================================================
 ;; (registered [])
@@ -936,6 +945,9 @@
     (process/spawn-opt pfn {:flags {:trap-exit true}})
     (await-completion!! done 100)))
 
+(deftest link-fails-when-called-by-exiting-process
+  )
+
 ;; ====================================================================
 ;; (unlink [pid])
 
@@ -1121,6 +1133,9 @@
                (async/close! done))]
     (process/spawn pfn2)
     (await-completion!! done 200)))
+
+(deftest unlink-fails-when-called-by-exiting-process
+  )
 
 ;; ====================================================================
 ;; (spawn-opt [proc-fun args options])
@@ -1433,6 +1448,9 @@
     (process/spawn pfn1)
     (await-completion! done 200)))
 
+(deftest spawn-link-fails-when-called-by-exiting-process
+  )
+
 ; TODO check if spawn-link works like spawn
 
 ;; ====================================================================
@@ -1732,6 +1750,9 @@
     (process/exit pid :abnormal)
     (await-completion! done 50)))
 
+(deftest monitor-fails-when-called-by-exiting-process
+  )
+
 ;; ====================================================================
 ;; (demonitor [mref])
 
@@ -1953,6 +1974,9 @@
     (process/spawn-opt pfn {:register reg-name})
     (await-completion!! done 150)))
 
+(deftest demonitor-fails-when-called-by-exiting-process
+  )
+
 ;; ====================================================================
 ;; (demonitor [mref opts])
 
@@ -2120,6 +2144,9 @@
     (<!! (async/timeout 50))
     (async/close! done1)
     (await-completion!! done2 50)))
+
+(deftest receive!-fails-when-called-by-exiting-process
+  )
 
 ;; ====================================================================
 ;; (async [& body]) / (await x)
@@ -2385,5 +2412,131 @@
     (! pid :msg3)
     (await-completion!! done 250)))
 
+(deftest selective-receive!-fails-when-called-by-exiting-process
+  )
+
 ;; ====================================================================
-;; Other
+;; (process-info pid key-or-keys)
+
+(deftest process-info-returns-the-info-item
+  )
+
+(deftest process-info-returns-info-items-ordered-as-keys
+  )
+
+(deftest process-info-accepts-repeated-keys
+  )
+
+(deftest process-info-returns-correct-info
+  )
+
+(deftest process-info-returns-nil-on-exited-process-pid
+  )
+
+(deftest process-info-throws-on-illegal-arguments
+  )
+
+;; ====================================================================
+;; (processes)
+
+(deftest processes-returns-a-list-of-pids-of-all-existing-processes
+  )
+
+(deftest processes-doesnot-return-exited-process-pids
+  )
+
+(deftest processes-returns-a-list-with-exiting-process-pids-included
+  )
+
+;; ====================================================================
+;; (alive?)
+
+(deftest alive?-returns-information-about-current-process
+  )
+
+;; ====================================================================
+;; (alive? pid)
+
+(deftest alive?-returns-information-about-pid
+  )
+
+;; ====================================================================
+;; (map-async f async-value)
+
+(deftest map-async-returns-async-value
+  (let [av (process/async 0)]
+    (is (process/async? (process/map-async inc av))
+        "map-async must return async value")))
+
+(deftest map-async-returns-value-transforming-the-result
+  (let [av (process/async 0)
+        av2 (process/map-async inc av)]
+    (is (= 1 (process/await!! av2))
+        "map async must transform the result applying provided functions"))
+  (let [av (process/async 0)
+        av2 (process/map-async inc av)
+        av3 (process/map-async #(+ 2 %) av2)]
+    (is (= 3 (process/await!! av3))
+        "map async must transform the result applying provided functions")))
+
+(deftest map-async-returns-value-applying-transformations-in-the-right-order
+  (let [av (process/async 0)
+        av2 (process/map-async inc av)
+        av3 (process/map-async #(cons % [2 3]) av2)
+        av4 (process/map-async #(apply str %) av3)]
+    (is (= "123" (process/await!! av4))
+        "map async must apply transformations in the right order")))
+
+(deftest map-async-propagates-exceptions
+  (let [av (process/async 0)
+        av2 (process/map-async inc av)
+        av3 (process/map-async (fn [_] (process/exit :test)) av2)
+        av4 (process/map-async #(apply str %) av3)]
+    (is (= [:EXIT :test] (process/ex-catch (process/await!! av4)))
+        "map async must transform the result applying provided functions"))
+  (let [av (process/async 0)
+        av2 (process/map-async inc av)
+        av3 (process/map-async #(throw (Exception. "test")) av2)
+        av4 (process/map-async #(apply str %) av3)]
+    (is (thrown? Exception "test" (process/await!! av4))
+        "map async must transform the result applying provided functions")))
+
+(deftest map-async-doesnot-change-the-initial-async-value
+  (let [av (process/async 0)
+        av2 (process/map-async inc av)
+        _ (process/map-async #(process/exit :test) av2)]
+    (is (= 1 (process/await!! av2))
+        "map async must not change the initial async value")))
+
+;; ====================================================================
+;; (with-async bindings & body)
+
+(deftest with-async-returns-async-value
+  (let [av (process/async 0)]
+    (is (process/async? (process/with-async [res av] (inc res)))
+        "with-async must return async value"))
+  (is (process/async?
+       (process/with-async [res (process/async 0)]
+         (inc res)))
+      "with-async must return async value"))
+
+(deftest with-async-returns-value-transforming-the-result
+  (let [av (process/with-async [av (process/async 0)] (inc av))]
+    (is (= 1 (process/await!! av))
+        "map async must transform the result applying provided functions"))
+  (let [av (process/with-async [res (process/async 0)] (inc res))
+        av2 (process/with-async [res av](+ 2 res))]
+    (is (= 3 (process/await!! av2))
+        "map async must transform the result applying provided functions")))
+
+(deftest with-async-propagates-exceptions
+  (let [av (process/with-async [res (process/async 0)] (inc res))
+        av2 (process/with-async [_ av] (process/exit :test))
+        av3 (process/with-async [res av2] (apply str res))]
+    (is (= [:EXIT :test] (process/ex-catch (process/await!! av3)))
+        "map async must transform the result applying provided functions"))
+  (let [av (process/with-async [res (process/async 0)] (inc res))
+        av2 (process/with-async [_ av] (throw (Exception. "test")))
+        av3 (process/with-async [res av2] (apply str res))]
+    (is (thrown? Exception "test" (process/await!! av3))
+        "map async must transform the result applying provided functions")))
