@@ -1385,7 +1385,21 @@
   ([^Pid pid]
    (process-info pid [:initial-call :status :message-queue-len :links :flags]))
   ([^Pid pid item-or-list]
-   (u/check-args [(pid? pid)])
+   (u/check-args [(pid? pid)
+                  (or (keyword? item-or-list) (sequential? item-or-list))
+                  (let [allowed-keys #{:links
+                                       :monitors
+                                       :monitored-by
+                                       :registered-name
+                                       :status
+                                       :life-time-ms
+                                       :initial-call
+                                       :message-queue-len
+                                       :messages
+                                       :flags}]
+                    (if (coll? item-or-list)
+                      (every? allowed-keys item-or-list)
+                      (allowed-keys item-or-list)))])
    (if-let [process (@*processes (.id pid))]
      (let [items (if (coll? item-or-list) item-or-list [item-or-list])]
        (process-info* process items [])))))
