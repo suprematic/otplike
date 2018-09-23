@@ -863,13 +863,13 @@
   [flag value]
   {:post []}
   (u/check-args [(keyword? flag)])
-  (let [^TProcess process (self-process)]
-    (require-alive process)
+  (let [^TProcess self-process (self-process)]
+    (require-alive self-process)
     (case flag
       :trap-exit
       (let [value (boolean value)
             [old] (swap-vals!
-                   (.flags process) #(if % (assoc % :trap-exit value)))]
+                   (.flags self-process) #(if % (assoc % :trap-exit value)))]
         (if (nil? old)
           (exit :noproc))
         (-> old :trap-exit boolean)))))
