@@ -2419,22 +2419,132 @@
 ;; (process-info pid key-or-keys)
 
 (deftest process-info-returns-the-info-item
-  )
+  (let [done (async/chan)
+        pid (process/spawn (proc-fn [] (is (await-completion! done 1000))))]
+    (is (= [:status :running] (process/process-info pid :status))
+        (str "process-info must return tagged info tuple"
+             " when argument is info key"))
+    (async/close! done)))
 
 (deftest process-info-returns-info-items-ordered-as-keys
-  )
+  (let [info-keys [:status :registered-name :messages :monitors]
+        done (async/chan)
+        pid (process/spawn (proc-fn [] (is (await-completion! done 1000))))
+        info-items (process/process-info pid info-keys)]
+    (is (= info-keys (map first info-items))
+        (str "process-info must return tagged info tuples in the same order"
+             " as info keys passed as argument"))
+    (async/close! done)))
 
-(deftest process-info-accepts-repeated-keys
-  )
+(deftest process-info-accepts-duplicate-info-keys
+  (let [info-keys [:status
+                   :status
+                   :registered-name
+                   :status
+                   :messages
+                   :monitors
+                   :messages]
+        done (async/chan)
+        pid (process/spawn (proc-fn [] (is (await-completion! done 1000))))
+        info-items (process/process-info pid info-keys)]
+    (is (= info-keys (map first info-items))
+        (str "process-info must return tagged info tuples in the same order"
+             " as info keys passed as argument"))
+    (async/close! done)))
 
 (deftest process-info-returns-correct-info
-  )
+  ;; TODO
+  ;; empty links on no links
+  ;; links when pid initiated linking
+  ;; links when other pid initiated linking
+
+  ;; empty monitors on no monitoring
+  ;; monitors on monitoring
+  ;; duplicate monitors on multiple monitoring of the same process
+
+  ;; empty monitored-by when is not monitored
+  ;; monitored-by when is monitored
+  ;; repeated pids in monitored-by when monitored multiple times by the same process
+
+  ;; reg-name when is registered
+  ;; nil reg-name when is not resitered
+
+  ;; running status
+  ;; waiting status
+  ;; exiting status
+  ;; status changes
+
+  ;; correct life time ms
+
+  ;; intial call: when proc-defn is used
+  ;; intial call: when proc-fn is used
+  ;; intial call: when named proc-fn is used
+  ;; intial call: args
+
+  ;; correct message queue len
+  ;; message queue len changes
+
+  ;; no messages
+  ;; some messages
+  ;; messages change on receive!
+  ;; messages change on selective-receive!
+
+  ;; correct flags
+  ;; flags change
+
+  [:links
+   :monitors
+   :monitored-by
+   :registered-name
+   :status
+   :life-time-ms
+   :initial-call
+   :message-queue-len
+   :messages
+   :flags])
 
 (deftest process-info-returns-nil-on-exited-process-pid
-  )
+  (let [pid (process/spawn (proc-fn []))]
+    (Thread/sleep 50)
+    (is (= nil (process/process-info pid [:status]))
+        "process-info must return nil on exited process pid")
+    (is (= nil (process/process-info pid :status))
+        "process-info must return nil on exited process pid")
+    (is (= nil (process/process-info pid :message-queue-len))
+        "process-info must return nil on exited process pid")
+    (is (= nil (process/process-info pid :monitored-by))
+        "process-info must return nil on exited process pid")))
 
 (deftest process-info-throws-on-illegal-arguments
-  )
+  (let [done (async/chan)
+        pid (process/spawn (proc-fn [] (is (await-completion! done 1000))))]
+    (is (thrown? Exception (process/process-info nil [:status]))
+        "process-info must throw on nil pid")
+    (is (thrown? Exception (process/process-info pid nil))
+        "process-info must throw on nil info-key(s)")
+    (is (thrown? Exception (process/process-info pid :unexisting-info-key))
+        "process-info must throw on unexisting info-key(s)")
+    (is (thrown? Exception (process/process-info pid 11))
+        "process-info must throw on unexisting info-key(s)")
+    ;; ensure that arguments are checked even on exited process pid
+    (async/close! done)
+    (Thread/sleep 50)
+    (is (thrown? Exception (process/process-info pid [[]]))
+        "process-info must throw on unexisting info-key(s)")
+    (is (thrown? Exception (process/process-info pid "unexisting-info-key"))
+        "process-info must throw on unexisting info-key(s)")
+    (is (thrown? Exception (process/process-info pid [:unexisting-info-key]))
+        "process-info must throw on unexisting info-key(s)")
+    (is (thrown? Exception (process/process-info pid [1]))
+        "process-info must throw on unexisting info-key(s)")
+    (is (thrown? Exception
+                 (process/process-info
+                  pid [:status :unexisting-info-key]))
+        "process-info must throw on unexisting info-key(s)")
+    (is (thrown? Exception
+                 (process/process-info
+                  pid [:status :unexisting-info-key :unexisting-info-key]))
+        "process-info must throw on unexisting info-key(s)")))
 
 ;; ====================================================================
 ;; (processes)
