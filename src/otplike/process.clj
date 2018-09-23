@@ -1401,8 +1401,12 @@
                       (every? allowed-keys item-or-list)
                       (allowed-keys item-or-list)))])
    (if-let [process (@*processes (.id pid))]
-     (let [items (if (coll? item-or-list) item-or-list [item-or-list])]
-       (process-info* process items [])))))
+     (let [keys? (coll? item-or-list)]
+       (let [items (if keys? item-or-list [item-or-list])
+             info (process-info* process items [])]
+         (if keys?
+           info
+           (first info)))))))
 
 (defn trace [pred handler]
   (let [t-ref (make-ref)
