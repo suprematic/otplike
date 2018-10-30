@@ -457,7 +457,7 @@
 (defn call
   "The same as `call!` but returns async value."
   ([server request]
-   (call* server request [server request]))
+   (call* server request 5000 [server request]))
   ([server request timeout-ms]
    (call* server request timeout-ms [server request timeout-ms])))
 
