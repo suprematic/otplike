@@ -25,7 +25,7 @@
 ;; API
 
 (defn crashed? [{:keys [kind extra]}]
-  (and (= kind :terminate)
+  (and (= kind :exiting)
        (not (#{:normal :shutdown} (:reason extra)))))
 
 (defn pid [pid handler]
