@@ -235,7 +235,8 @@
                 :handle-info (fn [msg state]
                                (match msg
                                       :timeout
-                                      (async/close! done)))}]
+                                      (async/close! done))
+                               [:noreply state])}]
     (match (gs/start-link! server) [:ok pid] :ok)
     (is (await-completion! done 100)
         ":timeout message must be sent to gen-server")))
@@ -246,7 +247,8 @@
                 :handle-info (fn [msg state]
                                (match msg
                                       :timeout
-                                      (async/close! done)))}]
+                                      (async/close! done))
+                               [:noreply state])}]
     (match (gs/start-link! server) [:ok pid] :ok)
     (is (thrown? Exception (await-completion! done 50))
         ":timeout message must not be sent to gen-server before timeout")
@@ -260,9 +262,8 @@
                 :handle-info (fn [msg state]
                                (match [msg state]
                                  [:msg :init]
-                                 (do
-                                   (async/close! done)
-                                   [:stop :normal state])))}]
+                                 (async/close! done))
+                               [:noreply state])}]
     (match (gs/start-link! server)
       [:ok pid] (! pid :msg))
     (is (await-completion! done 50)
@@ -272,9 +273,8 @@
                 :handle-info (fn [msg state]
                                (match [msg state]
                                  [:timeout :init]
-                                 (do
-                                   (async/close! done)
-                                   [:stop :normal state])))}]
+                                 (async/close! done))
+                               [:noreply state])}]
     (match (gs/start-link! server)
       [:ok pid] :ok)
     (is (await-completion! done 150)
@@ -999,8 +999,9 @@
                                [:reply msg state 0])
                 :handle-info (fn [msg state]
                                (match msg
-                                      :timeout
-                                      (async/close! done)))}]
+                                 :timeout
+                                 (async/close! done))
+                               [:noreply state])}]
     (match (gs/start-link! server)
            [:ok pid] (match (gs/call! pid :msg) :msg :ok))
     (is (await-completion! done 100)
@@ -1013,8 +1014,9 @@
                                [:reply msg state 100])
                 :handle-info (fn [msg state]
                                (match msg
-                                      :timeout
-                                      (async/close! done)))}]
+                                 :timeout
+                                 (async/close! done))
+                               [:noreply state])}]
     (match (gs/start-link! server)
            [:ok pid] (match (gs/call! pid :msg) :msg :ok))
     (is (thrown? Exception (await-completion! done 50))
@@ -1040,9 +1042,8 @@
                 :handle-info (fn [msg state]
                                (match [msg state]
                                  [:timeout :timeout]
-                                 (do
-                                   (async/close! done)
-                                   [:stop :normal state])))}]
+                                 (async/close! done))
+                               [:noreply state])}]
     (match (gs/start-link! server)
       [:ok pid] (gs/call! pid :msg))
     (is (await-completion! done 150)
@@ -1566,8 +1567,9 @@
                                [:noreply state 0])
                 :handle-info (fn [msg state]
                                (match msg
-                                      :timeout
-                                      (async/close! done)))}]
+                                 :timeout
+                                 (async/close! done))
+                               [:noreply state])}]
     (match (gs/start-link! server)
            [:ok pid] (gs/cast pid :msg))
     (is (await-completion! done 100)
@@ -1580,8 +1582,9 @@
                                [:noreply state 100])
                 :handle-info (fn [msg state]
                                (match msg
-                                      :timeout
-                                      (async/close! done)))}]
+                                 :timeout
+                                 (async/close! done))
+                               [:noreply state])}]
     (match (gs/start-link! server)
            [:ok pid] (gs/cast pid :msg))
     (is (thrown? Exception (await-completion! done 50))
@@ -1598,9 +1601,8 @@
                 :handle-info (fn [msg state]
                                (match [msg state]
                                  [:timeout :timeout]
-                                 (do
-                                   (async/close! done)
-                                   [:stop :normal state])))}]
+                                 (async/close! done))
+                               [:noreply state])}]
     (match (gs/start-link! server)
       [:ok pid] (gs/cast pid :msg))
     (is (await-completion! done 150)
@@ -2152,7 +2154,9 @@
                                  [:msg1 :init]
                                  (process/async [:noreply :new-state])
                                  [:msg2 :new-state]
-                                 (async/close! done)))}]
+                                 (do
+                                   (async/close! done)
+                                   [:noreply state])))}]
     (match (gs/start-link! server)
       [:ok pid]
       (do
