@@ -109,8 +109,8 @@
 (def ^:private *refids
   (atom 0))
 
-(def ^:private *trace-handlers
-  (atom {}))
+(def ^:private *trace-handler
+  (atom nil))
 
 (def ^:private *processes
   (atom (imap/int-map)))
@@ -134,12 +134,11 @@
 (alter-meta! #'map->TraceMessage assoc :private true)
 
 (defn ^:no-doc trace-event [^Pid pid kind extra]
-  (if-let [handlers (seq (vals @*trace-handlers))]
+  (if-let [handler @*trace-handler]
     (let [reg-name (if pid (@*registered-reverse (.id pid)))]
-      (doseq [handler handlers]
-        (try
-          (handler (TraceMessage. pid reg-name kind extra))
-          (catch Throwable _))))))
+      (try
+        (handler (TraceMessage. pid reg-name kind extra))
+        (catch Throwable _)))))
 
 (defmethod print-method Pid [o w]
   (print-simple (pid->str o) w))
@@ -1409,10 +1408,10 @@
            (first info)))))))
 
 (defn trace [pred handler]
-  (let [t-ref (make-ref)
-        handler #(if (pred %) (handler %))]
-    (swap! *trace-handlers assoc t-ref handler)
-    t-ref))
+  (let [handler #(if (pred %) (handler %))
+        [old _] (reset-vals! *trace-handler handler)]
+    (boolean old)))
 
-(defn untrace [t-ref]
-  (swap! *trace-handlers dissoc t-ref))
+(defn untrace []
+  (let [[old _] (reset-vals! *trace-handler nil)]
+    (boolean old)))
