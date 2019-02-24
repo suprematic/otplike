@@ -51,7 +51,7 @@
            (< (:minor *clojure-version*) 9))
   (require '[clojure.future :refer :all]))
 
-(declare pid->str pid? self whereis ref? ! ex->reason exit async?)
+(declare pid->str pid? self whereis ref? ! ex->reason exit async? link)
 
 (deftype Pid [^Long id]
   Object
@@ -320,17 +320,15 @@
   (let [^Pid pid (.pid process)
         ^Pid self-pid *self*]
     (trace-event self-pid :spawn {:fn (.name proc-fn) :args args})
-    (when link?
-      (let [^TProcess other-process (or (@*processes (.id self-pid))
-                                        (exit :noproc))
-            other-pid (.pid other-process)]
-        (require-alive other-process)
-        (swap! (.linked process) conj other-pid)
-        (let [[old] (swap-vals! (.linked other-process) #(if % (conj % pid)))]
-          (when (nil? old)
-            (reset! (.linked process) nil)
-            (exit :noproc)))))
     (swap! *processes assoc (.id pid) process)
+    (try
+      (when link?
+        (link pid))
+      (catch Throwable t
+        (let [reason (ex->reason t)]
+          (swap! *processes dissoc (.id pid))
+          (sync-unregister process reason)
+          (throw t))))
     ;; FIXME bindings from folded binding blocks are stacked, so no values
     ;; bound between bottom and top folded binding blocks are garbage
     ;; collected; see "ring" benchmark example
