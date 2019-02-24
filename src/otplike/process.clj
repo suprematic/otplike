@@ -342,8 +342,9 @@
           (swap! *registered-reverse assoc (.id pid) register))
         (call proc-fn pid args)
         (catch Throwable t
-          (!exit process (ex->reason t))
-          (swap! *processes dissoc (.id pid)))))))
+          (let [reason (ex->reason t)]
+            (swap! *processes dissoc (.id pid))
+            (sync-unregister process reason)))))))
 
 (defn- spawn* [^TProcFn proc-fn args {:keys [flags link register] :as options}]
   {:post [(pid? %)]}
