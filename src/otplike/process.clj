@@ -316,7 +316,7 @@
   (swap! (.exit-reason process) #(if (nil? %) reason %))
   (async/put! (.control-chan process) :go-exit))
 
-(defn- start-process [^TProcess process ^TProcFn proc-fn args register link?]
+(defn- start-process [^TProcess process ^TProcFn proc-fn args reg-name link?]
   (let [^Pid pid (.pid process)
         ^Pid self-pid *self*]
     (trace-event self-pid :spawn {:fn (.name proc-fn) :args args})
@@ -335,11 +335,11 @@
     (binding [*self* (.pid process)
               *message-context* (atom @*message-context*)]
       (try
-        (when (some? register)
-          (when (@*registered register)
+        (when (some? reg-name)
+          (when (@*registered reg-name)
             (exit :already-registered))
-          (swap! *registered assoc register pid)
-          (swap! *registered-reverse assoc (.id pid) register))
+          (swap! *registered assoc reg-name pid)
+          (swap! *registered-reverse assoc (.id pid) reg-name))
         (call proc-fn pid args)
         (catch Throwable t
           (let [reason (ex->reason t)]
