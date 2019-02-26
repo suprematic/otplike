@@ -1346,24 +1346,6 @@
     (await-completion! done 50)))
 
 (deftest ^:parallel spawn-opt--spawned-process-receives-parent-exit-reason
-  (let [reg-name (uuid-keyword)
-        done (async/chan)
-        pfn (proc-fn [] (is (await-completion! done 50)))]
-    (process/spawn-opt pfn [] {:register reg-name})
-    (process/spawn
-     (proc-fn []
-       (let [pid (process/spawn-opt
-                  (proc-fn []) [] {:register reg-name :link true})]
-         (is
-          (thrown? Exception
-                   (process/receive!
-                     _ (str "spawned process must exit when name to register"
-                            " is already registered")
-                     (after 50
-                       (str "spawned process must exit when name to register"
-                            " is already registered")))))
-         (async/close! done))))
-    (await-completion!! done 100))
   (let [done (async/chan)
         pfn1 (proc-fn []
                (is (match (<! (await-message 50))
