@@ -17,6 +17,7 @@
             [lein-eftest "0.5.8"]]
 
   :source-paths  ["src"]
+  :resource-paths ["resource"]
 
   ;;:main otplike.example.benchmarks
   ;;:source-paths  ["src" "examples"]

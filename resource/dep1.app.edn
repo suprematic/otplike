@@ -1,0 +1,4 @@
+{:version "0.0.1"
+ :applications [kernel dep2 dep3]
+ :environment {:key :value :key1 :value1}
+ :namespace test.app.dep1}
