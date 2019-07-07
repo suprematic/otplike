@@ -229,34 +229,30 @@
     (terminate [_ reason state] ; terminate is optional
       (call-terminate terminate reason state))))
 
-(defn- ns-function [fun-ns fun-name]
-  (if-let [fun-var (ns-resolve fun-ns fun-name)]
-    (var-get fun-var)))
-
 (defn- coerce-ns-static [impl-ns]
   (coerce-map
-   {:init (ns-function impl-ns 'init)
-    :handle-call (ns-function impl-ns 'handle-call)
-    :handle-cast (ns-function impl-ns 'handle-cast)
-    :handle-info (ns-function impl-ns 'handle-info)
-    :terminate (ns-function impl-ns 'terminate)}))
+    {:init (u/ns-function impl-ns 'init)
+     :handle-call (u/ns-function impl-ns 'handle-call)
+     :handle-cast (u/ns-function impl-ns 'handle-cast)
+     :handle-info (u/ns-function impl-ns 'handle-info)
+     :terminate (u/ns-function impl-ns 'terminate)}))
 
 (defn- coerce-ns-dynamic [impl-ns]
   (reify IGenServer
     (init [_ args]
-      (call-init (ns-function impl-ns 'init) args))
+      (call-init (u/ns-function impl-ns 'init) args))
 
     (handle-cast [_ request state]
-      (call-handle-cast (ns-function impl-ns 'handle-cast) request state))
+      (call-handle-cast (u/ns-function impl-ns 'handle-cast) request state))
 
     (handle-call [_ request from state]
-      (call-handle-call (ns-function impl-ns 'handle-call) request from state))
+      (call-handle-call (u/ns-function impl-ns 'handle-call) request from state))
 
     (handle-info [_ request state]
-      (call-handle-info (ns-function impl-ns 'handle-info) request state))
+      (call-handle-info (u/ns-function impl-ns 'handle-info) request state))
 
     (terminate [_ reason state] ; terminate is optional
-      (call-terminate (ns-function impl-ns 'terminate) reason state))))
+      (call-terminate (u/ns-function impl-ns 'terminate) reason state))))
 
 (def ^:private coerce-ns coerce-ns-dynamic)
 

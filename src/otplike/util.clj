@@ -46,3 +46,7 @@
 
 (defn queue []
   (clojure.lang.PersistentQueue/EMPTY))
+
+(defn ns-function [fun-ns fun-name]
+  (if-let [fun-var (ns-resolve fun-ns fun-name)]
+    (var-get fun-var)))
