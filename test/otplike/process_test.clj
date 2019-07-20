@@ -1314,23 +1314,40 @@
         "spawn must register proces when called with :register option")
     (async/close! done)))
 
-(deftest ^:parallel spawned-process-exits-when-reg-name-already-registered
+(deftest ^:parallel spawn-opt--throws-when-already-registered
   (let [reg-name (uuid-keyword)
         done (async/chan)
         pfn (proc-fn [] (is (await-completion! done 50)))]
     (process/spawn-opt pfn [] {:register reg-name})
-    (process/spawn-opt
-     (proc-fn []
-       (let [pid (process/spawn-opt
-                  (proc-fn []) [] {:register reg-name :link true})]
-         (process/receive!
-           [:EXIT [:already-registered reg-name]] :ok
-           (after 50
-             (is false
-                 (str "spawned process must exit when name to register"
-                      " is already registered"))))
-         (async/close! done)))
-     {:flags {:trap-exit true}})
+    (is
+      (thrown? Exception
+        (process/spawn-opt (proc-fn []) [] {:register reg-name})))
+    (async/close! done)))
+
+(deftest ^:parallel spawn-opt--doesnt-call-proc-fn-when-already-registered
+  (let [reg-name (uuid-keyword)
+        done (async/chan)
+        pfn (proc-fn [] (is (await-completion! done 100)))]
+    (process/spawn-opt pfn [] {:register reg-name})
+    (process/ex-catch
+      (process/spawn-opt
+        (proc-fn []
+          (is false
+            "proc fn must not be called if the name is already registered"))
+        []
+        {:register reg-name}))
+    (async/timeout 50)
+    (async/close! done)))
+
+(deftest ^:eftest/synchronized spawn-opt--doesnt-start-when-already-registered
+  (let [reg-name (uuid-keyword)
+        done (async/chan)
+        pfn (proc-fn [] (is (await-completion! done 50)))]
+    (process/spawn-opt pfn [] {:register reg-name})
+    (let [procs (process/processes)]
+      (process/ex-catch
+        (process/spawn-opt (proc-fn []) [] {:register reg-name}))
+      (is (= procs (process/processes))))
     (async/close! done)))
 
 (def-proc-test ^:parallel spawned-process-does-not-trap-exits-by-default
