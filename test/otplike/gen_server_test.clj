@@ -116,6 +116,43 @@
       [:ok (pid :guard process/pid?)]
       (match (process/exit pid :abnormal) true :ok))))
 
+(def-proc-test ^:parallel start--returns-error-when-already-registred
+  (let [reg-name (uuid-keyword)
+        done (async/chan)
+        server {:init (fn [] [:ok nil])}
+        pfn (process/proc-fn [] (is (await-completion! done 50)))
+        pid (process/spawn-opt pfn [] {:register reg-name})]
+    (is
+      (= [:error [:already-registered pid]] (gs/start! reg-name server [] {})))
+    (async/close! done)))
+
+(def-proc-test ^:parallel start--doesnt-call-init-when-already-registered
+  (let [reg-name (uuid-keyword)
+        done (async/chan)
+        server
+        {:init
+         (fn []
+           (is false
+             "proc fn must not be called if the name is already registered")
+           [:ok nil])}
+        pfn (process/proc-fn [] (is (await-completion! done 100)))]
+    (process/spawn-opt pfn [] {:register reg-name})
+    (gs/start! reg-name server [] {})
+    (async/timeout 50)
+    (async/close! done)))
+
+(def-proc-test ^:eftest/seqential
+  start--doesnt-start-process-when-already-registred
+  (let [reg-name (uuid-keyword)
+        done (async/chan)
+        server {:init (fn [] [:ok nil])}
+        pfn (process/proc-fn [] (is (await-completion! done 50)))]
+    (process/spawn-opt pfn [] {:register reg-name})
+    (let [procs (process/processes)]
+      (gs/start! reg-name server [] {})
+      (is (= procs (process/processes))))
+    (async/close! done)))
+
 ;; ====================================================================
 ;; (init [& args])
 
