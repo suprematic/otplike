@@ -3,7 +3,7 @@
 set -e
 
 # Test
-lein with-profile test-1.8:test-1.9 test
+lein with-profile test-1.8:test-1.9:test-1.10 test
 
 # Deploy API docs
 git clone https://$GITHUB_TOKEN@github.com/suprematic/suprematic.github.io.git

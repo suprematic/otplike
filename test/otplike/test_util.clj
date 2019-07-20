@@ -5,6 +5,14 @@
             [otplike.proc-util :as proc-util]
             [otplike.process :as process]))
 
+(defmacro clojure-minor-version []
+  (let [[_ minor] (re-find #"^1\.(\d+)" (clojure-version))]
+    (Integer/parseInt minor)))
+
+(defmacro if-clojure-version [minor-versions & body]
+  (if ((set minor-versions) (clojure-minor-version))
+    `(do ~@body)))
+
 (defn uuid-keyword
   "Makes random keyword with a name being UUID string."
   []

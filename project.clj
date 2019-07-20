@@ -45,6 +45,9 @@
              :test-1.9
              {:dependencies [[org.clojure/clojure "1.9.0"]]}
 
+             :test-1.10
+             {:dependencies [[org.clojure/clojure "1.10.1"]]}
+
              :repl
              {:dependencies [[org.clojure/math.combinatorics "0.1.4"]
                              [eftest "0.5.2"]]

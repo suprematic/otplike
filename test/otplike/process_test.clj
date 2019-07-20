@@ -2076,15 +2076,31 @@
         pid (process/spawn pfn)]
     (await-completion!! done 150)))
 
-(deftest ^:parallel receive-requires-one-or-more-message-patterns
-  (is (thrown-with-msg?
-        AssertionError
-        #"requires one or more message patterns"
-        (eval `(process/receive!))))
-  (is (thrown-with-msg?
-        AssertionError
-        #"requires one or more message patterns"
-        (eval `(process/receive! (after 10 :ok))))))
+(deftest ^:parallel receive!-requires-one-or-more-message-patterns
+  (if-clojure-version [10]
+    (try
+      (eval `(process/receive!))
+      (catch clojure.lang.Compiler$CompilerException e
+        (let [cause (.getCause e)
+              msg (.getMessage cause)]
+          (is (re-find #"requires one or more message patterns" msg)
+            "exception must contain an expanation"))))
+    (try
+      (eval `(process/receive! (after 10 :ok)))
+      (catch clojure.lang.Compiler$CompilerException e
+        (let [cause (.getCause e)
+              msg (.getMessage cause)]
+          (is (re-find #"requires one or more message patterns" msg)
+            "exception must contain an expanation")))))
+  (if-clojure-version [8 9]
+    (is (thrown-with-msg?
+          AssertionError
+          #"requires one or more message patterns"
+          (eval `(process/receive!))))
+    (is (thrown-with-msg?
+          AssertionError
+          #"requires one or more message patterns"
+          (eval `(process/receive! (after 10 :ok)))))))
 
 (deftest ^:parallel receive-accepts-infinity-timeout
   (let [done (async/chan)
@@ -2297,14 +2313,30 @@
     (await-completion!! done 150)))
 
 (deftest ^:parallel selective-receive!-requires-one-or-more-message-patterns
-  (is (thrown-with-msg?
-        AssertionError
-        #"requires one or more message patterns"
-        (eval `(process/selective-receive!))))
-  (is (thrown-with-msg?
-        AssertionError
-        #"requires one or more message patterns"
-        (eval `(process/selective-receive! (after 10 :ok))))))
+  (if-clojure-version [10]
+    (try
+      (eval `(process/selective-receive!))
+      (catch clojure.lang.Compiler$CompilerException e
+        (let [cause (.getCause e)
+              msg (.getMessage cause)]
+          (is (re-find #"requires one or more message patterns" msg)
+            "exception must contain an explanation"))))
+    (try
+      (eval `(process/selective-receive! (after 10 :ok)))
+      (catch clojure.lang.Compiler$CompilerException e
+        (let [cause (.getCause e)
+              msg (.getMessage cause)]
+          (is (re-find #"requires one or more message patterns" msg)
+            "exception must contain an explanation")))))
+  (if-clojure-version [8 9]
+    (is (thrown-with-msg?
+          AssertionError
+          #"requires one or more message patterns"
+          (eval `(process/selective-receive!))))
+    (is (thrown-with-msg?
+          AssertionError
+          #"requires one or more message patterns"
+          (eval `(process/selective-receive! (after 10 :ok)))))))
 
 (deftest ^:parallel selective-receive!-accepts-infinity-timeout
   (let [done (async/chan)
