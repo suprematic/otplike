@@ -317,8 +317,8 @@
   (async/put! (.control-chan process) :go-exit))
 
 (defn- register! [^Pid pid reg-name]
-  (when (@*registered reg-name)
-    (exit :already-registered))
+  (when-some [pid (@*registered reg-name)]
+    (exit [:already-registered pid]))
   (swap! *registered assoc reg-name pid)
   (swap! *registered-reverse assoc (.id pid) reg-name))
 
