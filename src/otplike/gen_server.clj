@@ -276,7 +276,7 @@
       (process/selective-receive!
         [mref resp]
         (do
-          (process/demonitor mref)
+          (process/demonitor mref {:flush true})
           resp)
 
         [:DOWN mref _ _ reason]
