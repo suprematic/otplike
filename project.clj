@@ -14,7 +14,7 @@
                  [clojure-future-spec "1.9.0-beta4"]]
 
   :plugins [[lein-codox "0.10.3"]
-            [lein-eftest "0.5.2"]]
+            [lein-eftest "0.5.8"]]
 
   :source-paths  ["src"]
 
