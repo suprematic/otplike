@@ -2249,7 +2249,7 @@
            :ok
            (do
              (is (= :timeout (<! (await-message 100)))
-                 "no unexpected messaeges must arrive after the call")
+                 "no unexpected messages must arrive after the call")
              (async/close! done))))))
     (await-completion!! done 300))
   (let [done (async/chan)
@@ -2268,7 +2268,7 @@
            :ok
            (do
              (is (= :timeout (<! (await-message 200)))
-                 "no unexpected messaeges must arrive after the call")
+                 "no unexpected messages must arrive after the call")
              (async/close! done))))))
     (await-completion!! done1 100)
     (await-completion!! done 300)))
