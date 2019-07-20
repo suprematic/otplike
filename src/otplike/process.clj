@@ -504,7 +504,9 @@
                         [m# res# (into new-mq# mq#)]))
                     :miss))]
        (if (identical? res# :miss)
-         (do ~@or-body)
+         (do
+           (swap! message-q# #(into mq# %))
+           ~@or-body)
          (let [[[context# ~msg-sym] clause-n# new-mq#] res#]
            (swap! message-q# #(into new-mq# %))
            (trace-event (.pid process#) :receive {:message ~msg-sym})
