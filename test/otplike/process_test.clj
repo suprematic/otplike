@@ -2420,6 +2420,35 @@
     (! pid :msg3)
     (! pid :msg4)
     (await-completion!! done 150))
+
+  (let [done (async/chan)
+        done1 (async/chan)
+        pfn (proc-fn []
+              (is (await-completion! done1 50))
+              (is (process/selective-receive! :msg3 :ok
+                    (after 0 false))
+                  "selective-receive! must receive the matching message")
+              (is (= :msg1 (process/receive! msg msg))
+                  (str "selective-receive! must preserve the order"
+                       " of unmatching messages"))
+              (is (= :msg2 (process/receive! msg msg))
+                  (str "selective-receive! must preserve the order"
+                       " of unmatching messages"))
+              (is (= :msg4 (process/receive! msg msg))
+                  (str "selective-receive! must preserve the order"
+                       " of unmatching messages"))
+              (is (= :timeout (<! (await-message 50)))
+                  (str "selective-receive! must preserve the order"
+                       " of unmatching messages"))
+              (async/close! done))
+        pid (process/spawn pfn)]
+    (! pid :msg1)
+    (! pid :msg2)
+    (! pid :msg3)
+    (! pid :msg4)
+    (async/close! done1)
+    (await-completion!! done 150))
+
   (let [done (async/chan)
         pfn (proc-fn []
               (is (process/selective-receive!
@@ -2441,6 +2470,31 @@
     (! pid :msg1)
     (! pid :msg2)
     (! pid :msg3)
+    (await-completion!! done 250))
+
+  (let [done (async/chan)
+        done1 (async/chan)
+        pfn (proc-fn []
+              (is (await-completion! done1 50))
+              (is (process/selective-receive!
+                    :unmatching false
+                    (after 0 :ok))
+                  "selective-receive! must not receive unmatching message")
+              (is (= :msg1 (process/receive! msg msg))
+                  (str "selective-receive! must preserve the order"
+                       " of unmatching messages"))
+              (is (= :msg2 (process/receive! msg msg))
+                  (str "selective-receive! must preserve the order"
+                       " of unmatching messages"))
+              (is (= :msg3 (process/receive! msg msg))
+                  (str "selective-receive! must preserve the order"
+                       " of unmatching messages"))
+              (async/close! done))
+        pid (process/spawn pfn)]
+    (! pid :msg1)
+    (! pid :msg2)
+    (! pid :msg3)
+    (async/close! done1)
     (await-completion!! done 250)))
 
 (deftest selective-receive!-fails-when-called-by-exiting-process
