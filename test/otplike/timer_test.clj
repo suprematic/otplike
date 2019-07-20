@@ -14,7 +14,7 @@
 ;; ====================================================================
 ;; (apply-after [msecs f args])
 
-(deftest ^:parallel apply-after.correct-time
+(deftest ^:parallel apply-after--correct-time
   (let [done (async/chan)]
     (timer/apply-after 0 async/close! [done])
     (is (match (await-completion!! done 100) :closed :ok)
@@ -34,7 +34,7 @@
                            "fn must not be applied before timeout"))
         "fn must be applied just after timeout")))
 
-(deftest ^:parallel apply-after.in-process-context
+(deftest ^:parallel apply-after--in-process-context
   (let [done (async/chan)
         f (fn []
             (is (process/self)
@@ -44,7 +44,7 @@
     (is (match (await-completion!! done 100) :closed :ok)
         "fn must be applied just after timeout")))
 
-(deftest ^:parallel apply-after.fn-exit
+(deftest ^:parallel apply-after--fn-exit
 ;(otplike.proc-util/execute-proc!!
   (let [done (async/chan)]
     (timer/apply-after 100 #(async/close! done) [])
@@ -55,7 +55,7 @@
     (is (match (await-completion!! done 200) :closed :ok)
         "timer must work after fn has thrown")))
 
-(deftest ^:parallel apply-after.bad-args
+(deftest ^:parallel apply-after--bad-args
   (is (thrown? Exception (timer/apply-after 1 inc {})))
   (is (thrown? Exception (timer/apply-after 1 inc "args")))
   (is (thrown? Exception (timer/apply-after 1 inc 1)))
@@ -67,7 +67,7 @@
 ;; ====================================================================
 ;; (cancel [])
 
-(deftest ^:parallel cancel.apply-after
+(deftest ^:parallel cancel--apply-after
   (let [done (async/chan)
         tref (timer/apply-after 100 #(async/close! done))]
     (timer/cancel tref)
@@ -79,7 +79,7 @@
     (is (thrown? Exception (await-completion!! done 200))
         "fn must not be applied after timer has been canceled")))
 
-(deftest ^:parallel cancel.send-after
+(deftest ^:parallel cancel--send-after
   (proc-util/execute-proc!!
     (let [tref (timer/send-after 100 (process/self) :msg)]
       (timer/cancel tref)
@@ -93,7 +93,7 @@
         :msg (is false "message must not be sent after timer has been canceled")
         (after 200 :ok)))))
 
-(deftest ^:parallel cancel.exit-after
+(deftest ^:parallel cancel--exit-after
   (proc-util/execute-proc!!
     (process/flag :trap-exit true)
     (let [tref (timer/exit-after 100 (process/self) :abnormal)]
@@ -111,7 +111,7 @@
         (is false "exit must not be sent after timer has been canceled")
         (after 200 :ok)))))
 
-(deftest ^:parallel cancel.kill-after
+(deftest ^:parallel cancel--kill-after
   (proc-util/execute-proc!!
     (process/flag :trap-exit true)
     (let [pfn (process/proc-fn [] (process/receive! _ :ok))
@@ -129,7 +129,7 @@
       (is (process/receive!  _ false (after 200 :ok))
           "process must not be killed after timer has been canceled"))))
 
-(deftest ^:parallel cancel.apply-interval
+(deftest ^:parallel cancel--apply-interval
   (proc-util/execute-proc!!
     (let [done (async/chan)
           tref (timer/apply-interval 100 async/put! [done :msg])]
@@ -154,7 +154,7 @@
           (str "fn must not be applied if timer has been canceled before"
                " first timeout")))))
 
-(deftest ^:parallel cancel.send-interval
+(deftest ^:parallel cancel--send-interval
   (proc-util/execute-proc!!
     (let [tref (timer/send-interval 100 :msg)]
       (timer/cancel tref)
@@ -187,7 +187,7 @@
                  " first timeout"))
         (after 200 :ok)))))
 
-(deftest ^:parallel cancel.after-timer-finished
+(deftest ^:parallel cancel--after-timer-finished
   (proc-util/execute-proc!!
     (let [done (async/chan)
           tref (timer/apply-after 0 async/close! [done])]
@@ -220,7 +220,7 @@
       (is (do (timer/cancel tref) true)
           "cancel must accept tref even if tref's timer has already fired"))))
 
-(deftest ^:parallel cancel.bad-args
+(deftest ^:parallel cancel--bad-args
   (is (thrown? Exception (timer/cancel 1)))
   (is (thrown? Exception (timer/cancel :a)))
   (is (thrown? Exception (timer/cancel "timer-ref")))
@@ -232,7 +232,7 @@
 ;; ====================================================================
 ;; (send-after [msecs pid message])
 
-(deftest ^:parallel send-after.correct-time
+(deftest ^:parallel send-after--correct-time
   (proc-util/execute-proc!!
     (timer/send-after 0 (process/self) :msg)
     (process/receive!
@@ -254,7 +254,7 @@
                  "message must not be sent before timeout")
         (after 200 (is false "message must be sent just after timeout"))))))
 
-(deftest ^:parallel send-after.send-to-not-existing-process
+(deftest ^:parallel send-after--send-to-not-existing-process
   (proc-util/execute-proc!!
     (let [start (System/nanoTime)]
       (timer/send-after 0 :proc :msg1)
@@ -273,7 +273,7 @@
                  "message must not be sent before timeout")
         (after 200 (is false "message must be sent just after timeout"))))))
 
-(def-proc-test ^:parallel send-after.bad-args
+(def-proc-test ^:parallel send-after--bad-args
 ;(proc-util/execute-proc!!
   (is (thrown? Exception (timer/send-after 1 nil :msg)))
   (is (thrown? Exception (timer/send-after :a :msg)))
@@ -284,7 +284,7 @@
 ;; ====================================================================
 ;; (exit-after [msecs ])
 
-(deftest ^:parallel exit-after.correct-time
+(deftest ^:parallel exit-after--correct-time
   (proc-util/execute-proc!!
     (process/flag :trap-exit true)
     (timer/exit-after 0 :test)
@@ -321,7 +321,7 @@
                             "exit must not be sent before timeout")
         (after 200 (is false "exit must be sent just after timeout"))))))
 
-(deftest ^:parallel exit-after.exit-not-existing-process
+(deftest ^:parallel exit-after--exit-not-existing-process
   (proc-util/execute-proc!!
     (process/flag :trap-exit true)
     (let [start (System/nanoTime)]
@@ -342,7 +342,7 @@
                              "exit must not be sent before timeout")
         (after 300 (is false "exit must be sent just after timeout"))))))
 
-(def-proc-test ^:parallel exit-after.bad-args
+(def-proc-test ^:parallel exit-after--bad-args
 ;(proc-util/execute-proc!!
   (is (thrown? Exception (timer/exit-after 1 nil :test)))
   (is (thrown? Exception (timer/exit-after :a :test)))
@@ -353,7 +353,7 @@
 ;; ====================================================================
 ;; (kill-after [msecs ])
 
-(deftest ^:parallel kill-after.correct-time
+(deftest ^:parallel kill-after--correct-time
   (proc-util/execute-proc!!
     (process/flag :trap-exit true)
     (let [start (System/nanoTime)
@@ -398,7 +398,7 @@
                                 "kill must not be sent before timeout")
         (after 200 (is false "kill must be sent just after timeout"))))))
 
-(deftest ^:parallel kill-after.kill-not-existing-process
+(deftest ^:parallel kill-after--kill-not-existing-process
   (proc-util/execute-proc!!
     (process/flag :trap-exit true)
     (let [_ (timer/kill-after 0 :proc)
@@ -424,7 +424,7 @@
                                 "kill must not be sent before timeout")
         (after 300 (is false "kill must be sent just after timeout"))))))
 
-(def-proc-test ^:parallel kill-after.bad-args
+(def-proc-test ^:parallel kill-after--bad-args
   (is (thrown? Exception (timer/kill-after 1 nil)))
   (is (thrown? Exception (timer/kill-after :a)))
   (is (thrown? Exception (timer/kill-after -1)))
@@ -434,7 +434,7 @@
 ;; ====================================================================
 ;; (apply-interval [msecs ])
 
-(deftest ^:parallel apply-interval.correct-time
+(deftest ^:parallel apply-interval--correct-time
   (proc-util/execute-proc!!
     (let [parent (process/self)
           f #(! parent :msg)]
@@ -454,7 +454,7 @@
                    "fn must not be applied before timeout")
           (after 200 (is false "fn must be applied just after timeout")))))))
 
-(deftest ^:parallel apply-interval.apply-in-process-context
+(deftest ^:parallel apply-interval--apply-in-process-context
   (proc-util/execute-proc!!
     (let [parent (process/self)
           f (fn [msg]
@@ -466,7 +466,7 @@
           :msg :ok
           (after 100 (is false "fn must be applied just after timeout")))))))
 
-(deftest ^:parallel apply-interval.fn-exit
+(deftest ^:parallel apply-interval--fn-exit
   (proc-util/execute-proc!!
     (let [parent (process/self)
           f (fn [msg]
@@ -498,7 +498,7 @@
           :msg :ok
           (after 100 (is false "fn must be applied just after timeout")))))))
 
-(def-proc-test ^:parallel apply-interval.bad-args
+(def-proc-test ^:parallel apply-interval--bad-args
 ;(proc-util/execute-proc!!
   (is (thrown? Exception (timer/apply-interval 1 inc {})))
   (is (thrown? Exception (timer/apply-interval 1 inc "args")))
@@ -508,12 +508,12 @@
   (is (thrown? Exception (timer/apply-interval :a inc [1])))
   (is (thrown? Exception (timer/apply-interval -1 inc [1]))))
 
-(deftest ^:parallel apply-interval.not-in-process-context
+(deftest ^:parallel apply-interval--not-in-process-context
   (is (thrown? Exception (timer/apply-interval 1 inc [1])))
   (is (thrown? Exception (timer/apply-interval 1 #(inc 1) [])))
   (is (thrown? Exception (timer/apply-interval 1 #(inc 1)))))
 
-(deftest ^:parallel apply-interval.stops-on-linked-process-exit
+(deftest ^:parallel apply-interval--stops-on-linked-process-exit
   (proc-util/execute-proc!!
     (let [parent (process/self)
           pfn (process/proc-fn []
@@ -533,7 +533,7 @@
 ;; ====================================================================
 ;; (send-interval [msecs ])
 
-(deftest ^:parallel send-interval.correct-time
+(deftest ^:parallel send-interval--correct-time
   (proc-util/execute-proc!!
     (timer/send-interval 0 :msg)
     (dotimes [n 3]
@@ -556,7 +556,7 @@
                     "message must not be sent before timeout")
           (after 200 (is false "message must be sent just after timeout")))))))
 
-(def-proc-test ^:parallel send-interval.bad-args
+(def-proc-test ^:parallel send-interval--bad-args
 ;(proc-util/execute-proc!!
   (is (thrown? Exception (timer/send-interval 1 nil :msg)))
   (is (thrown? Exception (timer/send-interval :a :msg)))
@@ -564,10 +564,10 @@
   (is (thrown? Exception (timer/send-interval :a (process/self) :msg)))
   (is (thrown? Exception (timer/send-interval -1 :proc :msg))))
 
-(deftest ^:parallel send-interval.not-in-process-context
+(deftest ^:parallel send-interval--not-in-process-context
   (is (thrown? Exception (timer/send-interval 1 :msg))))
 
-(deftest ^:parallel send-interval.stops-on-linked-process-exit
+(deftest ^:parallel send-interval--stops-on-linked-process-exit
   (proc-util/execute-proc!!
     (let [parent (process/self)
           pfn (process/proc-fn []

@@ -402,7 +402,7 @@
         (is (await-completion! sup-init-done 50)
             "supervisor must call init-fn to get its spec")))))
 
-(def-proc-test ^:parallel init.async-value-returned
+(def-proc-test ^:parallel init--async-value-returned
   (process/flag :trap-exit true)
   (let [done (async/chan)
         sup-flags {}
