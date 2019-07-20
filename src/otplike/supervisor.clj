@@ -505,10 +505,10 @@
         [:continue state]))))
 (spec-util/instrument `add-restart)
 
-(spec/fdef restart-child:one-for-one
+(spec/fdef restart-child--one-for-one
   :args (spec/cat :child ::child :state ::state)
   :ret ::process/async)
-(defn- restart-child:one-for-one [{id ::id :as child} state]
+(defn- restart-child--one-for-one [{id ::id :as child} state]
   ;;(println "strategy is 'one-for-one', restarting only this child")
   (process/with-async
     [res (start-child* child)]
@@ -520,12 +520,12 @@
       (do
         (gen-server/cast (process/self) [:restart id])
         state))))
-(spec-util/instrument `restart-child:one-for-one)
+(spec-util/instrument `restart-child--one-for-one)
 
-(spec/fdef restart-child:one-for-all
+(spec/fdef restart-child--one-for-all
   :args (spec/cat :child ::child :state ::state)
   :ret ::process/async)
-(defn- restart-child:one-for-all
+(defn- restart-child--one-for-all
   [{id ::id :as child} {children ::children :as state}]
   ;;(println "strategy is 'one-for-all', restarting all children")
   (process/async
@@ -540,12 +540,12 @@
           (report-error [:start-error reason child1])
           (gen-server/cast (process/self) [:restart failed-to-start-id])
           (assoc state ::children new-children))))))
-(spec-util/instrument `restart-child:one-for-all)
+(spec-util/instrument `restart-child--one-for-all)
 
-(spec/fdef restart-child:rest-for-one
+(spec/fdef restart-child--rest-for-one
   :args (spec/cat :child ::child :state ::state)
   :ret ::process/async)
-(defn- restart-child:rest-for-one
+(defn- restart-child--rest-for-one
   [{id ::id :as child} {children ::children :as state}]
   ;;(println "strategy is 'rest-for-one', restarting rest children")
   (process/async
@@ -561,7 +561,7 @@
           (report-error [:start-error reason child1])
           (gen-server/cast (process/self) [:restart failed-to-start-id])
           (assoc state ::children (concat new-children before)))))))
-(spec-util/instrument `restart-child:rest-for-one)
+(spec-util/instrument `restart-child--rest-for-one)
 
 (spec/fdef restart-child*
   :args (spec/cat :child ::child :state ::state)
@@ -574,15 +574,15 @@
       [:continue new-state]
       (match strategy
         :one-for-one
-        (process/with-async [res (restart-child:one-for-one child new-state)]
+        (process/with-async [res (restart-child--one-for-one child new-state)]
           [:ok res])
 
         :one-for-all
-        (process/with-async [res (restart-child:one-for-all child new-state)]
+        (process/with-async [res (restart-child--one-for-all child new-state)]
           [:ok res])
 
         :rest-for-one
-        (process/with-async [res (restart-child:rest-for-one child new-state)]
+        (process/with-async [res (restart-child--rest-for-one child new-state)]
           [:ok res]))
 
       [:shutdown new-state]

@@ -208,7 +208,7 @@
 ;; ====================================================================
 ;; (proc-defn [fname args & body])
 
-(deftest ^:parallel proc-defn:defines-proc-fn
+(deftest ^:parallel proc-defn--defines-proc-fn
   (let [sym (gensym)]
     (eval `(process/proc-defn ~sym []))
     (is (sym-bound? sym)
@@ -222,13 +222,13 @@
     (is (matches? (meta (resolve sym)) {::a 1 ::b 2})
         "process fn must have the same meta as symbol passed as its name")))
 
-(deftest ^:parallel proc-defn:returns-proc-fn-var
+(deftest ^:parallel proc-defn--returns-proc-fn-var
   (let [sym (gensym)
         res (eval `(process/proc-defn ~sym [] :ok))]
     (is (= res (resolve sym))
         "proc-defn must return the bound function")))
 
-(deftest ^:parallel proc-defn:defined-fn-can-be-spawned
+(deftest ^:parallel proc-defn--defined-fn-can-be-spawned
   (let [sym (gensym)
         done (async/chan)
         _ (eval `(process/proc-defn ~sym [] ~(async/close! done)))
@@ -237,14 +237,14 @@
     (is (await-completion!! done 50)
         "proc-defn must return a function wich can be spawned")))
 
-(deftest ^:parallel proc-defn:throws-on-illegar-arguments
+(deftest ^:parallel proc-defn--throws-on-illegar-arguments
   (is (thrown? Exception (eval `(process/proc-defn f))))
   (is (thrown? Exception (eval `(process/proc-defn []))))
   (is (thrown? Exception (eval `(process/proc-defn f {}))))
   (is (thrown? Exception (eval `(process/proc-defn {} [] 3))))
   (is (thrown? Exception (eval `(process/proc-defn f 1 3)))))
 
-(deftest ^:parallel proc-defn:adds-docs-and-arglists
+(deftest ^:parallel proc-defn--adds-docs-and-arglists
   (let [sym (gensym)
         docs (str "my doc-string for " sym)]
     (eval `(process/proc-defn ~sym ~docs [] :ok))
@@ -263,7 +263,7 @@
 ;; ====================================================================
 ;; (proc-defn- [fname args & body])
 
-(deftest ^:parallel proc-defn-:defines-private-var
+(deftest ^:parallel proc-defn---defines-private-var
   (let [sym (gensym)]
     (eval `(process/proc-defn- ~sym [] :ok))
     (is (:private (meta (resolve sym)))
@@ -1345,7 +1345,7 @@
     (process/exit pid :abnormal)
     (await-completion! done 50)))
 
-(deftest ^:parallel spawn-opt:spawned-process-receives-parent-exit-reason
+(deftest ^:parallel spawn-opt--spawned-process-receives-parent-exit-reason
   (let [reg-name (uuid-keyword)
         done (async/chan)
         pfn (proc-fn [] (is (await-completion! done 50)))]

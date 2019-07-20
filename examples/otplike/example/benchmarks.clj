@@ -29,14 +29,14 @@
       (! npid :ok)
       (process/receive! :ok :ok))))
 
-(defn start-ring:no-parent [n]
+(defn start-ring--no-parent [n]
   (let [done (clojure.core.async/chan)
         pid (process/spawn proc1 [n done])]
     (! pid :ok)
     (clojure.core.async/<!! done)
     (println "done" n)))
 
-#_(time (start-ring:no-parent 100000))
+#_(time (start-ring--no-parent 100000))
 
 ;;---
 
@@ -69,7 +69,7 @@
 (process/proc-defn proc3 []
   (process/receive! pid (! pid :ok)))
 
-(defn start-spawn:ping-pong [n]
+(defn start-spawn--ping-pong [n]
   (proc-util/execute-proc!!
     (let [self (process/self)]
       (dotimes [_ n]
@@ -78,7 +78,7 @@
           (process/receive! :ok :ok))))
     (println "done" n)))
 
-#_(time (start-spawn:ping-pong 1000000))
+#_(time (start-spawn--ping-pong 1000000))
 
 ;;---
 

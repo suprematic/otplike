@@ -19,7 +19,7 @@
 
 ; TODO try different supervisor flags
 ;(otplike.proc-util/execute-proc!!
-(def-proc-test ^:parallel start-link:no-children
+(def-proc-test ^:parallel start-link--no-children
   (let [done (async/chan)
         init-fn (fn []
                   (async/close! done)
@@ -35,7 +35,7 @@
 ; TODO try different child spec
 ; TODO try different supervisor flags
 ;(otplike.proc-util/execute-proc!!
-(def-proc-test ^:parallel start-link:single-child
+(def-proc-test ^:parallel start-link--single-child
   (let [sup-init-done (async/chan)
         server-init-done (async/chan)
         sup-flags {}
@@ -61,7 +61,7 @@
 ; TODO try different child spec
 ; TODO try different supervisor flags
 ;(otplike.proc-util/execute-proc!!
-(def-proc-test ^:parallel start-link:multiple-children
+(def-proc-test ^:parallel start-link--multiple-children
   (let [sup-init-done (async/chan)
         s1-init-done (async/chan)
         s2-init-done (async/chan)
@@ -97,7 +97,7 @@
             "supervisor must call child's start-fn to start it")))))
 
 ;(otplike.proc-util/execute-proc
-(def-proc-test ^:parallel start-link:duplicate-child-id
+(def-proc-test ^:parallel start-link--duplicate-child-id
   (let [sup-init-done (async/chan)
         sup-flags {}
         make-child (fn [id]
@@ -117,7 +117,7 @@
           "supervisor must call init-fn to get its spec"))))
 
 ;(otplike.proc-util/execute-proc
-(def-proc-test ^:parallel start-link:bad-return:not-allowed-return
+(def-proc-test ^:parallel start-link--bad-return--not-allowed-return
   (let [sup-init-done (async/chan)
         init-fn (fn []
                   (async/close! sup-init-done)
@@ -132,7 +132,7 @@
                  "supervisor must call init-fn to get its spec")))))
 
 ;(otplike.proc-util/execute-proc
-(def-proc-test ^:parallel start-link:bad-return:no-child-id
+(def-proc-test ^:parallel start-link--bad-return--no-child-id
   (let [sup-init-done (async/chan)
         init-fn (fn []
                   (async/close! sup-init-done)
@@ -152,7 +152,7 @@
                  "supervisor must call init-fn to get its spec")))))
 
 ;(otplike.proc-util/execute-proc
-(def-proc-test ^:parallel start-link:bad-return:bad-child-start-fn
+(def-proc-test ^:parallel start-link--bad-return--bad-child-start-fn
   (let [sup-init-done (async/chan)
         init-fn (fn []
                   (async/close! sup-init-done)
@@ -168,7 +168,7 @@
         (is (await-completion! sup-init-done 50)
             "supervisor must call init-fn to get its spec")))))
 
-(def-proc-test ^:parallel start-link:bad-return:bad-supervisor-flags
+(def-proc-test ^:parallel start-link--bad-return--bad-supervisor-flags
   (let [make-child (fn [id]
                      {:id id
                       :start [gs/start-link
@@ -227,13 +227,13 @@
               "supervisor must call init-fn to get its spec"))))))
 
 ;(otplike.proc-util/execute-proc
-(def-proc-test ^:parallel start-link:invalid-arguments
+(def-proc-test ^:parallel start-link--invalid-arguments
   (is (thrown? Exception (sup/start-link! "not-fn"))
       "start-link must throw on invalid arguments")
   (is (thrown? Exception (sup/start-link! (fn [_] [:ok [{} []]]) :arg1))
       "start-link must throw on invalid arguments"))
 
-(defn test-start-link:child-init-returns-error [init-fn reason]
+(defn test-start-link--child-init-returns-error [init-fn reason]
   (proc-util/execute-proc!!
     (let [sup-init-done (async/chan)
           sup-flags {}
@@ -249,25 +249,25 @@
             "supervisor must call init-fn to get its spec")))))
 
 ;(otplike.proc-util/execute-proc
-(deftest ^:parallel start-link:child-init-returns-error:exit-normal
-  (test-start-link:child-init-returns-error
+(deftest ^:parallel start-link--child-init-returns-error--exit-normal
+  (test-start-link--child-init-returns-error
     (fn [] (process/exit :normal))
     :normal))
 
 ;(otplike.proc-util/execute-proc
-(deftest ^:parallel start-link:child-init-returns-error:exit-abnormal
-  (test-start-link:child-init-returns-error
+(deftest ^:parallel start-link--child-init-returns-error--exit-abnormal
+  (test-start-link--child-init-returns-error
     (fn [] (process/exit :abnormal))
     :abnormal))
 
 ;(otplike.proc-util/execute-proc
-(deftest ^:parallel start-link:child-init-returns-error:stop-with-reason
-  (test-start-link:child-init-returns-error
+(deftest ^:parallel start-link--child-init-returns-error--stop-with-reason
+  (test-start-link--child-init-returns-error
     (fn [] [:stop :some-reason])
     :some-reason))
 
 (def-proc-test ^:parallel
- start-link:multiple-children:first-child-init-returns-error
+ start-link--multiple-children--first-child-init-returns-error
 ;(otplike.proc-util/execute-proc
   (let [child1-done (async/chan)
         sup-init-done (async/chan)
@@ -297,7 +297,7 @@
             "supervisor must call init-fn to get its spec")))))
 
 (def-proc-test ^:parallel
-  start-link:multiple-children:middle-child-init-returns-error
+  start-link--multiple-children--middle-child-init-returns-error
 ;(otplike.proc-util/execute-proc
   (let [child1-init-done (async/chan)
         child1-terminate-done (async/chan)
@@ -344,7 +344,7 @@
             "supervisor must call init-fn to get its spec")))))
 
 (def-proc-test ^:parallel
-  start-link:multiple-children:last-child-init-returns-error
+  start-link--multiple-children--last-child-init-returns-error
 ;(otplike.proc-util/execute-proc!!
   (let [child1-init-done (async/chan)
         child1-terminate-done (async/chan)
@@ -611,7 +611,7 @@
       (and (= :transient restart)
            (not= :normal reason))))
 
-(defn process-restart:one-for-one
+(defn process-restart--one-for-one
   [id children restarts {:keys [intensity] :as test}]
   (let [child (update (get-child children id) :problems rest)
         [start-failures other-problems]
@@ -630,7 +630,7 @@
       [:exit expected-restarts (delete-child children id)]
       [:ok expected restarts (replace-child children child)])))
 
-(defn process-restart:one-for-all
+(defn process-restart--one-for-all
   [id children restarts {:keys [intensity] :as test}]
   (let [expected (expected-exits (delete-child children id))
         children-left (filter #(survive-exit? % :shutdown) children)
@@ -660,7 +660,7 @@
                 (recur restarts new-children expected))))
           [:ok expected restarts children-left])))))
 
-(defn process-restart:rest-for-one
+(defn process-restart--rest-for-one
   [id children restarts {:keys [intensity] :as test}]
   (let [[running [child & rest-children]]
         (split-with #(not= (:id %) id) children)
@@ -698,9 +698,9 @@
     (if (or (empty? exits) (empty? children))
       children
       (let [process-restart (case strategy
-                              :one-for-one process-restart:one-for-one
-                              :one-for-all process-restart:one-for-all
-                              :rest-for-one process-restart:rest-for-one)
+                              :one-for-one process-restart--one-for-one
+                              :one-for-all process-restart--one-for-all
+                              :rest-for-one process-restart--rest-for-one)
             {:keys [id reason] :as exit} (first exits)
             expected (exit-command-events exit)]
         (! id [:exit reason])
