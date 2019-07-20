@@ -295,14 +295,21 @@
           response (async/chan)
           parent (process/self)
           timeout (u/timeout-chan timeout)
-          pid (process/spawn-opt
-               gen-server-proc [gs args parent response] spawn-opt)]
-      (match (async/alts! [response timeout])
-        [:ok response] [:ok pid]
-        [[:error reason] response] [:error reason]
-        [nil timeout] (do (process/unlink pid)
-                          (process/exit pid :kill)
-                          [:error :timeout])))))
+          exit-or-pid
+          (process/ex-catch
+            (process/spawn-opt
+              gen-server-proc [gs args parent response] spawn-opt))]
+      (match exit-or-pid
+        [:EXIT reason]
+        [:error reason]
+
+        pid
+        (match (async/alts! [response timeout])
+          [:ok response] [:ok pid]
+          [[:error reason] response] [:error reason]
+          [nil timeout] (do (process/unlink pid)
+                            (process/exit pid :kill)
+                            [:error :timeout]))))))
 
 ;; ====================================================================
 ;; API
@@ -339,7 +346,7 @@
   `[:error [:bad-return-value value]]` if `init` returns a bad value,
   `[:error reason]` otherwise.
 
-  Throws on illegal arguments."
+  Throws on invalid arguments, or when the name is already registered."
   ([server]
    `(start! ~server [] {}))
   ([server args]
