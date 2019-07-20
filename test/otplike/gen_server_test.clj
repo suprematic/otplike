@@ -144,7 +144,7 @@
   (let [done (async/chan)
         server {:init
                 (fn [args]
-                  (is (= nil args)
+                  (is (nil? args)
                       "args passed to init must be the same as passed to start")
                   (async/close! done)
                   [:ok args])}]
@@ -160,7 +160,7 @@
   (let [done (async/chan)
         server {:terminate (fn [_ _] (async/put! done :val))}]
     (is (= [:error [:undef ['init [1]]]] (gs/start! server 1)))
-    (is (= nil (async/poll! done))
+    (is (nil? (async/poll! done))
         "terminate must not be called if init is undefined")))
 
 (def-proc-test ^:parallel init--callback-throws
@@ -171,7 +171,7 @@
           [:error [:exception {:message "TEST" :class "java.lang.Exception"}]]
           :ok)
         "error returned by start must contain exception thrown from callback")
-    (is (= nil (async/poll! done))
+    (is (nil? (async/poll! done))
         "terminate must not be called if init throws")))
 
 (def-proc-test ^:parallel init--bad-return
@@ -181,7 +181,7 @@
     (is (match (gs/start! server)
           [:error [:bad-return-value 'init :bad-return]] :ok)
         "error returned by start must contain value returned by callback")
-    (is (= nil (async/poll! done))
+    (is (nil? (async/poll! done))
         "terminate must not be called if init returns bad value")))
 
 (def-proc-test ^:parallel init--invalid-timeout
@@ -215,7 +215,7 @@
         "error returned by start must contain :timeout")
     (is (= (await-completion! done 200) [:ok [:reason :killed]])
         "gen-server process must be killed after init timeout")
-    (is (= nil (async/poll! done1))
+    (is (nil? (async/poll! done1))
         "terminate must not be called if init returns bad value")))
 
 (def-proc-test ^:parallel init--timeout--linked-to-parent
@@ -503,7 +503,7 @@
     (match (gs/start! server)
       [:ok pid]
       (do
-        (is (= nil (gs/call! pid nil 50))
+        (is (nil? (gs/call! pid nil 50))
             "call must return response from server")
         (match (process/exit pid :abnormal) true :ok)))))
 
@@ -541,7 +541,7 @@
     (match (gs/start! server)
       [:ok pid]
       (do
-        (is (= nil (gs/call! pid nil 50))
+        (is (nil? (gs/call! pid nil 50))
             "call must return response from server")
         (match (process/exit pid :abnormal) true :ok)))))
 
