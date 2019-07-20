@@ -402,6 +402,43 @@
         (is (await-completion! sup-init-done 50)
             "supervisor must call init-fn to get its spec")))))
 
+(def-proc-test ^:parallel start-link--returns-error-when-already-registred
+  (let [reg-name (uuid-keyword)
+        done (async/chan)
+        sup-fn (fn [] [:ok [{} []]])
+        pfn (process/proc-fn [] (is (await-completion! done 50)))
+        pid (process/spawn-opt pfn [] {:register reg-name})]
+    (is
+      (= [:error [:already-registered pid]]
+        (sup/start-link! reg-name sup-fn [])))
+    (async/close! done)))
+
+(def-proc-test ^:parallel start-link--doesnt-call-init-when-already-registered
+  (let [reg-name (uuid-keyword)
+        done (async/chan)
+        sup-fn
+        (fn []
+          (is false
+            "proc fn must not be called if the name is already registered")
+          [:ok [{} []]])
+        pfn (process/proc-fn [] (is (await-completion! done 100)))]
+    (process/spawn-opt pfn [] {:register reg-name})
+    (sup/start-link! reg-name sup-fn [])
+    (async/timeout 50)
+    (async/close! done)))
+
+(def-proc-test ^:eftest/seqential
+  start-link--doesnt-start-process-when-already-registred
+  (let [reg-name (uuid-keyword)
+        done (async/chan)
+        sup-fn (fn [] [:ok [{} []]])
+        pfn (process/proc-fn [] (is (await-completion! done 50)))]
+    (process/spawn-opt pfn [] {:register reg-name})
+    (let [procs (process/processes)]
+      (sup/start-link! reg-name sup-fn [])
+      (is (= procs (process/processes))))
+    (async/close! done)))
+
 (def-proc-test ^:parallel init--async-value-returned
   (process/flag :trap-exit true)
   (let [done (async/chan)
