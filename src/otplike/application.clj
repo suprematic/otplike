@@ -114,7 +114,11 @@
   (process/async
     (match message
       [::which]
-      [:reply (into '() (map (comp :name :application) started)) state]
+      [:reply
+       (into '()
+         (map
+           (fn [{:keys [application]}]
+             [(get application :name) (get application :description "") (get application :version "0.0.0")]) started)) state]
 
       [::start name]
       (let [name (normalize name)
