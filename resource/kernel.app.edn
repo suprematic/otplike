@@ -1,7 +1,10 @@
 {:version "0.0.1"
+ :description "otplike kernel application"
  :applications []
  :environment {:key :value :key1 :value1}
- :namespace otplike.kernel}
+ :namespace  otplike.kernel
+ :start-fn otplike.kernel/start
+ :stop-fn otplike.kernel/stop}
 
 
 

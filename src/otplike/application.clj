@@ -31,10 +31,14 @@
               (-> stream slurp read-string
                 (assoc :name name :resource resource)
                 (update :applications #(->> % (map normalize) (apply hash-set)))
-                (update :namespace normalize))]
+                (update :namespace
+                  #(if (coll? %)
+                     (map normalize %)
+                     [(normalize %)])))]
           [:ok resource])
         
         (catch Throwable t
+          (.printStackTrace t)
           [:error {:reason :bad-app-file :name name :resource resource :path path}]))
       [:error {:reason :no-file :name name :resource resource :path path}])))
 
@@ -54,15 +58,15 @@
        [loaded (assoc errors name error)])
      [loaded errors])))
 
-(process/proc-defn- application-master-p [{:keys [name namespace] :as application} controller-pid]
+(process/proc-defn- application-master-p [{:keys [name namespace start-fn stop-fn] :as application} controller-pid]
   (process/flag :trap-exit true)
-
   (when-let
       [[sup-pid state]
        (try
-         (require namespace :reload)
-         
-         (if-let [start-fn (u/ns-function namespace 'start)] 
+         (doseq [ns namespace]
+           (require ns :reload))
+
+         (if-let [start-fn (some-> start-fn resolve var-get)] 
            (match (process/await?! (apply start-fn []))
              [:ok (sup-pid :guard process/pid?) state]
              [sup-pid state]
@@ -72,7 +76,6 @@
 
              bad-return
              (process/exit [:error [:bad-return bad-return]]))
-
            (process/exit [:error :no-start-fn]))
          (catch clojure.lang.ExceptionInfo ex
            (throw ex))
@@ -82,11 +85,12 @@
     (process/! controller-pid [:started (process/self)])
 
     (let [call-stop-and-exit
-          #(when-let [stop-fn (u/ns-function namespace 'stop)]
-             (try
-               (apply stop-fn [state])
-               (catch Throwable _ex)
-               (finally (process/exit %))))]
+          #(do
+             (when-let [stop-fn (some-> stop-fn resolve var-get)]
+               (try
+                 (apply stop-fn [state])
+                 (catch Throwable _ex)))
+             (process/exit %))]
       (process/selective-receive!
         [:EXIT sup-pid reason]
         (do
@@ -95,7 +99,6 @@
 
         [:EXIT controller-pid reason]
         (do
-          (debug "exit for 'self': %s" reason)
           (process/exit sup-pid reason)
 
           (process/receive!
