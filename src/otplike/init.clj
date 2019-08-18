@@ -18,6 +18,8 @@
     (match (process/await! (application/start-link))
       [:ok controller-pid]
       (do
+        (process/await! (application/start 'kernel))
+        
         (debug "application controller started, pid=%s" controller-pid)
         (process/receive!
           [:EXIT controller-pid reason] 

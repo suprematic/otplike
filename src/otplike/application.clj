@@ -17,10 +17,10 @@
   (gs/start-link-ns ::application-controller [] {}))
 
 (defn start [name]
-  (gs/call ::applocation-controller [::start name]))
+  (gs/call ::application-controller [::start name]))
 
 (defn stop [name]
-  (gs/call ::applocation-controller [::stop name]))
+  (gs/call ::application-controller [::stop name]))
 
 (def normalize symbol)
 
@@ -184,8 +184,7 @@
 (defn terminate [reason state]
   (debug "terminate: %s" reason)
   
-  [:noreply state]
-  )
+  [:noreply state])
 
 
 #_(proc-util/execute-proc!!
@@ -199,11 +198,6 @@
 
 #_(proc-util/execute-proc!!
     (gs/call! ::application-controller [::which]))
-
-
-
-
-
 
 #_(proc-util/execute-proc!!
     (gs/call! ::application-controller [::state]))
