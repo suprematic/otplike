@@ -7,12 +7,14 @@
    [otplike.util :as u]
    [otplike.process :as process]
    [otplike.proc-util :as proc-util]
-   [otplike.gen-server :as gs])
-  (:gen-class))
+   [otplike.gen-server :as gs]))
 
 (defn debug [pattern & args]
   (let [str (apply format pattern args)]
     (println "DEBUG:" str)))
+
+(defn start-link []
+  (gs/start-link-ns ::application-controller [] {}))
 
 (defn start [name]
   (gs/call ::applocation-controller [::start name]))
@@ -171,12 +173,20 @@
           [:reply [:error [:not-started name]] state])))))
 
 (defn handle-info [message {:keys [started] :as state}]
+  (debug "info: %s" message)
   (match message
     [:EXIT pid _]
     (if-let [application (->> started (filter (comp #(= % pid) :pid)) first)]
       [:noreply
        (assoc state :started (filter (comp #(not= % pid) :pid) started))]
       [:noreply state])))
+
+(defn terminate [reason state]
+  (debug "terminate: %s" reason)
+  
+  [:noreply state]
+  )
+
 
 #_(proc-util/execute-proc!!
     (gs/call! ::application-controller [::start 'dep1]))
@@ -190,57 +200,9 @@
 #_(proc-util/execute-proc!!
     (gs/call! ::application-controller [::which]))
 
-#_(boot)
-#_(un-boot)
-
-(process/proc-defn- init-p [terminate-ch]
-  (process/flag :trap-exit true)
-  (try
-    (match (gs/start-link-ns! ::application-controller [] {})
-      [:ok controller-pid]
-      (do
-        (process/receive!
-          [:EXIT controller-pid reason] 
-          (do
-            (debug "application controller terminated unexpectedly: %s" reason)
-            (async/put! terminate-ch [:error reason]))
-
-          [::shutdown]
-          (do
-            (debug "shutdown request received") 
-            (process/exit controller-pid :shutdown)
-            (process/receive!
-              [:EXIT controller-pid reason]
-              (do
-                (debug "application controller terminated upon request: %s" reason)
-                (async/put! terminate-ch [:exit reason]))))))
-
-      [:error reason]
-      (async/put! terminate-ch [:error reason]))
-
-    (catch Throwable t
-      (async/put! terminate-ch [:error (process/ex->reason t)]))))
-
-(defn- boot []
-  (let [terminate (async/promise-chan)]
-    (try
-      (process/spawn-opt init-p [terminate] {:register ::init})
-      (catch Throwable t
-        (async/put! terminate [:error (process/ex->reason t)])))
-    terminate))
-
-(defn- un-boot []
-  (if-let [pid (process/resolve-pid ::init)]
-    (process/! pid [::shutdown])
-    [:error :noproc]))
 
 
-(defn -main [& args]
-  (if-let [error (async/<!! (boot))]
-    (do
-      (println "otplike terminated: " error)
-      (System/exit -1))
-    (System/exit 0)))
+
 
 
 #_(proc-util/execute-proc!!
