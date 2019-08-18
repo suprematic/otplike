@@ -14,9 +14,15 @@
   (let [str (apply format pattern args)]
     (println "DEBUG:" str)))
 
+(defn start [name]
+  (gs/call ::applocation-controller [::start name]))
+
+(defn stop [name]
+  (gs/call ::applocation-controller [::stop name]))
+
 (def normalize symbol)
 
-(defn- load-app-resource [name path]
+(defn- load-application [name path]
   (let [name (normalize name)
         resource (format "%s.app.edn" name)]
     (if-let [stream (io/resource resource)]
@@ -36,13 +42,12 @@
           [:error {:reason :bad-app-file :name name :resource resource :path path}]))
       [:error {:reason :no-file :name name :resource resource :path path}])))
 
-
 (defn- load-apps-resources
   ([name]
    (load-apps-resources name [{} {}] [name]))
   ([name [loaded errors] path]
    (if-not (loaded name)
-     (match (load-app-resource name path)
+     (match (load-application name path)
        [:ok application]
        (reduce
          (fn [[loaded errors] name]
@@ -53,13 +58,6 @@
        [loaded (assoc errors name error)])
      [loaded errors])))
 
-
-#_(proc-util/execute-proc!!
-    (gs/call! ::application-controller [::start 'kernel] 10000))
-
-#_(proc-util/execute-proc!!
-    (gs/call! ::application-controller [::stop 'kernel]))
-
 (process/proc-defn- application-master-p [{:keys [name namespace] :as application} controller-pid]
   (process/flag :trap-exit true)
 
@@ -67,7 +65,7 @@
       [[sup-pid state]
        (try
          (require namespace)
-
+         
          (if-let [start-fn (u/ns-function namespace 'start)] 
            (match (process/await?! (apply start-fn []))
              [:ok (sup-pid :guard process/pid?) state]
@@ -87,96 +85,89 @@
 
     (process/! controller-pid [:started (process/self)])
 
-    (loop []
+    (let [call-stop-and-exit
+          #(when-let [stop-fn (u/ns-function namespace 'stop)]
+             (try
+               (apply stop-fn [state])
+               (catch Throwable _ex)
+               (finally (process/exit %))))]
       (process/selective-receive!
         [:EXIT sup-pid reason]
         (do
-          (debug "*** app supervisor terminated with reason: %s" reason)
-          (when-let [stop-fn (u/ns-function namespace 'stop)]
-            (try
-              (apply stop-fn [state])
-              (catch Throwable _ex)))
-          (process/exit reason))
+          (debug "app supervisor terminated with reason: %s" reason)
+          (call-stop-and-exit reason))
 
-        [:stop reason]
+        [:EXIT controller-pid reason]
         (do
+          (debug "exit for 'self': %s" reason)
           (process/exit sup-pid reason)
-          (recur))))))
 
-
-(defn- start-application [{:keys [name applications] :as application} started]
-  (process/async
-    (let [missing (set/difference applications (->> started keys (apply hash-set)))]
-      (if (empty? missing)
-        (do
-          (debug "starting application %s" name)
-          (let [app-pid (process/spawn-link application-master-p [application (process/self)])]
-            (process/selective-receive!
-              [:started app-pid]
-              (do
-                (debug "application master started for %s pid=%s" name app-pid)
-                [:started app-pid])
-
-              [:EXIT app-pid reason]
-              (do
-                (debug "application master exit for %s reason=%s, pid=%s" name reason app-pid)
-                [:error reason]))))
-        [:error [:not-started missing]]))))
-
-(defn- stop-application [app-pid]
-  (process/async
-    (debug "requesting application master to stop pid=%s, reason=%s" app-pid :normal)
-    (process/! app-pid [:stop :normal])
-
-    (process/selective-receive!
-      [:EXIT app-pid reason]
-      (do
-        (debug "application master terminated pid=%s, reason=%s" app-pid reason)
-        [:ok reason]))))
+          (process/receive!
+            [:EXIT sup-pid reason]
+            (call-stop-and-exit reason)))))))
 
 (defn init []
   (process/flag :trap-exit true)
-  [:ok {::pid->name {} ::name->pid {}}])
+  [:ok {::started '()}])
 
-(defn handle-call [message _reply-to {name->pid ::name->pid :as state}]
+(defn filter-rev-comp [preds coll]
+  (let [pred (apply comp (reverse preds))]
+    (filter pred coll)))
+
+(defn handle-call [message _reply-to {:keys [started] :as state}]
   (process/async
     (match message
-      [::state]
-      [:reply state state]
+      [::which]
+      [:reply (into '() (map (comp :name :application) started)) state]
 
       [::start name]
       (let [name (normalize name)]
-        (if-not (contains? name->pid name)
-          (match (load-app-resource name [])
-            [:ok resource]
-            (match (process/await! (start-application resource name->pid))
-              [:started app-pid]
-              [:reply :ok
-               (-> state
-                 (update ::name->pid assoc name app-pid)
-                 (update ::pid->name assoc app-pid name))]
+        (if-not (->> started (filter (comp #(= % name) :name :application)) first)
+          (match (load-application name [])
+            [:ok application]
+            (do
+              (debug "starting application %s" name)
+              (let [app-pid (process/spawn-link application-master-p [application (process/self)])]
+                (process/selective-receive!
+                  [:started app-pid]
+                  (do
+                    (debug "application master started for %s pid=%s" name app-pid)
+                    [:reply :ok
+                     (update state :started conj
+                       {:application application :pid app-pid})])
 
-              [:error reason]
-              [:reply [:error reason] state])
+                  [:EXIT app-pid reason]
+                  (do
+                    (debug "application master exit for %s reason=%s, pid=%s" name reason app-pid)
+                    [:reply [:error reason] state]))))
 
             [:error error]
             [:reply [:error error] state])
-
           [:reply [:error [:already-started name]] state]))
 
       [::stop name]
       (let [name (normalize name)]
-        (if-let [app-pid (name->pid name)]
-          (let [result (process/await! (stop-application app-pid))]
-            [:reply result
-             (-> state
-               (update ::name->pid dissoc name)
-               (update ::pid->name dissoc app-pid))])
+        (if-let [app-pid (->> started (filter (comp #(= % name) :name :application)) first :pid)]
+          (do
+            (debug "requesting application master to stop pid=%s, reason=%s" app-pid :normal)
+            (process/exit app-pid :normal)
+            
+            (process/selective-receive!
+              [:EXIT app-pid reason]
+              (do
+                (debug "application master exit pid=%s, reason=%s" app-pid reason)
+                [:ok reason]
+                [:reply :ok
+                 (assoc state :started (filter (comp #(not= % name) :name :application) started))])))
           [:reply [:error [:not-started name]] state])))))
 
-
-#_(proc-util/execute-proc!!
-    (gs/call! ::application-controller [::start 'dep1]))
+(defn handle-info [message {:keys [started] :as state}]
+  (match message
+    [:EXIT pid _]
+    (if-let [application (->> started (filter (comp #(= % pid) :pid)) first)]
+      [:noreply
+       (assoc state :started (filter (comp #(not= % pid) :pid) started))]
+      [:noreply state])))
 
 #_(proc-util/execute-proc!!
     (gs/call! ::application-controller [::start 'kernel]))
@@ -184,32 +175,11 @@
 #_(proc-util/execute-proc!!
     (gs/call! ::application-controller [::stop 'kernel]))
 
-
-
 #_(proc-util/execute-proc!!
-    (gs/call! ::application-controller [::start-all 'kernel1]))
-
+    (gs/call! ::application-controller [::which]))
 
 #_(boot)
 #_(un-boot)
-
-
-(defn handle-info [message state]
-  (debug "*** info message: %s" message)
-  [:noreply state])
-
-#_(load-app-resources 'dep1)
-
-
-(defn start [name]
-  (gs/call ::applocation-controller [::start name]))
-
-(defn start-all [name]
-  (gs/call ::applocation-controller [::start-all name]))
-
-(defn stop [name]
-  (gs/call ::applocation-controller [::stop name]))
-
 
 (process/proc-defn- init-p [terminate-ch]
   (process/flag :trap-exit true)
