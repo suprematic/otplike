@@ -27,16 +27,12 @@
         resource (format "%s.app.edn" name)]
     (if-let [stream (io/resource resource)]
       (try
-        (let [{:keys [namespace] :as resource}
+        (let [resource
               (-> stream slurp read-string
                 (assoc :name name :resource resource)
                 (update :applications #(->> % (map normalize) (apply hash-set)))
                 (update :namespace normalize))]
-          (try
-            (require namespace :reload) 
-            [:ok resource]
-            (catch Throwable ex
-              [:error {:reason :exception :name name :resource resource :stacktrace (u/stack-trace ex) :path path}])))
+          [:ok resource])
         
         (catch Throwable t
           [:error {:reason :bad-app-file :name name :resource resource :path path}]))
@@ -64,7 +60,7 @@
   (when-let
       [[sup-pid state]
        (try
-         (require namespace)
+         (require namespace :reload)
          
          (if-let [start-fn (u/ns-function namespace 'start)] 
            (match (process/await?! (apply start-fn []))
@@ -121,25 +117,31 @@
       [:reply (into '() (map (comp :name :application) started)) state]
 
       [::start name]
-      (let [name (normalize name)]
-        (if-not (->> started (filter (comp #(= % name) :name :application)) first)
+      (let [name (normalize name)
+            started-names (->> started (map (comp :name :application)) (apply hash-set))]
+        (if-not (contains? started-names name)
           (match (load-application name [])
             [:ok application]
-            (do
+            (let [not-started
+                  (set/difference
+                    (->> application :applications (apply hash-set))
+                    started-names)]
               (debug "starting application %s" name)
-              (let [app-pid (process/spawn-link application-master-p [application (process/self)])]
-                (process/selective-receive!
-                  [:started app-pid]
-                  (do
-                    (debug "application master started for %s pid=%s" name app-pid)
-                    [:reply :ok
-                     (update state :started conj
-                       {:application application :pid app-pid})])
+              (if-not (empty? not-started)
+                [:reply [:error [:not-started not-started]] state]
+                (let [app-pid (process/spawn-link application-master-p [application (process/self)])]
+                  (process/selective-receive!
+                    [:started app-pid]
+                    (do
+                      (debug "application master started for %s pid=%s" name app-pid)
+                      [:reply :ok
+                       (update state :started conj
+                         {:application application :pid app-pid})])
 
-                  [:EXIT app-pid reason]
-                  (do
-                    (debug "application master exit for %s reason=%s, pid=%s" name reason app-pid)
-                    [:reply [:error reason] state]))))
+                    [:EXIT app-pid reason]
+                    (do
+                      (debug "application master exit for %s reason=%s, pid=%s" name reason app-pid)
+                      [:reply [:error reason] state])))))
 
             [:error error]
             [:reply [:error error] state])
@@ -168,6 +170,9 @@
       [:noreply
        (assoc state :started (filter (comp #(not= % pid) :pid) started))]
       [:noreply state])))
+
+#_(proc-util/execute-proc!!
+    (gs/call! ::application-controller [::start 'dep1]))
 
 #_(proc-util/execute-proc!!
     (gs/call! ::application-controller [::start 'kernel]))
