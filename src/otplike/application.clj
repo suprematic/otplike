@@ -120,13 +120,7 @@
               [:EXIT app-pid reason]
               (do
                 (debug "application master exit for %s reason=%s, pid=%s" name reason app-pid)
-                [:error reason])
-
-              (after 5000
-                (debug "application master start timeout for %s" name)
-                (process/exit app-pid :timeout)
-                [:error :timeout]))))
-
+                [:error reason]))))
         [:error [:not-started missing]]))))
 
 (defn- stop-application [app-pid]
@@ -138,11 +132,7 @@
       [:EXIT app-pid reason]
       (do
         (debug "application master terminated pid=%s, reason=%s" app-pid reason)
-        [:ok reason])
-
-      (after 5000
-        (debug "applicaton master termination timeout: pid=%s" app-pid)
-        [:error :timeout]))))
+        [:ok reason]))))
 
 (defn init []
   (process/flag :trap-exit true)
