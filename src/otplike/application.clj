@@ -16,8 +16,11 @@
 (defn start-link []
   (gs/start-link-ns ::application-controller [] {}))
 
-(defn start [name]
-  (gs/call ::application-controller [::start name]))
+(defn start
+  ([name]
+   (start name true))
+  ([name permanent?]
+   (gs/call ::application-controller [::start name permanent?])))
 
 (defn stop [name]
   (gs/call ::application-controller [::stop name]))
@@ -38,7 +41,6 @@
                      (map normalize %)
                      [(normalize %)])))]
           [:ok resource])
-        
         (catch Throwable t
           (.printStackTrace t)
           [:error {:reason :bad-app-file :name name :resource resource :path path}]))
@@ -125,7 +127,7 @@
            (fn [{:keys [application]}]
              [(get application :name) (get application :description "") (get application :version "0.0.0")]) started)) state]
 
-      [::start name]
+      [::start name permanent?]
       (let [name (normalize name)
             started-names (->> started (map (comp :name :application)) (apply hash-set))]
         (if-not (contains? started-names name)
@@ -145,7 +147,7 @@
                       (debug "application master started for %s pid=%s" name app-pid)
                       [:reply :ok
                        (update state :started conj
-                         {:application application :pid app-pid})])
+                         {:application application :pid app-pid :permanent? permanent?})])
 
                     [:EXIT app-pid reason]
                     (do
@@ -167,34 +169,42 @@
               [:EXIT app-pid reason]
               (do
                 (debug "application master exit pid=%s, reason=%s" app-pid reason)
-                [:ok reason]
                 [:reply :ok
                  (assoc state :started (filter (comp #(not= % name) :name :application) started))])))
           [:reply [:error [:not-started name]] state])))))
 
 (defn handle-info [message {:keys [started] :as state}]
-  (debug "info: %s" message)
-  (match message
-    [:EXIT pid _]
-    (if-let [application (->> started (filter (comp #(= % pid) :pid)) first)]
-      [:noreply
-       (assoc state :started (filter (comp #(not= % pid) :pid) started))]
-      [:noreply state])))
+  (process/async
+   (debug "info: %s" message)
+   (match message
+     [:EXIT pid _]
+     (if-let [{:keys [permanent?] :as application} (->> started (filter (comp #(= % pid) :pid)) first)]
+       (let [started (filter (comp #(not= % pid) :pid) started)]
+         (if-not permanent?
+           [:noreply (assoc state :started started)]
+           (do
+             (doseq [{:keys [pid]} started]
+               (debug "requesting application master to stop pid=%s, reason=%s" pid :normal)
+               (process/exit pid :normal)
+               (process/selective-receive!
+                 [:EXIT pid reason]
+                 (debug "application master exit pid=%s, reason=%s" pid reason)))
+             [:stop :shutdown (assoc state :started '())])))
+       [:noreply state]))))
 
 (defn terminate [reason state]
   (debug "terminate: %s" reason)
-  
   [:noreply state])
 
 
 #_(proc-util/execute-proc!!
-    (gs/call! ::application-controller [::start 'dep1]))
+    (gs/call! ::application-controller [::start 'dep1 true]))
 
 #_(proc-util/execute-proc!!
-    (gs/call! ::application-controller [::start 'kernel]))
+    (gs/call! ::application-controller [::start 'kernel true]))
 
 #_(proc-util/execute-proc!!
-    (gs/call! ::application-controller [::stop 'kernel]))
+    (gs/call! ::application-controller [::stop 'kernel true]))
 
 #_(proc-util/execute-proc!!
     (gs/call! ::application-controller [::which]))

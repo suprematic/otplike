@@ -18,13 +18,13 @@
     (match (process/await! (application/start-link))
       [:ok controller-pid]
       (do
-        (process/await! (application/start 'kernel))
+        (process/await! (application/start 'kernel true))
         
         (debug "application controller started, pid=%s" controller-pid)
         (process/receive!
           [:EXIT controller-pid reason] 
           (do
-            (debug "application controller terminated unexpectedly: %s" reason)
+            (debug "application controller terminated: %s" reason)
             (async/put! terminate-ch [::error reason]))
           [::halt rc]
           (do
