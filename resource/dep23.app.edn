@@ -1,4 +1,4 @@
 {:version "0.0.1"
  :applications [dep21 dep22 kernel dep23]
  :environment {:key :value :key1 :value1}
- :namespace a.b.c.d}
+ :namespaces [a.b.c.d]}

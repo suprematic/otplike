@@ -1,4 +1,6 @@
 {:version "0.0.1"
  :applications [kernel]
  :environment {:key :value :key1 :value1}
- :namespace test.app.dep1}
+ :namespaces []
+ :start-fn otplike.kernel/start
+ :stop-fn otplike.kernel/stop}
