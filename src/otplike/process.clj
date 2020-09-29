@@ -51,18 +51,41 @@
            (< (:minor *clojure-version*) 9))
   (require '[clojure.future :refer :all]))
 
-(declare pid->str pid? self whereis ref? ! ex->reason exit async? link)
+(declare
+  pid->str
+  pid-hash-code
+  pid?
+  self
+  whereis
+  ref?
+  !
+  ex->reason
+  exit
+  async?
+  link)
 
-(deftype Pid [^Long id]
+(deftype Pid [^long id ^long node]
   Object
   (toString [self]
     (pid->str self))
-  (hashCode [_self]
-    (.hashCode id))
+  (hashCode [self]
+    (pid-hash-code self))
   (equals [^Pid self other]
-    (and (identical? Pid (type other))
-         (= id (.id ^Pid other)))))
+    (or
+      (identical? self other)
+      (and
+        (identical? Pid (type other))
+        (= id (.id ^Pid other))
+        (= node (.node ^Pid other))))))
 (alter-meta! #'->Pid assoc :private true)
+
+(defn- pid-hash-code [^Pid pid]
+  (unchecked-add
+    (unchecked-multiply 31 (-> pid .id Long/hashCode))
+    (-> pid .node Long/hashCode)))
+
+(defn- local-pid? [^Pid pid]
+  (= 0 (.node pid)))
 
 (defn- pid?* [pid]
   (instance? Pid pid))
@@ -162,7 +185,7 @@
   {:pre [(map? flags)]
    :post [(instance? TProcess %)]}
   (let [id (swap! *next-pid inc)
-        pid (Pid. id)
+        pid (Pid. id 0)
         start-ns (System/nanoTime)
         message-chan (async-ext/notify-chan) ;;(async/chan (async/sliding-buffer 1))
         message-q (atom (u/queue))
@@ -175,19 +198,19 @@
         linked (atom #{})
         flags (atom (merge {:trap-exit false} flags))]
     (TProcess.
-     pid
-     initial-call
-     start-ns
-     message-chan
-     message-q
-     control-chan
-     control-q
-     exit-reason
-     status
-     monitored-by
-     monitors
-     linked
-     flags)))
+      pid
+      initial-call
+      start-ns
+      message-chan
+      message-q
+      control-chan
+      control-q
+      exit-reason
+      status
+      monitored-by
+      monitors
+      linked
+      flags)))
 
 (defn ^:no-doc self-process
   []
@@ -762,7 +785,7 @@
   [^Pid pid]
   {:post [(string? %)]}
   (u/check-args [(pid? pid)])
-  (format "Pid<%d>" (.id pid)))
+  (format "Pid<%d,%d>" (.id pid) (.node pid)))
 
 (defn self
   "Returns the process identifier of the calling process.
@@ -792,11 +815,19 @@
   {:post [(or (true? %) (false? %))]}
   (u/check-args [(some? dest)])
   (trace-event *self* :send {:destination dest :message message})
-  (let [wrapped-message [(if (bound? #'*message-context*)
-                           @*message-context* {}) message]]
-    (if-let [^TProcess process (find-process dest)]
-      (!* process wrapped-message)
-      false)))
+  (let [context (if (bound? #'*message-context*) @*message-context* {})
+        pid-dest? (pid? dest)]
+    (if-let [process (find-process dest)]
+      (!* process [context message])
+      (if (and pid-dest? (local-pid? dest))
+        false
+        (if-let [connector (find-process :otplike.connector/server)]
+          (!* connector
+            [context
+             [:otplike.connector/route
+              (if pid-dest? dest [:name dest])
+              message]])
+          false)))))
 
 (defn exit
   "**When called with one argument (reason)**
@@ -1279,9 +1310,10 @@
   ([]
    (alive? *self*))
   ([^Pid pid]
-   (if-let [^TProcess process (@*processes (.id pid))]
-     (alive?* process)
-     false)))
+   (and (local-pid? pid)
+     (if-let [^TProcess process (@*processes (.id pid))]
+       (alive?* process)
+       false))))
 
 (defn processes
   "Returns a sequence of process identifiers corresponding to all
@@ -1408,9 +1440,10 @@
                     (if (coll? item-or-list)
                       (every? allowed-keys item-or-list)
                       (allowed-keys item-or-list)))])
-   (if-let [process (@*processes (.id pid))]
-     (let [keys? (coll? item-or-list)]
-       (let [items (if keys? item-or-list [item-or-list])
+   (when (local-pid? pid)
+     (when-let [process (@*processes (.id pid))]
+       (let [keys? (coll? item-or-list)
+             items (if keys? item-or-list [item-or-list])
              info (process-info* process items [])]
          (if keys?
            info
