@@ -55,14 +55,17 @@
   pid->str
   pid-hash-code
   pid?
+  local-pid?
   self
   whereis
   ref?
+  resolve-pid
   !
   ex->reason
   exit
   async?
-  link)
+  link
+  make-ref)
 
 (deftype Pid [^long id ^long node]
   Object
@@ -83,9 +86,6 @@
   (unchecked-add
     (unchecked-multiply 31 (-> pid .id Long/hashCode))
     (-> pid .node Long/hashCode)))
-
-(defn- local-pid? [^Pid pid]
-  (= 0 (.node pid)))
 
 (defn- pid?* [pid]
   (instance? Pid pid))
@@ -143,8 +143,6 @@
 
 (def ^:private *registered-reverse
   (atom (imap/int-map)))
-
-(def ^:private *control-timeout 100)
 
 (def ^:no-doc ^:dynamic *self* nil)
 
@@ -227,9 +225,6 @@
   (if-not (alive?* process)
     (exit :noproc)))
 
-(defn- make-ref []
-  (TRef. (swap! *refids inc)))
-
 (defn- find-process [id]
   {:pre [(some? id)]
    :post [(or (nil? %) (instance? TProcess %))]}
@@ -238,17 +233,38 @@
     (when-let [^Pid pid (whereis id)]
       (@*processes (.id pid)))))
 
+(def ^:private connector-signals* (atom nil))
+
+(defn- !remote [dest msg]
+  (! :otplike.connector/server [:otplike.connector/route dest msg]))
+
+(defn- !remote-control [dest signal]
+  (when (swap! connector-signals* #(when % (conj % [dest signal])))
+    (! :otplike.connector/server :otplike.connector/signal)
+    true))
+
 (defn- !control* [^TProcess process message]
   (swap! (.control-q process) conj message)
   (async/put! (.control-chan process) :go-control))
 
-(defn- !control [^Pid pid message]
-  {:pre [(pid? pid)
-         (vector? message) (keyword? (first message))]
+(defn- !control [dest message]
+  {:pre [(or (pid? dest) (and (vector? dest) (keyword? (dest 0))))
+         (vector? message) (keyword? (message 0))]
    :post [(or (true? %) (false? %))]}
-  (if-let [^TProcess process (@*processes (.id pid))]
-    (!control* process message)
-    false))
+  (if (pid? dest)
+    (if (local-pid? dest)
+      (if-let [^TProcess process (@*processes (.id dest))]
+        (!control* process message)
+        false)
+      (!remote-control dest message))
+    (case (dest 0)
+      :local
+      (if-let [^Pid pid (resolve-pid (dest 1))]
+        (!control pid message)
+        false)
+
+      :global
+      (!remote-control (dest 1) message))))
 
 (defn- !* [^TProcess process msg]
   (swap! (.message-q process) conj msg)
@@ -312,6 +328,20 @@
               (!* process [{} (monitor-message mref obj reason)]))))
         ::continue)
 
+      (identical? k :monitored)
+      (let [mref (message 1)
+            other-pid (message 2)]
+        (when (not= pid other-pid)
+          (swap-vals!
+            (.monitored-by process)
+            #(when % (assoc % mref other-pid))))
+        ::continue)
+
+      (identical? k :demonitored)
+      (let [mref (message 1)]
+        (swap-vals! (.monitored-by process) #(when % (dissoc % mref)))
+        ::continue)
+
       :else
       (throw (Exception. "Unexpected control message")))))
 
@@ -320,16 +350,22 @@
         control-chan (.control-chan process)
         message-chan (.message-chan process)
         exit-reason (.exit-reason process)]
+    (async/close! control-chan)
+    (async/close! message-chan)
+    (loop []
+      (when-some [m (async/poll! control-chan)]
+        (dispatch-control process m)
+        (recur)))
     (swap! exit-reason #(if (nil? %) reason %))
     (trace-event pid :exiting {:reason reason})
     (when-let [register (@*registered-reverse (.id pid))]
       (swap! *registered dissoc register)
       (swap! *registered-reverse dissoc (.id pid)))
-    (async/close! control-chan)
-    (async/close! message-chan)
     (let [[linked] (reset-vals! (.linked process) nil)
-          [mrefs] (reset-vals! (.monitored-by process) nil)]
-      (reset! (.monitors process) nil)
+          [mrefs] (reset-vals! (.monitored-by process) nil)
+          [my-mrefs] (reset-vals! (.monitors process) nil)]
+      (doseq [[mref [dest _]] my-mrefs]
+        (!control dest [:demonitored mref]))
       (doseq [p linked]
         (!control p [:linked-exit pid reason]))
       (doseq [[mref p] mrefs]
@@ -715,31 +751,34 @@
 (defn- process-info* [^TProcess process items info-tuples]
   (if (not (empty? items))
     (recur
-     process
-     (rest items)
-     (conj
-      info-tuples
-      (match (first items)
-        :links [:links @(.linked process)]
-        :monitors [:monitors (->> @(.monitors process) vals)]
-        :monitored-by [:monitored-by (->> @(.monitored-by process) vals)]
-        :registered-name [:registered-name
-                          (@*registered-reverse (.id ^Pid (.pid process)))]
-        :status [:status
-                 (if (nil? @(.exit-reason process))
-                   @(.status process)
-                   :exiting)]
-        :life-time-ms [:life-time-ms
-                       (quot (- (System/nanoTime) (.start-ns process)) 1000000)]
-        :initial-call [:initial-call (.initial-call process)]
-        :message-queue-len [:message-queue-len (count @(.message-q process))]
-        :messages [:messages (map second @(.message-q process))]
-        :flags [:flags @(.flags process)]
-        k (exit [:undefined-info-item k]))))
+      process
+      (rest items)
+      (conj
+        info-tuples
+        (match (first items)
+          :links [:links @(.linked process)]
+          :monitors [:monitors (->> @(.monitors process) vals)]
+          :monitored-by [:monitored-by (->> @(.monitored-by process) vals)]
+          :registered-name [:registered-name
+                            (@*registered-reverse (.id ^Pid (.pid process)))]
+          :status [:status
+                   (if (nil? @(.exit-reason process))
+                     @(.status process)
+                     :exiting)]
+          :life-time-ms [:life-time-ms
+                         (quot (- (System/nanoTime) (.start-ns process)) 1000000)]
+          :initial-call [:initial-call (.initial-call process)]
+          :message-queue-len [:message-queue-len (count @(.message-q process))]
+          :messages [:messages (map second @(.message-q process))]
+          :flags [:flags @(.flags process)]
+          k (exit [:undefined-info-item k]))))
     info-tuples))
 
 ;; ====================================================================
 ;; API
+
+(defn make-ref []
+  (TRef. (swap! *refids inc)))
 
 (defn ref?
   "Returns `true` if `x` is a reference, `false` otherwise."
@@ -765,6 +804,11 @@
   "Returns `true` if `pid` is a process identifier, `false` otherwise."
   [pid]
   (pid?* pid))
+
+
+(defn local-pid?
+  [^Pid pid]
+  (= 0 (.node pid)))
 
 (defn resolve-pid
   "If `pid-or-name` is a pid - returns pid. If a registered name -
@@ -819,15 +863,11 @@
         pid-dest? (pid? dest)]
     (if-let [process (find-process dest)]
       (!* process [context message])
-      (if (and pid-dest? (local-pid? dest))
-        false
-        (if-let [connector (find-process :otplike.connector/server)]
-          (!* connector
-            [context
-             [:otplike.connector/route
-              (if pid-dest? dest [:name dest])
-              message]])
-          false)))))
+      (if pid-dest?
+        (if (local-pid? dest)
+          false
+          (!remote dest message))
+        false))))
 
 (defn exit
   "**When called with one argument (reason)**
@@ -1055,17 +1095,29 @@
         mref (make-ref)]
     (if other-pid
       (when (not= my-pid other-pid)
-        (if-let [^TProcess other-process (@*processes (.id other-pid))]
-          (do
-            (swap! (.monitors my-process) assoc mref [other-pid pid-or-name])
-            (let [[old] (swap-vals!
-                         (.monitored-by other-process)
-                         #(if % (assoc % mref my-pid)))]
-              (if (nil? old)
-                (! my-pid (monitor-message mref pid-or-name :noproc)))))
+        (if (!control other-pid [:monitored mref my-pid])
+          (swap! (.monitors my-process) assoc mref [other-pid pid-or-name])
           (! my-pid (monitor-message mref pid-or-name :noproc))))
       (! my-pid (monitor-message mref pid-or-name :noproc)))
     mref))
+
+(defn monitor=>
+  "The same as `monitor` but ..."
+  [pid-or-name]
+  {:post [(ref? %)]}
+  (if (pid? pid-or-name)
+    (monitor pid-or-name)
+    (let [reg-name pid-or-name
+          target reg-name
+          ^TProcess my-process (self-process)
+          _ (require-alive my-process)
+          ^Pid my-pid (.pid my-process)
+          mref (make-ref)]
+      (if (!remote-control reg-name [:monitored mref my-pid])
+        (swap! (.monitors my-process)
+          assoc mref [[:global reg-name] target])
+        (! my-pid (monitor-message mref target :noproc)))
+      mref)))
 
 (defn demonitor
   "If `mref` is a reference that the calling process obtained by
@@ -1105,15 +1157,14 @@
    (u/check-args [(ref? mref)])
    (let [^TProcess my-process (self-process)
          _ (require-alive my-process)
-         my-refs (.monitors my-process)]
-     (let [[old] (locking my-refs (swap-vals! my-refs dissoc mref))]
-       (if-let [[^Pid other-pid] (get old mref)]
-         (if-let [^TProcess other-process (@*processes (.id other-pid))]
-           (swap! (.monitored-by other-process) dissoc mref)))))
-   (if flush?
+         my-refs (.monitors my-process)
+         [old] (locking my-refs (swap-vals! my-refs dissoc mref))]
+     (when-some [[dest] (get old mref)]
+       (!control dest [:demonitored mref])))
+   (when flush?
      (selective-receive!
-      [:DOWN mref _1 _2 _3] :ok
-      (after 0 :ok)))
+       [:DOWN mref _1 _2 _3] :ok
+       (after 0 :ok)))
    true))
 
 (defn spawn-opt
