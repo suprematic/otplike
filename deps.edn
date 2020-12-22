@@ -1,0 +1,11 @@
+{:deps
+ {org.clojure/clojure
+  {:mvn/version "1.8.0"}
+  org.clojure/core.async
+  {:mvn/version "0.4.474"}
+  org.clojure/core.match
+  {:mvn/version "0.3.0-alpha5"}
+  org.clojure/data.int-map
+  {:mvn/version "0.2.4"}
+  clojure-future-spec/clojure-future-spec
+  {:mvn/version "1.9.0-beta4"}}}
