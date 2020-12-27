@@ -1,4 +1,7 @@
-{:deps
+{:paths
+ ["src" "resources"]
+
+ :deps
  {org.clojure/clojure
   {:mvn/version "1.8.0"}
   org.clojure/core.async
