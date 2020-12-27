@@ -2,20 +2,10 @@
   (:require
    [otplike.supervisor :as supervisor]))
 
-
-(defn sup-fn []
+(defn- sup-fn []
   [:ok
    [{:strategy :one-for-all}
     []]])
 
-
-
-
-(defn start []
-  (Thread/sleep 6000)
+(defn start [_env]
   (supervisor/start-link sup-fn []))
-
-
-(defn stop [xx]
-  nil
-  )
