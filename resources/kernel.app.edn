@@ -1,0 +1,7 @@
+{:description "otplike kernel application"
+ :applications []
+ :namespaces  [otplike.kernel]
+ :start-fn otplike.kernel/start}
+
+
+
