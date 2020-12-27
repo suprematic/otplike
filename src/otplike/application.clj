@@ -79,7 +79,7 @@
            (:applications application))]
           (concat deps [application] applications)))
       [:error reason]
-      (throw (ex-info "" reason)))
+      (throw (ex-info "" {:exception reason})))
     applications))
 
 (spec/fdef load-appfile-all
@@ -93,7 +93,7 @@
   (try
     [:ok (load-appfile-all* name '() (atom #{}) [name])]
     (catch clojure.lang.ExceptionInfo ex
-      [:error (ex-data ex)])))
+      [:error [:exception (get (ex-data ex) :exception)]])))
 (spec-util/instrument 'load-appfile-all)
 
 #_(load-applications 'kernel)
