@@ -2,16 +2,12 @@
   (:require
    [clojure.core.match :refer [match]]
    [clojure.core.async :as async]
-   [clojure.pprint :refer [pprint]]
    [otplike.process :as process]
+   [otplike.logger :as log]
    [otplike.proc-util :as proc-util]
    [otplike.gen-server :as gs]
    [otplike.application :as application])
   (:gen-class))
-
-(defn debug [pattern & args]
-  (let [str (apply format pattern args)]
-    (println "DEBUG:" str)))
 
 (process/proc-defn- init-p [terminate-ch {:keys [applications environment]}]
   (process/flag :trap-exit true)
@@ -19,15 +15,15 @@
     (match (process/await! (application/start-link environment))
       [:ok controller-pid]
       (let [applications (concat ['kernel] applications)]
-        (debug "application controller started, pid=%s" controller-pid)
-        (debug "autostarting: applications=%s" (apply list applications))
+        (log/debug "application controller started" :pid controller-pid)
+        (log/debug "autostarting applications" :applications applications)
 
         (loop [[application & rest] applications]
           (when application
             (match (process/await! (application/start-all application true))
               [:error reason]
               (do
-                (debug "autostart failed: application=%s, reason=%s" application reason)
+                (log/debug "application autostart failed" :application application :reason reason)
                 (process/! (process/self) [::halt 1]))
 
               :ok
@@ -36,16 +32,16 @@
         (process/receive!
          [:EXIT controller-pid reason]
          (do
-           (debug "application controller terminated: %s" reason)
+           (log/debug "application controller terminated" :reason reason)
            (async/put! terminate-ch [::error reason]))
          [::halt rc]
          (do
-           (debug "halt request received, rc=%d" rc)
+           (log/debug "halt request received" :rc rc)
            (process/exit controller-pid :shutdown)
            (process/receive!
             [:EXIT controller-pid reason]
             (do
-              (debug "application controller terminated upon request: %s" reason)
+              (log/debug "application controller terminated on request" :reason reason)
               (async/put! terminate-ch [::halt reason rc]))))))
       [:error reason]
       (async/put! terminate-ch [::error reason]))
@@ -58,7 +54,7 @@
     (match (async/<!! ch)
       [::error reason]
       (do
-        (debug "otplike terminated: \n%s" (pprint reason))
+        (log/debug "otplike unexpectedly terminated" :reason reason)
         (System/exit -1))
       [::halt _ rc]
       (System/exit rc))))

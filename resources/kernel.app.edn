@@ -7,5 +7,5 @@
   {:format "%1$tH:%1$tM:%1$tS.%1$tL [%2$s] %3$s %4$s - %5$s\n %6$s"
    :threshold :debug
    :pprint? true
-   :extended? true
+   :extended? false
    :namespaces []}}}
