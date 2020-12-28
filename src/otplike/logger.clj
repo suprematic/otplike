@@ -142,6 +142,6 @@
 (defmacro debug [& args]
   `(log* :debug ~@args))
 
-(let [a 10]
-  (error "blah ~(+ a 3)" :key 2 :key2 {:hello [1 2 3]}))
+#_(let [a 10]
+    (error "blah ~(+ a 3)" :key 2 :key2 {:hello [1 2 3]}))
 
