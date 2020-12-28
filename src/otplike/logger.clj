@@ -91,7 +91,7 @@
              (pprint args))
            (str args)))]
         (locking guard
-          (println to-print))))))
+          (print to-print))))))
 
 (defmacro log* [level message & args]
   (assert (even? (count args)) "args count is not even")
