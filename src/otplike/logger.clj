@@ -100,7 +100,8 @@
 
   `(when @config
      (let
-      [ns-config# (lookup @config (str *ns*))]
+      [ns-str# ~(str *ns*)
+       ns-config# (lookup @config ns-str#)]
        (when (<= (get level-values ~level 999) (get level-values (get ns-config# :threshold) -1))
          (let
           [timestamp# (java.util.Date.)
@@ -110,11 +111,11 @@
              "noproc")
            message# (str ~@(interpolate message))]
            (output
-            ns-config# timestamp# pid#  ~level *ns* message#
+            ns-config# timestamp# pid# ~level ns-str# message#
             (merge
              ~(apply hash-map args)
              (when (get ns-config# :extended?)
-               {::level ~level ::ns *ns* ::pid pid# ::timestamp timestamp#}))))))))
+               {::level ~level ::ns ns-str# ::pid pid# ::timestamp timestamp#}))))))))
 
 (defmacro emergency [& args]
   `(log* :emergency ~@args))
