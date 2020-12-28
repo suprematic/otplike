@@ -1,7 +1,11 @@
 {:description "otplike kernel application"
  :applications []
  :namespaces  [otplike.kernel]
- :start-fn otplike.kernel/start}
-
-
-
+ :start-fn otplike.kernel/start
+ :environment
+ {:logger
+  {:format "%1$tH:%1$tM:%1$tS.%1$tL [%2$s] %3$s %4$s - %5$s\n %6$s"
+   :threshold :debug
+   :pprint? true
+   :extended? true
+   :namespaces []}}}

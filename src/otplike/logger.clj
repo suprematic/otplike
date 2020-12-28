@@ -53,15 +53,13 @@
    :info 6
    :debug 7})
 
-(def config
+(defonce config
   (atom
    '{:format "%1$tH:%1$tM:%1$tS.%1$tL [%2$s] %3$s %4$s - %5$s\n %6$s\n"
      :threshold :notice
      :pprint? true
      :extended? true
-     :namespaces
-     {otplike.core
-      {:threshold :info}}}))
+     :namespaces []}))
 
 (defn set-config! [config']
   (reset! config config'))
