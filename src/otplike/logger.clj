@@ -79,20 +79,22 @@
        (select-keys
         (merge config (get-in config [:namespaces match])) [:format :threshold :pprint? :extended?])))))
 
-(let [guard (Object.)]
-  (defn- output [{:keys [format pprint?]} timestamp pid level category message args]
-    (when format
-      (let
-       [to-print
-        (clojure.core/format
-         format
-         timestamp pid (get level-string level) category message
-         (if pprint?
-           (with-out-str
-             (pprint args))
-           (str args)))]
-        (locking guard
-          (print to-print))))))
+
+(defn output [{:keys [format pprint?]} timestamp pid level ns message args]
+  (when format
+    (let
+     [to-print
+      (clojure.core/format
+       format
+       timestamp pid (get level-string level) ns message
+       (if pprint?
+         (with-out-str
+           (pprint args))
+         (str args)))]
+
+      (let [out (System/out)]
+        (locking out
+          (.print out to-print))))))
 
 (defmacro log* [level message & args]
   (assert (even? (count args)) "args count is not even")
