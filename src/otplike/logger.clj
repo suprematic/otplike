@@ -63,6 +63,9 @@
      {otplike.core
       {:threshold :info}}}))
 
+(defn set-config! [config']
+  (reset! config config'))
+
 (def lookup
   (memoize
    (fn [config ns]
