@@ -20,19 +20,19 @@
   (assert (sequential? exprs))
   (when-let [expr (first exprs)]
     `(if ~expr
-      (check-args ~(rest exprs))
-      (throw (IllegalArgumentException.
+       (check-args ~(rest exprs))
+       (throw (IllegalArgumentException.
                (str "require " '~expr " to be true"))))))
 
 (defn stack-trace [^Throwable e]
   (merge
-    {:message (.getMessage e)
-     :class (.getName (class e))
-     :stack-trace (mapv str (.getStackTrace e))}
-    (if (instance? clojure.lang.ExceptionInfo e)
-      {:data (ex-data e)})
-    (if-let [cause (.getCause e)]
-      {:cause (stack-trace cause)})))
+   {:message (.getMessage e)
+    :class (.getName (class e))
+    :stack-trace (mapv str (.getStackTrace e))}
+   (if (instance? clojure.lang.ExceptionInfo e)
+     {:data (ex-data e)})
+   (if-let [cause (.getCause e)]
+     {:cause (stack-trace cause)})))
 
 (defn timeout-chan [timeout]
   (cond
@@ -40,7 +40,7 @@
     (nat-int? timeout) (async/timeout timeout)
     (satisfies? ap/ReadPort timeout) timeout
     :else (throw (Exception.
-                   (str "unsupported receive timeout " (pr-str timeout))))))
+                  (str "unsupported receive timeout " (pr-str timeout))))))
 
 (defn channel? [x]
   (satisfies? ap/ReadPort x))
@@ -84,7 +84,6 @@
        (keyword? r)
        (symbol? r)) r
 
-      :else
-      (throw (ex-info "cannot merge values: " {:left l :right r})))))
+      :else l)))
 
 #_(deep-merge {:a 1 :b ^:distinct [-1 0]} {:b [0 1 2 3]})
