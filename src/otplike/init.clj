@@ -23,7 +23,7 @@
             (match (process/await! (application/start-all application true))
               [:error reason]
               (do
-                (log/debug "application autostart failed" :application application :reason reason)
+                (log/warn "application autostart failed" :application application :reason reason)
                 (process/! (process/self) [::halt 1]))
 
               :ok
@@ -32,7 +32,7 @@
         (process/receive!
          [:EXIT controller-pid reason]
          (do
-           (log/debug "application controller terminated" :reason reason)
+           (log/notice "application controller terminated" :reason reason)
            (async/put! terminate-ch [::error reason]))
          [::halt rc]
          (do
@@ -54,7 +54,7 @@
     (match (async/<!! ch)
       [::error reason]
       (do
-        (log/debug "otplike unexpectedly terminated" :reason reason)
+        (log/notice "otplike unexpectedly terminated" :reason reason)
         (System/exit -1))
       [::halt _ rc]
       (System/exit rc))))
