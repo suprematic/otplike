@@ -33,17 +33,7 @@
        (interpolate (subs s start) (= \{ (.charAt s (inc start))))))
      [s])))
 
-(def level-string
-  {:emergency "EMERGENCY"
-   :alert "ALERT"
-   :critical "CRITICAL"
-   :error "ERROR"
-   :warn "WARN"
-   :notice "NOTICE"
-   :info "INFO"
-   :debug "DEBUG"})
-
-(def level-values
+(def level-codes
   {:emergency 0
    :alert 1
    :critical 2
@@ -51,7 +41,19 @@
    :warn 4
    :notice 5
    :info 6
-   :debug 7})
+   :debug 7
+   :trace 8})
+
+(def level-string
+  {0 "EMERGENCY"
+   1 "ALERT"
+   2 "CRITICAL"
+   3 "ERROR"
+   4 "WARN"
+   5 "NOTICE"
+   6 "INFO"
+   7 "DEBUG"
+   8 "TRACE"})
 
 (defonce config
   (atom
@@ -59,7 +61,7 @@
      :threshold :notice
      :pprint? true
      :extended? true
-     :namespaces []}))
+     :namespaces {}}))
 
 (defn set-config! [config']
   (reset! config config'))
@@ -74,13 +76,17 @@
         (keys)
         (filter
          (fn [ns']
-           (str/starts-with? (name ns') ns)))
+           (str/starts-with? ns (name ns'))))
         (first))]
-       (select-keys
-        (merge config (get-in config [:namespaces match])) [:format :threshold :pprint? :extended?])))))
+       (-> config
+           (merge
+            (get-in config [:namespaces match]))
+           (select-keys [:format :threshold :pprint? :extended?])
+           (update
+            :threshold
+            #(get level-codes % -1)))))))
 
-
-(defn output [{:keys [format pprint?]} timestamp pid level ns message args]
+(defn- output [{:keys [format pprint?]} timestamp pid level ns message args]
   (when format
     (let
      [to-print
@@ -96,53 +102,54 @@
         (locking out
           (.print out to-print))))))
 
-(defmacro log* [level message & args]
+(defn log* [ns-str level message args]
+  (when @config
+    (let
+     [{:keys [threshold extended?] :as ns-config} (lookup @config ns-str)]
+      (when (<= level threshold)
+        (let
+         [timestamp (java.util.Date.)
+          pid
+          (if-let [self-pid otplike.process/*self*]
+            (otplike.process/pid->str self-pid)
+            "noproc")]
+          (output
+           ns-config timestamp pid level ns-str message
+           (merge
+            {}
+            args
+            (when extended?
+              {::level level ::ns ns-str ::pid pid ::timestamp timestamp}))))))))
+
+(defn enabled?* [ns-str level]
+  (let [{:keys [threshold]} (lookup @config ns-str)]
+    (<= level threshold)))
+
+(defmacro log [level message & args]
   (assert (even? (count args)) "args count is not even")
   (assert (#{:emergency :alert :critical :error :warn :notice :info :debug} level))
-
-  `(when @config
-     (let
-      [ns-str# ~(str *ns*)
-       ns-config# (lookup @config ns-str#)]
-       (when (<= (get level-values ~level 999) (get level-values (get ns-config# :threshold) -1))
-         (let
-          [timestamp# (java.util.Date.)
-           pid#
-           (if-let [self-pid# otplike.process/*self*]
-             (otplike.process/pid->str self-pid#)
-             "noproc")
-           message# (str ~@(interpolate message))]
-           (output
-            ns-config# timestamp# pid# ~level ns-str# message#
-            (merge
-             ~(apply hash-map args)
-             (when (get ns-config# :extended?)
-               {::level ~level ::ns ns-str# ::pid pid# ::timestamp timestamp#}))))))))
+  `(log* ~(str *ns*) ~(get level-codes level 999) (str ~@(interpolate message)) ~(apply hash-map args)))
 
 (defmacro emergency [& args]
-  `(log* :emergency ~@args))
+  `(log :emergency ~@args))
 
 (defmacro alert [& args]
-  `(log* :alert ~@args))
+  `(log :alert ~@args))
 
 (defmacro critical [& args]
-  `(log* :critical ~@args))
+  `(log :critical ~@args))
 
 (defmacro error [& args]
-  `(log* :error ~@args))
+  `(log :error ~@args))
 
 (defmacro warn [& args]
-  `(log* :warn ~@args))
+  `(log :warn ~@args))
 
 (defmacro notice [& args]
-  `(log* :notice ~@args))
+  `(log :notice ~@args))
 
 (defmacro info [& args]
-  `(log* :info ~@args))
+  `(log :info ~@args))
 
 (defmacro debug [& args]
-  `(log* :debug ~@args))
-
-#_(let [a 10]
-    (error "blah ~(+ a 3)" :key 2 :key2 {:hello [1 2 3]}))
-
+  `(log :debug ~@args))

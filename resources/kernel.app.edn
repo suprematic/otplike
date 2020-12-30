@@ -8,4 +8,4 @@
    :threshold :debug
    :pprint? true
    :extended? false
-   :namespaces []}}}
+   :namespaces {}}}}
