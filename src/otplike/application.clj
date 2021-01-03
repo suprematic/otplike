@@ -120,6 +120,9 @@
           [:ok (sup-pid :guard process/pid?)]
           [sup-pid nil]
 
+          [:error reason]
+          (process/exit reason)
+
           bad-return
           (process/exit [:bad-return bad-return])))
       (catch clojure.lang.ExceptionInfo ex
