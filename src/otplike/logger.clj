@@ -128,7 +128,16 @@
 (defmacro log [level message & args]
   (assert (even? (count args)) "args count is not even")
   (assert (#{:emergency :alert :critical :error :warn :notice :info :debug} level))
-  `(log* ~(str *ns*) ~(get level-codes level 999) (str ~@(interpolate message)) ~(apply hash-map args)))
+  `(log*
+    ~(str *ns*)
+    ~(get level-codes level 999)
+
+    (str
+     ~@(if (string? message)
+         (interpolate message)
+         [message]))
+
+    ~(apply hash-map args)))
 
 (defmacro emergency [& args]
   `(log :emergency ~@args))
