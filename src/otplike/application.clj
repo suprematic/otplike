@@ -289,16 +289,16 @@
   ([name]
    (start name true))
   ([name permanent?]
-   (gs/call ::application-controller [::start name permanent?])))
+   (gs/call ::application-controller [::start name permanent?] :infinity)))
 
 (defn start-all
   ([name]
    (start-all name true))
   ([name permanent?]
-   (gs/call ::application-controller [::start-all name permanent?])))
+   (gs/call ::application-controller [::start-all name permanent?] :infinity)))
 
 (defn stop [name]
-  (gs/call ::application-controller [::stop name]))
+  (gs/call ::application-controller [::stop name] :infinity))
 
 (defn which []
   (gs/call ::application-controller [::which]))
