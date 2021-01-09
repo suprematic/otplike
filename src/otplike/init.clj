@@ -32,19 +32,19 @@
               (recur rest))))
 
         (process/receive!
-         [:EXIT controller-pid reason]
-         (do
-           (log/notice "application controller terminated" :reason reason)
-           (async/put! terminate-ch [::error reason]))
-         [::halt rc]
-         (do
-           (log/debug "halt request received" :rc rc)
-           (process/exit controller-pid :shutdown)
-           (process/receive!
-            [:EXIT controller-pid reason]
-            (do
-              (log/debug "application controller terminated on request" :reason reason)
-              (async/put! terminate-ch [::halt reason rc]))))))
+          [:EXIT controller-pid reason]
+          (do
+            (log/notice "application controller terminated" :reason reason)
+            (async/put! terminate-ch [::error reason]))
+          [::halt rc]
+          (do
+            (log/debug "halt request received" :rc rc)
+            (process/exit controller-pid :shutdown)
+            (process/receive!
+              [:EXIT controller-pid reason]
+              (do
+                (log/debug "application controller terminated on request" :reason reason)
+                (async/put! terminate-ch [::halt reason rc]))))))
       [:error reason]
       (async/put! terminate-ch [::error reason]))
     (catch Throwable t
@@ -64,8 +64,8 @@
 
 (defn halt
   ([]
-   (halt 0))
+    (halt 0))
   ([rc]
-   (if-let [pid (process/resolve-pid ::init)]
-     (process/! pid [::halt rc])
-     :noproc)))
+    (if-let [pid (process/resolve-pid ::init)]
+      (process/! pid [::halt rc])
+      :noproc)))
