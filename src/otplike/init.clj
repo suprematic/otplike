@@ -1,12 +1,14 @@
 (ns otplike.init
   (:require
-   [clojure.core.match :refer [match]]
-   [clojure.core.async :as async]
-   [otplike.process :as process]
-   [otplike.logger :as log]
-   [otplike.proc-util :as proc-util]
-   [otplike.gen-server :as gs]
-   [otplike.application :as application])
+    [clojure.core.match :refer [match]]
+    [clojure.core.async :as async]
+    [clojure.java.io :as io]
+    [otplike.process :as process]
+    [otplike.logger :as log]
+    [otplike.util :as u]
+    [otplike.proc-util :as proc-util]
+    [otplike.gen-server :as gs]
+    [otplike.application :as application])
   (:gen-class))
 
 (process/proc-defn- init-p [terminate-ch {:keys [applications environment]}]
@@ -49,15 +51,16 @@
       (async/put! terminate-ch [::error (process/ex->reason t)]))))
 
 (defn init [args]
-  (let [ch (async/promise-chan)]
-    (process/spawn-opt init-p [ch args] {:register ::init})
-    (match (async/<!! ch)
-      [::error reason]
-      (do
-        (log/notice "otplike unexpectedly terminated" :reason reason)
-        (System/exit -1))
-      [::halt _ rc]
-      (System/exit rc))))
+  (let [args (some-> "system.edn" io/resource slurp read-string (u/deep-merge args))]
+    (let [ch (async/promise-chan)]
+      (process/spawn-opt init-p [ch args] {:register ::init})
+      (match (async/<!! ch)
+        [::error reason]
+        (do
+          (log/notice "otplike unexpectedly terminated" :reason reason)
+          (System/exit -1))
+        [::halt _ rc]
+        (System/exit rc)))))
 
 (defn halt
   ([]
