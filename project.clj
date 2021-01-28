@@ -1,4 +1,4 @@
-(def project-version "0.6.1-alpha-SNAPSHOT")
+(def project-version "0.7.0-alpha-SNAPSHOT")
 
 (defproject
   otplike/otplike project-version
