@@ -57,11 +57,9 @@
 
 (defonce config
   (atom
-   '{:format "%1$tH:%1$tM:%1$tS.%1$tL [%2$s] %3$s %4$s - %5$s\n %6$s\n"
-     :threshold :notice
-     :pprint? true
-     :extended? true
-     :namespaces {}}))
+    '{:threshold :notice
+      :pprint? true
+      :namespaces {}}))
 
 (defn set-config! [config']
   (reset! config config'))
@@ -81,45 +79,41 @@
        (-> config
            (merge
             (get-in config [:namespaces match]))
-           (select-keys [:format :threshold :pprint? :extended?])
-           (update
+          (select-keys [:threshold :pprint? :extended?])
+          (update
             :threshold
             #(get level-codes % -1)))))))
 
-(defn- output [{:keys [format pprint?]} timestamp pid level ns message args]
-  (when format
-    (let
-     [to-print
-      (clojure.core/format
-       format
-       timestamp pid (get level-string level) ns message
-       (if pprint?
-         (with-out-str
-           (pprint args))
-         (str args)))]
+(defn- output [{:keys [pprint?]} args]
+  (let
+    [args
+     (-> args
+       (update ::level level-string))
 
-      (let [out (System/out)]
-        (locking out
-          (.print out to-print))))))
+     to-print
+     (if pprint?
+       (with-out-str
+         (pprint args))
+       (str args))]
+
+    (let [out (System/out)]
+      (locking out
+        (.print out to-print)))))
 
 (defn log* [ns-str level message args]
   (when @config
     (let
-     [{:keys [threshold extended?] :as ns-config} (lookup @config ns-str)]
+      [{:keys [threshold] :as ns-config} (lookup @config ns-str)]
       (when (<= level threshold)
         (let
-         [timestamp (java.util.Date.)
-          pid
-          (if-let [self-pid otplike.process/*self*]
-            (otplike.process/pid->str self-pid)
-            "noproc")]
-          (output
-           ns-config timestamp pid level ns-str message
-           (merge
-            {}
-            args
-            (when extended?
-              {::level level ::ns ns-str ::pid pid ::timestamp timestamp}))))))))
+          [instant
+           (java.util.Date.)
+
+           pid
+           (or (some-> otplike.process/*self* otplike.process/pid->str) "noproc")]
+          (output ns-config
+            (merge args
+              {::level level ::ns ns-str ::pid pid ::instant instant ::message message})))))))
 
 (defn enabled?* [ns-str level]
   (let [{:keys [threshold]} (lookup @config ns-str)]
