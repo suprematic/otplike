@@ -1,8 +1,8 @@
 (ns otplike.logger
   (:require
-   [clojure.pprint :refer [pprint]]
-   [clojure.string :as str]
-   [otplike.process]))
+    [clojure.pprint :refer [pprint]]
+    [clojure.string :as str]
+    [otplike.process]))
 
 ; based on https://github.com/clojure/core.incubator/blob/master/src/main/clojure/clojure/core/strint.clj
 ; by Chas Emerick <cemerick @snowtide.com>
@@ -14,24 +14,24 @@
 
 (defn- interpolate
   ([s atom?]
-   (lazy-seq
-    (if-let [[form rest] (silent-read (subs s (if atom? 2 1)))]
-      (cons form (interpolate (if atom? (subs rest 1) rest)))
-      (cons (subs s 0 2) (interpolate (subs s 2))))))
+    (lazy-seq
+      (if-let [[form rest] (silent-read (subs s (if atom? 2 1)))]
+        (cons form (interpolate (if atom? (subs rest 1) rest)))
+        (cons (subs s 0 2) (interpolate (subs s 2))))))
   ([^String s]
-   (if-let
-    [start
-     (->>
-      ["~{" "~("]
-      (map #(.indexOf s ^String %))
-      (remove #(== -1 %))
-      sort
-      first)]
-     (lazy-seq
-      (cons
-       (subs s 0 start)
-       (interpolate (subs s start) (= \{ (.charAt s (inc start))))))
-     [s])))
+    (if-let
+      [start
+       (->>
+         ["~{" "~("]
+         (map #(.indexOf s ^String %))
+         (remove #(== -1 %))
+         sort
+         first)]
+      (lazy-seq
+        (cons
+          (subs s 0 start)
+          (interpolate (subs s start) (= \{ (.charAt s (inc start))))))
+      [s])))
 
 (def level-codes
   {:emergency 0
@@ -66,18 +66,18 @@
 
 (def lookup
   (memoize
-   (fn [config ns]
-     (let
-      [match
-       (->>
-        (get config :namespaces)
-        (keys)
-        (filter
-         (fn [ns']
-           (str/starts-with? ns (name ns'))))
-        (first))]
-       (-> config
-           (merge
+    (fn [config ns]
+      (let
+        [match
+         (->>
+           (get config :namespaces)
+           (keys)
+           (filter
+             (fn [ns']
+               (str/starts-with? ns (name ns'))))
+           (first))]
+        (-> config
+          (merge
             (get-in config [:namespaces match]))
           (select-keys [:threshold :pprint? :extended?])
           (update
@@ -123,15 +123,15 @@
   (assert (even? (count args)) "args count is not even")
   (assert (#{:emergency :alert :critical :error :warn :notice :info :debug} level))
   `(log*
-    ~(str *ns*)
-    ~(get level-codes level 999)
+     ~(str *ns*)
+     ~(get level-codes level 999)
 
-    (str
-     ~@(if (string? message)
-         (interpolate message)
-         [message]))
+     (str
+       ~@(if (string? message)
+           (interpolate message)
+           [message]))
 
-    ~(apply hash-map args)))
+     ~(apply hash-map args)))
 
 (defmacro emergency [& args]
   `(log :emergency ~@args))
