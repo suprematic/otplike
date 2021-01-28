@@ -259,8 +259,7 @@
 ;; Internal
 
 (defn- report-error [message]
-  ; TODO
-  )
+  (log/error "supervisor error" :message message))
 
 (spec/fdef spec-problem
   :args (spec/cat :problem ::spec-problem)
