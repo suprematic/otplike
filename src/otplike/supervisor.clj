@@ -159,12 +159,13 @@
 
   [1]: https://erldocs.com/current/doc/design_principles/sup_princ.html"
   (:require [clojure.spec.alpha :as spec]
-            [clojure.core.match :refer [match]]
-            [clojure.pprint :as pprint]
-            [otplike.spec-util :as spec-util]
-            [otplike.process :as process :refer [!]]
-            [otplike.gen-server :as gen-server]
-            [otplike.util :as util]))
+    [clojure.core.match :refer [match]]
+    [clojure.pprint :as pprint]
+    [otplike.spec-util :as spec-util]
+    [otplike.process :as process :refer [!]]
+    [otplike.gen-server :as gen-server]
+    [otplike.util :as util]
+    [otplike.logger :as log]))
 
 (when (and (= 1 (:major *clojure-version*))
            (< (:minor *clojure-version*) 9))
