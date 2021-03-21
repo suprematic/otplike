@@ -4,6 +4,7 @@
     [clojure.java.io :as io]
     [clojure.set :as set]
     [clojure.core.match :refer [match]]
+    [clojure.walk :as walk]
     [otplike.util :as u]
     [otplike.process :as process]
     [otplike.logger :as log]
@@ -183,9 +184,37 @@
             [:error reason]
             [:error new-started reason]))))))
 
-(defn- merge-environment [environment {:keys [name] :as application}]
+(defn- getenv
+  ([var]
+    (System/getenv var))
+  ([var default]
+    (or (System/getenv var) default)))
+
+(defn- getprop
+  ([prop]
+    (System/getProperty prop))
+  ([prop default]
+    (or (System/getProperty prop) default)))
+
+(defn- expand-environment [env]
+  (let
+    [fns
+     {'env #(apply getenv (rest %))
+      'prop #(apply getprop (rest %))}]
+    (walk/postwalk
+      (fn [node]
+        (if (list? node)
+          ((get fns (first node) identity) node)
+          node))
+      env)))
+
+(defn- prepare-environment [environment {:keys [name] :as application}]
   (let [to-merge (get environment name)]
-    (update application :environment u/deep-merge to-merge)))
+    (update application :environment
+      (fn [env]
+        (-> env
+          (u/deep-merge to-merge)
+          (expand-environment))))))
 
 (defn handle-call [message _reply-to {:keys [started environment] :as state}]
   (process/async
@@ -204,7 +233,7 @@
           (match (load-appfile name)
             [:ok application]
             (let
-              [application (merge-environment environment application)
+              [application (prepare-environment environment application)
                not-started
                (set/difference
                  (->> application :applications (apply hash-set))
@@ -231,7 +260,7 @@
         (let
           [applications
            (map
-             (partial merge-environment environment) applications)
+             (partial prepare-environment environment) applications)
 
            applications
            (let [started? (->> started (map (comp :name :application)) (apply hash-set))]
