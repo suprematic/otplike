@@ -75,7 +75,7 @@
       (merge-coll l r list)
 
       (and (set? l) (set? r))
-      (set/union l r)
+      (merge-coll l r hash-set)
 
       (or
        (string? r)
