@@ -133,8 +133,12 @@
 
     (process/! controller-pid [:started (process/self)])
 
-    (log/debug "application supervisor start" :application name :pid sup-pid)
-
+    (log/debug
+      {:in :appmaster
+       :log :trace
+       :what :sup-start
+       :application name
+       :pid sup-pid})
     (let
       [call-stop-and-exit
        #(do
@@ -146,7 +150,13 @@
       (process/selective-receive!
         [:EXIT sup-pid reason]
         (do
-          (log/debug "application supervisor exit" :application name :reason reason :pid sup-pid)
+          (log/debug
+            {:in :appmaster
+             :log :event
+             :what :sup-exit
+             :application name
+             :pid sup-pid
+             :reason reason})
           (call-stop-and-exit reason))
 
         [:EXIT controller-pid reason]
@@ -172,7 +182,12 @@
               (process/selective-receive!
                 [:started app-pid]
                 (do
-                  (log/debug "application master start" :application name :pid app-pid)
+                  (log/debug
+                    {:in :controller
+                     :log :trace
+                     :what :app-start
+                     :application name
+                     :pid app-pid})
                   [:ok {:application application :pid app-pid :permanent? permanent?}])
 
                 [:EXIT app-pid reason]
@@ -281,35 +296,44 @@
       [::stop name]
       (if-let [app-pid (->> started (filter (comp #(= % name) :name :application)) first :pid)]
         (do
-          (log/debug "requesting application master to stop" :application name :pid app-pid)
           (process/exit app-pid :normal)
           (process/selective-receive!
             [:EXIT app-pid reason]
-            (do
-              (log/debug "application master exit" :application name :pid app-pid :reason reason)
-              [:reply :ok
-               (assoc state :started (filter (comp #(not= % name) :name :application) started))])))
+            [:reply :ok
+             (assoc state :started (filter (comp #(not= % name) :name :application) started))]))
         [:reply [:error [:not-started name]] state]))))
 
 (defn handle-info [message {:keys [started] :as state}]
   (process/async
     (match message
-      [:EXIT pid _]
-      (if-let [{:keys [permanent? name]} (->> started (filter (comp #(= % pid) :pid)) first)]
-        (do
-          (log/debug "application master exit" :application name :pid pid :permanent? permanent?)
+      [:EXIT pid reason]
+      (do
+        (log/debug
+          {:in :controller
+           :log :event
+           :what :app-exit
+           :details
+           {:pid pid
+            :reason reason}})
+
+        (if-let [{:keys [permanent?]} (->> started (filter (comp #(= % pid) :pid)) first)]
           (let [started (filter (comp #(not= % pid) :pid) started)]
             (if-not permanent?
               [:noreply (assoc state :started started)]
               (do
-                (doseq [{:keys [pid name]} started]
-                  (log/debug "requesting application master exit" :application name :pid pid)
+                (doseq [{:keys [pid]} started]
                   (process/exit pid :normal)
                   (process/selective-receive!
                     [:EXIT pid reason]
-                    (log/debug "application master exit" :pid pid :reason reason)))
-                [:stop :shutdown (assoc state :started '())]))))
-        [:noreply state]))))
+                    (log/debug
+                      {:in :controller
+                       :log :event
+                       :what :app-exit
+                       :details
+                       {:pid pid
+                        :reason reason}})))
+                [:stop :shutdown (assoc state :started '())])))
+          [:noreply state])))))
 
 (defn terminate [_reason state]
   [:noreply state])

@@ -260,7 +260,10 @@
 ;; Internal
 
 (defn- report-error [message]
-  (log/error "supervisor error" :message message))
+  (log/error
+    {:log :event
+     :what :error
+     :details message}))
 
 (spec/fdef spec-problem
   :args (spec/cat :problem ::spec-problem)

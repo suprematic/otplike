@@ -1,37 +1,13 @@
 (ns otplike.logger
   (:require
-    [clojure.pprint :refer [pprint]]
+    [clojure.pprint :as pprint]
     [clojure.string :as str]
-    [otplike.process]))
-
-; based on https://github.com/clojure/core.incubator/blob/master/src/main/clojure/clojure/core/strint.clj
-; by Chas Emerick <cemerick @snowtide.com>
-(defn- silent-read [s]
-  (try
-    (let [r (-> s java.io.StringReader. java.io.PushbackReader.)]
-      [(read r) (slurp r)])
-    (catch Exception _)))
-
-(defn- interpolate
-  ([s atom?]
-    (lazy-seq
-      (if-let [[form rest] (silent-read (subs s (if atom? 2 1)))]
-        (cons form (interpolate (if atom? (subs rest 1) rest)))
-        (cons (subs s 0 2) (interpolate (subs s 2))))))
-  ([^String s]
-    (if-let
-      [start
-       (->>
-         ["~{" "~("]
-         (map #(.indexOf s ^String %))
-         (remove #(== -1 %))
-         sort
-         first)]
-      (lazy-seq
-        (cons
-          (subs s 0 start)
-          (interpolate (subs s start) (= \{ (.charAt s (inc start))))))
-      [s])))
+    [clojure.data.json :as json]
+    [clojure.walk :as walk]
+    [otplike.process]
+    [otplike.util :as util])
+  (:import
+    [java.time.format DateTimeFormatter]))
 
 (def level-codes
   {:emergency 0
@@ -59,6 +35,7 @@
   (atom
     '{:threshold :notice
       :pprint? true
+      :mask-keys #{}
       :namespaces {}}))
 
 (defn set-config! [config']
@@ -69,69 +46,111 @@
     (fn [config ns]
       (let
         [match
-         (->>
-           (get config :namespaces)
+         (->> (get config :namespaces)
            (keys)
+           (map str)
+           (sort-by count
+             #(compare %2 %1))
            (filter
-             (fn [ns']
-               (str/starts-with? ns (name ns'))))
+             #(str/starts-with? ns %))
            (first))]
         (-> config
           (merge
             (get-in config [:namespaces match]))
-          (select-keys [:threshold :pprint? :extended?])
+          (dissoc :namespaces)
           (update
             :threshold
             #(get level-codes % -1)))))))
 
-(defn- output [{:keys [pprint?]} args]
-  (let
-    [args
-     (-> args
-       (update ::level level-string))
+(defn- output [{:keys [pprint? format mask-keys]} input]
+  (try
+    (let
+      [input
+       (-> input
+         (update :level level-string))
 
-     to-print
-     (if pprint?
-       (with-out-str
-         (pprint args))
-       (str args))]
+       input
+       (walk/postwalk
+         (fn [node]
+           (cond
+             (instance? java.lang.Throwable node)
+             (util/stack-trace node)
 
-    (let [out (System/out)]
-      (locking out
-        (.print out to-print)))))
+             (instance? java.time.ZonedDateTime node)
+             (str \" (.format DateTimeFormatter/ISO_OFFSET_DATE_TIME node) \")
 
-(defn log* [ns-str level message args]
+             (map? node)
+             (->> node
+               (map
+                 (fn [[k v]]
+                   (if-not (contains? mask-keys k)
+                     [k v]
+                     [k "*********"])))
+               (into {}))
+             :else
+             node))
+         input)
+
+       to-print
+       (case format
+         :edn
+         (if pprint?
+           (with-out-str
+             (pprint/pprint input))
+           (str input))
+
+         (if pprint?
+           (json/pprint input)
+           (json/write-str input)))]
+
+      ; maybe use single thread executor with limited queue
+      (let [out (System/out)]
+        (locking out
+          (.print out to-print))))
+
+    (catch Throwable t
+      (.println (System/out)
+        (str "error in logger: " (.getMessage t))))))
+
+(defn id []
+  (str (java.util.UUID/randomUUID)))
+
+(defn log** [{:keys [in level] :as input}]
   (when @config
     (let
-      [{:keys [threshold] :as ns-config} (lookup @config ns-str)]
+      [{:keys [threshold] :as ns-config} (lookup @config in)]
       (when (<= level threshold)
         (let
-          [instant
-           (java.util.Date.)
+          [when
+           (java.time.ZonedDateTime/now)
 
            pid
            (or (some-> otplike.process/*self* otplike.process/pid->str) "noproc")]
           (output ns-config
-            (merge args
-              {::level level ::ns ns-str ::pid pid ::instant instant ::message message})))))))
+            (merge input
+              {:pid pid :when when :id (id)})))))))
 
-(defn enabled?* [ns-str level]
-  (let [{:keys [threshold]} (lookup @config ns-str)]
+(defn enabled?* [category level]
+  (let [{:keys [threshold]} (lookup @config category)]
     (<= level threshold)))
 
-(defmacro log [level message & args]
-  (assert (even? (count args)) "args count is not even")
+(defn log* [category level message _]
+  (log** {:level level :text message :in category}))
+
+(defmacro log [level input]
   (assert (#{:emergency :alert :critical :error :warn :notice :info :debug} level))
-  `(log*
-     ~(str *ns*)
-     ~(get level-codes level 999)
-
-     (str
-       ~@(if (string? message)
-           (interpolate message)
-           [message]))
-
-     ~(apply hash-map args)))
+  `(log**
+     (merge
+       {:at ~(str *ns*)}
+       ~(update input :in
+          (fn [in]
+            (str
+              (cond
+                (nil? in) *ns*
+                (keyword? in) (str (or (namespace in) (str *ns*)) "/" (name in))
+                :else in))))
+       {:level
+        ~(get level-codes level 999)})))
 
 (defmacro emergency [& args]
   `(log :emergency ~@args))

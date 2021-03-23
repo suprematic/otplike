@@ -4,8 +4,8 @@
  :start-fn otplike.kernel/start
  :environment
  {:logger
-  {:format "%1$tH:%1$tM:%1$tS.%1$tL [%2$s] %3$s %4$s - %5$s\n %6$s"
+  {:format :json
    :threshold :debug
+   :mask-keys #{:password :secret :secret-key}
    :pprint? true
-   :extended? false
    :namespaces {}}}}
