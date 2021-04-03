@@ -109,8 +109,20 @@
           (.print out to-print))))
 
     (catch Throwable t
-      (.println (System/out)
-        (str "error in logger: " (.getMessage t))))))
+      (let [out (System/out)] ; safe enough (EDN, no pprint or conversions)
+        (locking out
+          (.print out
+            {:in
+             (str *ns*)
+             :when
+             (.format DateTimeFormatter/ISO_OFFSET_DATE_TIME
+               (java.time.ZonedDateTime/now))
+             :level
+             :error
+             :log :event
+             :result :error
+             :details
+             (util/stack-trace t)}))))))
 
 (defn id []
   (str (java.util.UUID/randomUUID)))
