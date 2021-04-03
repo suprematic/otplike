@@ -20,12 +20,6 @@
    :info 6
    :debug 7})
 
-(def level-codes-rev
-  (->> level-codes
-    (map
-      (fn [[k v]] [v k]))
-    (into {})))
-
 (defonce config
   (atom
     '{:threshold :notice
@@ -61,9 +55,6 @@
   (try
     (let
       [input
-       (-> input
-         (update :level level-codes-rev))
-       input
        (walk/postwalk
          (fn [node]
            (cond
@@ -125,7 +116,7 @@
   (when @config
     (let
       [{:keys [threshold] :as ns-config} (in-config @config in)]
-      (when (<= level threshold)
+      (when (<= (get level-codes level 999) threshold)
         (let
           [when
            (java.time.ZonedDateTime/now)
@@ -138,7 +129,7 @@
 
 (defn j-enabled? [category level]
   (let [{:keys [threshold]} (in-config @config category)]
-    (<= level threshold)))
+    (<= (get level-codes level 999) threshold)))
 
 (defn j-log [category level message _]
   (log* {:level level :text message :in category}))
@@ -155,8 +146,7 @@
                 (nil? in) *ns*
                 (keyword? in) (str (or (namespace in) (str *ns*)) "/" (name in))
                 :else in))))
-       {:level
-        ~(get level-codes level 999)})))
+       {:level ~level})))
 
 (defmacro emergency [& args]
   `(log :emergency ~@args))
