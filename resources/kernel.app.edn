@@ -4,7 +4,7 @@
  :start-fn otplike.kernel/start
  :environment
  {:logger
-  {:format :json
+  {:format :edn
    :threshold :debug
    :mask-keys #{:password :secret :secret-key}
    :pprint? true
