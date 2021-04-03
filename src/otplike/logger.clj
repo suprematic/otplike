@@ -9,27 +9,22 @@
   (:import
     [java.time.format DateTimeFormatter]))
 
+; as in RFC-5424
 (def level-codes
   {:emergency 0
    :alert 1
    :critical 2
    :error 3
-   :warn 4
+   :warning 4
    :notice 5
    :info 6
-   :debug 7
-   :trace 8})
+   :debug 7})
 
-(def level-string
-  {0 "EMERGENCY"
-   1 "ALERT"
-   2 "CRITICAL"
-   3 "ERROR"
-   4 "WARN"
-   5 "NOTICE"
-   6 "INFO"
-   7 "DEBUG"
-   8 "TRACE"})
+(def level-codes-rev
+  (->> level-codes
+    (map
+      (fn [[k v]] [v k]))
+    (into {})))
 
 (defonce config
   (atom
@@ -67,8 +62,7 @@
     (let
       [input
        (-> input
-         (update :level level-string))
-
+         (update :level level-codes-rev))
        input
        (walk/postwalk
          (fn [node]
@@ -150,7 +144,7 @@
   (log* {:level level :text message :in category}))
 
 (defmacro log [level input]
-  (assert (#{:emergency :alert :critical :error :warn :notice :info :debug} level))
+  (assert (#{:emergency :alert :critical :error :warning :notice :info :debug} level))
   `(log*
      (merge
        {:at ~(str *ns*)}
@@ -176,8 +170,8 @@
 (defmacro error [& args]
   `(log :error ~@args))
 
-(defmacro warn [& args]
-  `(log :warn ~@args))
+(defmacro warning [& args]
+  `(log :warning ~@args))
 
 (defmacro notice [& args]
   `(log :notice ~@args))
