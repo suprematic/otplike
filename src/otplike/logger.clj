@@ -41,7 +41,7 @@
 (defn set-config! [config']
   (reset! config config'))
 
-(def lookup
+(def in-config
   (memoize
     (fn [config ns]
       (let
@@ -115,10 +115,10 @@
 (defn id []
   (str (java.util.UUID/randomUUID)))
 
-(defn log** [{:keys [in level] :as input}]
+(defn log* [{:keys [in level] :as input}]
   (when @config
     (let
-      [{:keys [threshold] :as ns-config} (lookup @config in)]
+      [{:keys [threshold] :as ns-config} (in-config @config in)]
       (when (<= level threshold)
         (let
           [when
@@ -130,16 +130,16 @@
             (merge input
               {:pid pid :when when :id (id)})))))))
 
-(defn enabled?* [category level]
-  (let [{:keys [threshold]} (lookup @config category)]
+(defn j-enabled? [category level]
+  (let [{:keys [threshold]} (in-config @config category)]
     (<= level threshold)))
 
-(defn log* [category level message _]
-  (log** {:level level :text message :in category}))
+(defn j-log [category level message _]
+  (log* {:level level :text message :in category}))
 
 (defmacro log [level input]
   (assert (#{:emergency :alert :critical :error :warn :notice :info :debug} level))
-  `(log**
+  `(log*
      (merge
        {:at ~(str *ns*)}
        ~(update input :in
