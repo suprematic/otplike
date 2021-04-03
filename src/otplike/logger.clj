@@ -77,7 +77,7 @@
              (util/stack-trace node)
 
              (instance? java.time.ZonedDateTime node)
-             (str \" (.format DateTimeFormatter/ISO_OFFSET_DATE_TIME node) \")
+             (.format DateTimeFormatter/ISO_OFFSET_DATE_TIME node)
 
              (map? node)
              (->> node
@@ -92,15 +92,15 @@
          input)
 
        to-print
-       (case format
-         :edn
+       (if (not= format :json)
          (if pprint?
            (with-out-str
              (pprint/pprint input))
            (str input))
 
          (if pprint?
-           (json/pprint input)
+           (with-out-str
+             (json/pprint input))
            (json/write-str input)))]
 
       ; maybe use single thread executor with limited queue
