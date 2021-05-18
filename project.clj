@@ -11,7 +11,8 @@
                  [org.clojure/core.async "0.4.474"]
                  [org.clojure/core.match "0.3.0-alpha5"]
                  [org.clojure/data.int-map "0.2.4"]
-                 [clojure-future-spec "1.9.0-beta4"]]
+                 [clojure-future-spec "1.9.0-beta4"]
+                 [org.clojure/data.json "2.0.1"]]
 
   :plugins [[lein-codox "0.10.3"]
             [lein-eftest "0.5.8"]]
