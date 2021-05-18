@@ -136,17 +136,15 @@
 
 (defmacro log [level input]
   (assert (#{:emergency :alert :critical :error :warning :notice :info :debug} level))
-  `(log*
-     (merge
-       {:at ~(str *ns*)}
-       ~(update input :in
-          (fn [in]
-            (str
-              (cond
-                (nil? in) *ns*
-                (keyword? in) (str (or (namespace in) (str *ns*)) "/" (name in))
-                :else in))))
-       {:level ~level})))
+  (let [ns (str *ns*)]
+    `(log*
+       (merge
+         {:at ~ns}
+         (update ~input :in
+           (fn [in#]
+             (if (some? in#)
+               (str in#) ~ns)))
+         {:level ~level}))))
 
 (defmacro emergency [& args]
   `(log :emergency ~@args))
