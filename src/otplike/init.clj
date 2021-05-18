@@ -29,7 +29,7 @@
             (match (process/await! (application/start-all application true))
               [:error reason]
               (do
-                (log/warning
+                (log/error
                   {:in :init-p
                    :log :event
                    :what :application-start
