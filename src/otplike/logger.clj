@@ -142,8 +142,15 @@
          {:at ~ns}
          (update ~input :in
            (fn [in#]
-             (if (some? in#)
-               (str in#) ~ns)))
+             (cond
+               (or (keyword? in#) (symbol? in#))
+               (str (or (namespace in#) ~ns) "/" (name in#))
+
+               (string? in#)
+               in#
+
+               :else
+               ~ns)))
          {:level ~level}))))
 
 (defmacro emergency [& args]
