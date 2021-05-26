@@ -91,7 +91,9 @@
       ; maybe use single thread executor with limited queue
       (let [out (System/out)]
         (locking out
-          (.print out to-print))))
+          (if-not pprint?
+            (.println out to-print)
+            (.print out to-print)))))
 
     (catch Throwable t
       (let [out (System/out)] ; safe enough (EDN, no pprint or conversions)
