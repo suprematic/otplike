@@ -4,8 +4,6 @@
  :start-fn otplike.kernel/start
  :environment
  {:logger
-  {:format :edn
-   :threshold :debug
+  {:threshold :debug
    :mask-keys #{:password :secret :secret-key}
-   :pprint? true
    :namespaces {}}}}

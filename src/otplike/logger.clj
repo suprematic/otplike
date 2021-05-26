@@ -51,65 +51,92 @@
             :threshold
             #(get level-codes % -1)))))))
 
-(defn- output [{:keys [pprint? format mask-keys]} input]
-  (try
-    (let
-      [input
-       (walk/postwalk
-         (fn [node]
-           (cond
-             (instance? java.lang.Throwable node)
-             (util/stack-trace node)
+(def my-ns *ns*)
 
-             (instance? java.time.ZonedDateTime node)
-             (.format DateTimeFormatter/ISO_OFFSET_DATE_TIME node)
+(defn- output [{:keys [pprint? mask-keys]} input]
+  (let
+    [pprint?
+     (if (some? pprint?)
+       pprint?
+       (some? (System/console)))]
+    (try
+      (let
+        [input
+         (walk/postwalk
+           (fn [node]
+             (cond
+               (map? node)
+               (->> node
+                 (map
+                   (fn [[k v]]
+                     (if-not (contains? mask-keys k)
+                       [k v]
+                       [k "*********"])))
+                 (into {}))
+               :else node))
+           input)
 
-             (map? node)
-             (->> node
-               (map
-                 (fn [[k v]]
-                   (if-not (contains? mask-keys k)
-                     [k v]
-                     [k "*********"])))
-               (into {}))
-             :else
-             node))
-         input)
+         input
+         (walk/postwalk
+           (fn [node]
+             (cond
+               (instance? java.lang.Throwable node)
+               (util/stack-trace node)
 
-       to-print
-       (if (not= format :json)
-         (if pprint?
-           (with-out-str
-             (pprint/pprint input))
-           (str input))
+               (instance? java.time.ZonedDateTime node)
+               (.format DateTimeFormatter/ISO_OFFSET_DATE_TIME node)
 
+               (coll? node)
+               node
+
+               (or (symbol? node) (keyword? node))
+               (name node)
+
+               :else
+               (str node)))
+           input)
+
+         to-print
          (if pprint?
            (with-out-str
              (json/pprint input))
-           (json/write-str input)))]
+           (json/write-str input))]
 
       ; maybe use single thread executor with limited queue
-      (let [out (System/out)]
-        (locking out
-          (if-not pprint?
-            (.println out to-print)
-            (.print out to-print)))))
+        (let [out (System/out)]
+          (locking out
+            (if-not pprint?
+              (.println out to-print)
+              (.print out to-print)))))
 
-    (catch Throwable t
-      (let [out (System/out)] ; safe enough (EDN, no pprint or conversions)
-        (locking out
-          (.print out
-            {:in
-             (str *ns*)
-             :when
-             (.format DateTimeFormatter/ISO_OFFSET_DATE_TIME
-               (java.time.ZonedDateTime/now))
-             :level
-             :error
-             :log :event
-             :result :error
-             :details
-             (util/stack-trace t)}))))))
+      (catch Throwable t
+        (let [out (System/out)] ; safe enough (EDN, no pprint or conversions)
+          (locking out
+            (let
+              [input
+               {:in
+                (str my-ns)
+                :when
+                (.format DateTimeFormatter/ISO_OFFSET_DATE_TIME
+                  (java.time.ZonedDateTime/now))
+                :level :error
+                :log :event
+                :result :error
+                :text (.getMessage t)
+                :pid
+                (or (some-> otplike.process/*self* otplike.process/pid->str) "noproc")
+                :details
+                (util/stack-trace t)}
+
+               to-print
+               (if pprint?
+                 (with-out-str
+                   (json/pprint input))
+                 (json/write-str input))]
+
+              (if-not pprint?
+                (.println out to-print)
+                (.print out to-print)))))))))
 
 (defn id []
   (str (java.util.UUID/randomUUID)))
