@@ -727,7 +727,7 @@
   "Creates exit reason from exception."
   [^Throwable e]
   (or (::exit-reason (ex-data e))
-      [:exception (u/stack-trace e)]))
+      [:exception (u/exception e)]))
 
 (defmacro ex-catch
   "Executes `expr`. Returns either result of execution or

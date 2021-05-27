@@ -111,7 +111,16 @@
     [[sup-pid state]
      (try
        (doseq [ns namespaces]
-         (require ns :reload))
+         (try
+           (require ns :reload)
+           (catch Exception e
+             (log/error
+               {:in :appmaster
+                :log :event
+                :what :error
+                :details
+                {:ns ns}})
+             (process/exit [:exception (u/exception e false)]))))
 
        (let [start-fn (or (some-> start-fn resolve var-get) dummy-start)]
          (match (process/await?! (start-fn environment))
@@ -129,7 +138,7 @@
        (catch clojure.lang.ExceptionInfo ex
          (throw ex))
        (catch Throwable ex
-         (process/exit [:exception (u/stack-trace ex)])))]
+         (process/exit [:exception (u/exception ex)])))]
 
     (process/! controller-pid [:started (process/self)])
 

@@ -81,7 +81,7 @@
            (fn [node]
              (cond
                (instance? java.lang.Throwable node)
-               (util/stack-trace node)
+               (util/exception node)
 
                (instance? java.time.ZonedDateTime node)
                (.format DateTimeFormatter/ISO_OFFSET_DATE_TIME node)
@@ -126,7 +126,7 @@
                 :pid
                 (or (some-> otplike.process/*self* otplike.process/pid->str) "noproc")
                 :details
-                (util/stack-trace t)}
+                (util/exception t)}
 
                to-print
                (if pprint?

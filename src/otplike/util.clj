@@ -22,17 +22,23 @@
     `(if ~expr
        (check-args ~(rest exprs))
        (throw (IllegalArgumentException.
-               (str "require " '~expr " to be true"))))))
+                (str "require " '~expr " to be true"))))))
 
-(defn stack-trace [^Throwable e]
-  (merge
-   {:message (.getMessage e)
-    :class (.getName (class e))
-    :stack-trace (mapv str (.getStackTrace e))}
-   (if (instance? clojure.lang.ExceptionInfo e)
-     {:data (ex-data e)})
-   (if-let [cause (.getCause e)]
-     {:cause (stack-trace cause)})))
+(defn exception
+  ([^Throwable e]
+    (exception e true))
+  ([^Throwable e include-stack-trace?]
+    (merge
+      {:message (.getMessage e)
+       :class (.getName (class e))}
+
+      (if include-stack-trace?
+        {:stack-trace (mapv str (.getStackTrace e))})
+
+      (if (instance? clojure.lang.ExceptionInfo e)
+        {:data (ex-data e)})
+      (if-let [cause (.getCause e)]
+        {:cause (exception cause include-stack-trace?)}))))
 
 (defn timeout-chan [timeout]
   (cond
