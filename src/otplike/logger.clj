@@ -53,7 +53,35 @@
 
 (def my-ns *ns*)
 
+(defn- json-safe [input]
+  (walk/postwalk
+    (fn [node]
+      (cond
+        (nil? node)
+        nil
+
+        (instance? java.lang.Throwable node)
+        (json-safe (util/exception node))
+
+        (instance? java.time.ZonedDateTime node)
+        (.format DateTimeFormatter/ISO_OFFSET_DATE_TIME node)
+
+        (otplike.process/pid? node)
+        (otplike.process/pid->str node)
+
+        (coll? node)
+        node
+
+        (or (symbol? node) (keyword? node))
+        (name node)
+
+        :else
+        (str node)))
+    input))
+
 (defn- output [{:keys [pprint? mask-keys]} input]
+
+
   (let
     [pprint?
      (if (some? pprint?)
@@ -77,24 +105,7 @@
            input)
 
          input
-         (walk/postwalk
-           (fn [node]
-             (cond
-               (instance? java.lang.Throwable node)
-               (util/exception node)
-
-               (instance? java.time.ZonedDateTime node)
-               (.format DateTimeFormatter/ISO_OFFSET_DATE_TIME node)
-
-               (coll? node)
-               node
-
-               (or (symbol? node) (keyword? node))
-               (name node)
-
-               :else
-               (str node)))
-           input)
+         (json-safe input)
 
          to-print
          (if pprint?
@@ -124,9 +135,12 @@
                 :result :error
                 :text (.getMessage t)
                 :pid
-                (or (some-> otplike.process/*self* otplike.process/pid->str) "noproc")
+                (or otplike.process/*self* "noproc")
                 :details
-                (util/exception t)}
+                {:input (str input)
+                 :exception (util/exception t)}}
+               input
+               (json-safe input)
 
                to-print
                (if pprint?
