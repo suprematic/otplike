@@ -60,6 +60,15 @@
         (nil? node)
         nil
 
+        (or (string? node) (coll? node))
+        node
+
+        (keyword? node)
+        (.substring (str node) 1)
+
+        (symbol? node)
+        (str node)
+
         (instance? java.lang.Throwable node)
         (json-safe (util/exception node))
 
@@ -68,12 +77,6 @@
 
         (otplike.process/pid? node)
         (otplike.process/pid->str node)
-
-        (coll? node)
-        node
-
-        (or (symbol? node) (keyword? node))
-        (name node)
 
         :else
         (str node)))
