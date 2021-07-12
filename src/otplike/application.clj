@@ -240,6 +240,16 @@
           (u/deep-merge to-merge)
           (expand-environment))))))
 
+(defn- register-apps [state new-started]
+  (update state :started
+    (fn [started]
+      (concat new-started started))))
+
+(defn- unregister-app [state pid]
+  (update state :started
+    (fn [started]
+      (filter (comp #(not= % pid) :pid) started))))
+
 (defn handle-call [message _reply-to {:keys [started environment] :as state}]
   (process/async
     (match message
@@ -265,14 +275,12 @@
 
               (if-not (empty? not-started)
                 [:reply [:error [:not-started not-started]] state]
-                (let [app-pid (process/spawn-link application-master-p [application (process/self)])]
-                  (process/selective-receive!
-                    [:started app-pid]
-                    [:reply :ok
-                     (update
-                       state :started conj {:application application :pid app-pid :permanent? permanent?})]
-                    [:EXIT app-pid reason]
-                    [:reply [:error name reason] state]))))
+                (match (process/await! (start-many [application] permanent?))
+                  [:ok new-started]
+                  [:reply :ok (register-apps state new-started)]
+
+                  [:error new-started reason]
+                  [:reply [:error reason] (register-apps state new-started)])))
 
             [:error error]
             [:reply [:error error] state])
@@ -294,10 +302,10 @@
 
           (match (process/await! (start-many applications permanent?))
             [:ok new-started]
-            [:reply :ok (assoc state :started (concat new-started started))]
+            [:reply :ok (register-apps state new-started)]
 
             [:error new-started reason]
-            [:reply [:error reason] (assoc state :started (concat new-started started))]))
+            [:reply [:error reason] (register-apps state new-started)]))
 
         [:error errors]
         [:reply [:error errors] state])
@@ -326,9 +334,9 @@
             :reason reason}})
 
         (if-let [{:keys [permanent?]} (->> started (filter (comp #(= % pid) :pid)) first)]
-          (let [started (filter (comp #(not= % pid) :pid) started)]
+          (let [{:keys [started] :as state} (unregister-app state pid)]
             (if-not permanent?
-              [:noreply (assoc state :started started)]
+              [:noreply state]
               (do
                 (doseq [{:keys [pid]} started]
                   (process/exit pid :normal)
