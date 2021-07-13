@@ -176,9 +176,14 @@
             [:EXIT sup-pid reason]
             (call-stop-and-exit reason)))))))
 
+(def initial-state
+  {:started '() :by-pid {} :by-name {}})
+
 (defn init [environment]
   (process/flag :trap-exit true)
-  [:ok {::started '() :environment environment}])
+  [:ok
+   (merge initial-state
+     {:environment environment})])
 
 (defn- start-many [applications permanent?]
   (process/async
@@ -240,17 +245,29 @@
           (u/deep-merge to-merge)
           (expand-environment))))))
 
-(defn- register-apps [state new-started]
-  (update state :started
-    (fn [started]
-      (concat new-started started))))
+(defn- register [state new-started]
+  (-> state
+    (update :started
+      #(concat new-started %))
+    (update :by-name
+      #(reduce
+         (fn [acc started]
+           (assoc acc (get-in started [:application :name]) started)) % new-started))
+    (update :by-pid
+      #(reduce
+         (fn [acc {:keys [pid] :as started}]
+           (assoc acc pid started)) % new-started))))
 
-(defn- unregister-app [state pid]
-  (update state :started
-    (fn [started]
-      (filter (comp #(not= % pid) :pid) started))))
+(defn- unregister [{:keys [by-pid] :as state} pid]
+  (-> state
+    (update :started
+      (fn [started]
+        (filter (comp #(not= % pid) :pid) started)))
+    (update :by-name dissoc
+      (get-in by-pid [pid :application :name]))
+    (update :by-pid dissoc pid)))
 
-(defn handle-call [message _reply-to {:keys [started environment] :as state}]
+(defn handle-call [message _reply-to {:keys [started environment by-name by-pid] :as state}]
   (process/async
     (match message
       [::which]
@@ -262,7 +279,7 @@
              [(get application :name) (get application :description "")]) started)) state]
 
       [::start name permanent?]
-      (let [started-names (->> started (map (comp :name :application)) (apply hash-set))]
+      (let [started-names (set (keys by-name))]
         (if-not (contains? started-names name)
           (match (load-appfile name)
             [:ok application]
@@ -277,10 +294,10 @@
                 [:reply [:error [:not-started not-started]] state]
                 (match (process/await! (start-many [application] permanent?))
                   [:ok new-started]
-                  [:reply :ok (register-apps state new-started)]
+                  [:reply :ok (register state new-started)]
 
-                  [:error new-started reason]
-                  [:reply [:error reason] (register-apps state new-started)])))
+                  [:error _ reason]
+                  [:reply [:error reason] state])))
 
             [:error error]
             [:reply [:error error] state])
@@ -295,32 +312,31 @@
              (partial prepare-environment environment) applications)
 
            applications
-           (let [started? (->> started (map (comp :name :application)) (apply hash-set))]
-             (filter
-               (fn [{:keys [name]}]
-                 (not (started? name))) applications))]
+           (filter
+             (fn [{:keys [name]}]
+               (not (contains? by-name name))) applications)]
 
           (match (process/await! (start-many applications permanent?))
             [:ok new-started]
-            [:reply :ok (register-apps state new-started)]
+            [:reply :ok (register state new-started)]
 
             [:error new-started reason]
-            [:reply [:error reason] (register-apps state new-started)]))
+            [:reply [:error reason] (register state new-started)]))
 
         [:error errors]
         [:reply [:error errors] state])
 
       [::stop name]
-      (if-let [app-pid (->> started (filter (comp #(= % name) :name :application)) first :pid)]
+      (if-let [app-pid (get-in by-name [name :pid])]
         (do
           (process/exit app-pid :normal)
           (process/selective-receive!
             [:EXIT app-pid reason]
             [:reply :ok
-             (assoc state :started (filter (comp #(not= % name) :name :application) started))]))
+             (unregister state app-pid)]))
         [:reply [:error [:not-started name]] state]))))
 
-(defn handle-info [message {:keys [started] :as state}]
+(defn handle-info [message {:keys [by-pid] :as state}]
   (process/async
     (match message
       [:EXIT pid reason]
@@ -333,8 +349,8 @@
            {:pid pid
             :reason reason}})
 
-        (if-let [{:keys [permanent?]} (->> started (filter (comp #(= % pid) :pid)) first)]
-          (let [{:keys [started] :as state} (unregister-app state pid)]
+        (if-let [{:keys [permanent?]} (get by-pid pid)]
+          (let [{:keys [started] :as state} (unregister state pid)]
             (if-not permanent?
               [:noreply state]
               (do
@@ -349,7 +365,7 @@
                        :details
                        {:pid pid
                         :reason reason}})))
-                [:stop :shutdown (assoc state :started '())])))
+                [:stop :shutdown (merge state initial-state)])))
           [:noreply state])))))
 
 (defn terminate [_reason state]
