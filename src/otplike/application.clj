@@ -213,13 +213,13 @@
             [:error reason]
             [:error new-started reason]))))))
 
-(defn- getenv
+(defn- sys-getenv
   ([var]
     (System/getenv var))
   ([var default]
     (or (System/getenv var) default)))
 
-(defn- getprop
+(defn- sys-getprop
   ([prop]
     (System/getProperty prop))
   ([prop default]
@@ -228,8 +228,8 @@
 (defn- expand-environment [env]
   (let
     [fns
-     {'env #(apply getenv (rest %))
-      'prop #(apply getprop (rest %))}]
+     {'env #(apply sys-getenv (rest %))
+      'prop #(apply sys-getprop (rest %))}]
     (walk/postwalk
       (fn [node]
         (if (list? node)
@@ -334,7 +334,12 @@
             [:EXIT app-pid reason]
             [:reply :ok
              (unregister state app-pid)]))
-        [:reply [:error [:not-started name]] state]))))
+        [:reply [:error [:not-started name]] state])
+
+      [::getenv name path default]
+      (if-let [app (get by-name (symbol name))]
+        [:reply (get-in app (concat [:application :environment] path) default) state]
+        [:reply [:error [:not-found name]] state]))))
 
 (defn handle-info [message {:keys [by-pid] :as state}]
   (process/async
@@ -404,7 +409,22 @@
 (defmacro which! []
   `(process/await! (which)))
 
-#_(which)
+(defn getenv
+  ([name]
+    (getenv name []))
+  ([name path]
+    (getenv name path nil))
+  ([name path default]
+    (gs/call ::application-controller [::getenv name path default] :infinity)))
+
+(defmacro getenv! [& args]
+  `(process/await! (getenv ~@args)))
+
+#_(proc-util/execute-proc!!
+    (getenv! 'otplike.nrepl))
+
+#_(proc-util/execute-proc!!
+    (which!))
 
 #_(load-applications 'dep1)
 
