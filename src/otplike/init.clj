@@ -96,6 +96,17 @@
         [::halt _ rc]
         (System/exit rc)))))
 
+(defn -main [& args]
+  (init
+    (->> args
+      (map
+        (fn [fname]
+          (if-let [file (io/file fname)]
+            (-> file slurp read-string)
+            (throw
+              (ex-info (format "file not found: %s" fname) {:file-name fname})))))
+      (reduce u/deep-merge nil))))
+
 (defn halt
   ([]
     (halt 0))
