@@ -5,5 +5,4 @@ target/
 .nrepl-port
 .*.swp
 .*.swo
-pom.xml
 profiles.clj
