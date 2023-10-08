@@ -61,7 +61,7 @@
         :closed
         (do
           (ap/commit ^clojure.core.async.impl.protocols.Handler handler)
-           nil-deref)
+          nil-deref)
         :set
         (do
           (ap/commit ^clojure.core.async.impl.protocols.Handler handler)

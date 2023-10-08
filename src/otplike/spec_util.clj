@@ -19,22 +19,22 @@
       (when (nil? ret)
         (throw (ex-info (str "no spec for return of " f) {:fn sym})))
       (alter-var-root
-        sym
-        (fn [ofn]
-          (fn [& params]
-            (if-not (spec/valid? args params)
-              (let [explain (spec/explain-data args params)]
-                (throw (ex-info
-                         (str "Call to " sym " did not conform to spec:\n"
-                              (with-out-str (spec/explain-out explain)))
-                         explain)))
-              (let [return (apply ofn params)]
-                (if-not (spec/valid? ret return)
-                  (let [explain (spec/explain-data ret return)]
-                    (throw (ex-info
-                             (str "Value returned from " sym
-                                  " did not conform to spec:\n"
-                                  (with-out-str (spec/explain-out explain)))
-                             explain)))
-                  return)))))))
+       sym
+       (fn [ofn]
+         (fn [& params]
+           (if-not (spec/valid? args params)
+             (let [explain (spec/explain-data args params)]
+               (throw (ex-info
+                       (str "Call to " sym " did not conform to spec:\n"
+                            (with-out-str (spec/explain-out explain)))
+                       explain)))
+             (let [return (apply ofn params)]
+               (if-not (spec/valid? ret return)
+                 (let [explain (spec/explain-data ret return)]
+                   (throw (ex-info
+                           (str "Value returned from " sym
+                                " did not conform to spec:\n"
+                                (with-out-str (spec/explain-out explain)))
+                           explain)))
+                 return)))))))
     (throw (ex-info (str "Undefined function: " f) {}))))

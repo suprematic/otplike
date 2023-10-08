@@ -30,11 +30,11 @@
   (async/go
     (try
       (process/receive!
-        [:EXIT pid reason] [:exit [pid reason]]
-        [:DOWN ref :process object reason] [:down [ref object reason]]
-        msg [:message msg]
-        (after timeout-ms
-          :timeout))
+       [:EXIT pid reason] [:exit [pid reason]]
+       [:DOWN ref :process object reason] [:down [ref object reason]]
+       msg [:message msg]
+       (after timeout-ms
+              :timeout))
       (catch Exception e
         [:noproc (process/ex->reason e)]))))
 

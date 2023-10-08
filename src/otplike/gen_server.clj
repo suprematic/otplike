@@ -49,74 +49,74 @@
 
 (defn- do-terminate [impl reason state]
   (process/async
-    (match (process/ex-catch
-            [:ok (process/await?! (terminate impl reason state))])
-      [:ok _] [:terminate reason state]
-      [:EXIT exit-reason] [:terminate exit-reason state])))
+   (match (process/ex-catch
+           [:ok (process/await?! (terminate impl reason state))])
+     [:ok _] [:terminate reason state]
+     [:EXIT exit-reason] [:terminate exit-reason state])))
 
 (defn- cast-or-info [rqtype impl message state]
   (process/async
-    (let [[rqfn rqtype] (case rqtype
-                          ::cast [handle-cast 'handle-cast]
-                          ::info [handle-info 'handle-info])]
-      (match (process/ex-catch
-              [:ok (process/await?! (rqfn impl message state))])
-        [:ok [:noreply new-state]]
-        [:recur new-state :infinity]
+   (let [[rqfn rqtype] (case rqtype
+                         ::cast [handle-cast 'handle-cast]
+                         ::info [handle-info 'handle-info])]
+     (match (process/ex-catch
+             [:ok (process/await?! (rqfn impl message state))])
+       [:ok [:noreply new-state]]
+       [:recur new-state :infinity]
 
-        [:ok  [:noreply new-state timeout]]
-        [:recur new-state timeout]
+       [:ok  [:noreply new-state timeout]]
+       [:recur new-state timeout]
 
-        [:ok [:stop reason new-state]]
-        (process/await! (do-terminate impl reason new-state))
+       [:ok [:stop reason new-state]]
+       (process/await! (do-terminate impl reason new-state))
 
-        [:ok other]
-        (process/await!
-         (do-terminate impl [:bad-return-value rqtype other] state))
+       [:ok other]
+       (process/await!
+        (do-terminate impl [:bad-return-value rqtype other] state))
 
-        [:EXIT reason]
-        (process/await! (do-terminate impl reason state))))))
+       [:EXIT reason]
+       (process/await! (do-terminate impl reason state))))))
 
 (defn- do-handle-call [impl from request state]
   (process/async
-    (match (process/ex-catch
-            [:ok (process/await?! (handle-call impl request from state))])
-      [:ok [:reply response new-state]]
-      (do
-        (reply from response)
-        [:recur new-state :infinity])
+   (match (process/ex-catch
+           [:ok (process/await?! (handle-call impl request from state))])
+     [:ok [:reply response new-state]]
+     (do
+       (reply from response)
+       [:recur new-state :infinity])
 
-      [:ok  [:reply response new-state timeout]]
-      (do
-        (reply from response)
-        [:recur new-state timeout])
+     [:ok  [:reply response new-state timeout]]
+     (do
+       (reply from response)
+       [:recur new-state timeout])
 
-      [:ok [:noreply new-state]]
-      [:recur new-state :infinity]
+     [:ok [:noreply new-state]]
+     [:recur new-state :infinity]
 
-      [:ok  [:noreply new-state timeout]]
-      [:recur new-state timeout]
+     [:ok  [:noreply new-state timeout]]
+     [:recur new-state timeout]
 
-      [:ok [:stop reason response new-state]]
-      (let [ret (process/await! (do-terminate impl reason new-state))]
-        (reply from response)
-        ret)
+     [:ok [:stop reason response new-state]]
+     (let [ret (process/await! (do-terminate impl reason new-state))]
+       (reply from response)
+       ret)
 
-      [:ok [:stop reason new-state]]
-      (let [[_ reason _ :as ret]
-            (process/await! (do-terminate impl reason new-state))]
-        ret)
+     [:ok [:stop reason new-state]]
+     (let [[_ reason _ :as ret]
+           (process/await! (do-terminate impl reason new-state))]
+       ret)
 
-      [:ok other]
-      (let [reason [:bad-return-value 'handle-call other]
-            [_ reason _ :as ret]
-            (process/await! (do-terminate impl reason state))]
-        ret)
+     [:ok other]
+     (let [reason [:bad-return-value 'handle-call other]
+           [_ reason _ :as ret]
+           (process/await! (do-terminate impl reason state))]
+       ret)
 
-      [:EXIT reason]
-      (let [[_ reason _ :as ret]
-            (process/await! (do-terminate impl reason state))]
-        ret))))
+     [:EXIT reason]
+     (let [[_ reason _ :as ret]
+           (process/await! (do-terminate impl reason state))]
+       ret))))
 
 (defn- put!* [chan value]
   (async/put! chan value)
@@ -143,19 +143,19 @@
 
 (defn- enter-loop [impl parent state timeout]
   (process/async
-    (loop [state state
-           timeout timeout]
-      (let [timeout (if (pos-int? timeout)
-                      (async/timeout timeout)
-                      timeout)
-            message (process/receive!
-                      message message
-                      (after timeout :timeout))]
-        (match (process/await! (dispatch impl parent state message))
-          :recur (recur state timeout)
-          [:recur new-state new-timeout] (recur new-state new-timeout)
-          [:terminate :normal _new-state] :ok
-          [:terminate reason _new-state] (process/exit reason))))))
+   (loop [state state
+          timeout timeout]
+     (let [timeout (if (pos-int? timeout)
+                     (async/timeout timeout)
+                     timeout)
+           message (process/receive!
+                    message message
+                    (after timeout :timeout))]
+       (match (process/await! (dispatch impl parent state message))
+         :recur (recur state timeout)
+         [:recur new-state new-timeout] (recur new-state new-timeout)
+         [:terminate :normal _new-state] :ok
+         [:terminate reason _new-state] (process/exit reason))))))
 
 (process/proc-defn gen-server-proc [impl init-args parent response]
   (match (process/ex-catch
@@ -231,11 +231,11 @@
 
 (defn- coerce-ns-static [impl-ns]
   (coerce-map
-    {:init (u/ns-function impl-ns 'init)
-     :handle-call (u/ns-function impl-ns 'handle-call)
-     :handle-cast (u/ns-function impl-ns 'handle-cast)
-     :handle-info (u/ns-function impl-ns 'handle-info)
-     :terminate (u/ns-function impl-ns 'terminate)}))
+   {:init (u/ns-function impl-ns 'init)
+    :handle-call (u/ns-function impl-ns 'handle-call)
+    :handle-cast (u/ns-function impl-ns 'handle-cast)
+    :handle-info (u/ns-function impl-ns 'handle-info)
+    :terminate (u/ns-function impl-ns 'terminate)}))
 
 (defn- coerce-ns-dynamic [impl-ns]
   (reify IGenServer
@@ -267,45 +267,45 @@
 
 (defn ^:no-doc call* [server request timeout-ms args]
   (process/async
-    (let [mref (process/monitor server)]
-      (! server [::call [mref (process/self)] request])
-      (process/selective-receive!
-        [mref resp]
-        (do
-          (process/demonitor mref {:flush true})
-          resp)
+   (let [mref (process/monitor server)]
+     (! server [::call [mref (process/self)] request])
+     (process/selective-receive!
+      [mref resp]
+      (do
+        (process/demonitor mref {:flush true})
+        resp)
 
-        [:DOWN mref _ _ reason]
-        (process/exit [reason [`call args]])
+      [:DOWN mref _ _ reason]
+      (process/exit [reason [`call args]])
 
-        (after timeout-ms
-          (process/demonitor mref {:flush true})
-          (process/exit [:timeout [`call args]]))))))
+      (after timeout-ms
+             (process/demonitor mref {:flush true})
+             (process/exit [:timeout [`call args]]))))))
 
 (defn- start*
   [server
    args
    {:keys [timeout spawn-opt] :or {timeout :infinity spawn-opt {}}}]
   (process/async
-    (let [gs (->gen-server server)
-          response (async/chan)
-          parent (process/self)
-          timeout (u/timeout-chan timeout)
-          exit-or-pid
-          (process/ex-catch
-            (process/spawn-opt
-              gen-server-proc [gs args parent response] spawn-opt))]
-      (match exit-or-pid
-        [:EXIT reason]
-        [:error reason]
+   (let [gs (->gen-server server)
+         response (async/chan)
+         parent (process/self)
+         timeout (u/timeout-chan timeout)
+         exit-or-pid
+         (process/ex-catch
+          (process/spawn-opt
+           gen-server-proc [gs args parent response] spawn-opt))]
+     (match exit-or-pid
+       [:EXIT reason]
+       [:error reason]
 
-        pid
-        (match (async/alts! [response timeout])
-          [:ok response] [:ok pid]
-          [[:error reason] response] [:error reason]
-          [nil timeout] (do (process/unlink pid)
-                            (process/exit pid :kill)
-                            [:error :timeout]))))))
+       pid
+       (match (async/alts! [response timeout])
+         [:ok response] [:ok pid]
+         [[:error reason] response] [:error reason]
+         [nil timeout] (do (process/unlink pid)
+                           (process/exit pid :kill)
+                           [:error :timeout]))))))
 
 ;; ====================================================================
 ;; API

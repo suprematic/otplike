@@ -15,14 +15,14 @@
   [& body]
   `(let [done# (async/chan)]
      (process/spawn-opt
-       (process/proc-fn
-         []
-         (try
-           (let [res# (do ~@body)]
-             (async/put! done# [:ok res#]))
-           (catch Throwable t#
-             (async/put! done# [:ex t#]))))
-       {:name (str "execute-proc:" (.getName *ns*) ":" (current-line-number))})
+      (process/proc-fn
+        []
+        (try
+          (let [res# (do ~@body)]
+            (async/put! done# [:ok res#]))
+          (catch Throwable t#
+            (async/put! done# [:ex t#]))))
+      {:name (str "execute-proc:" (.getName *ns*) ":" (current-line-number))})
      done#))
 
 (defmacro execute-proc!
@@ -47,11 +47,11 @@
   `(defn ~fname []
      (let [done# (async/chan)]
        (process/spawn
-         (process/proc-fn
-           ~args
-           (try
-             (let [res# (do ~@body)]
-               (when (some? res#) (async/>! done# res#)))
-             (finally
-               (async/close! done#)))))
+        (process/proc-fn
+          ~args
+          (try
+            (let [res# (do ~@body)]
+              (when (some? res#) (async/>! done# res#)))
+            (finally
+              (async/close! done#)))))
        (async/<!! done#))))

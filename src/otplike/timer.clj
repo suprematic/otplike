@@ -24,28 +24,28 @@
 
 (defn- apply-interval*
   [msecs pid f args]
-   (u/check-args [(nat-int? msecs)
-                  (process/pid? pid)
-                  (fn? f)
-                  (vector? args)])
+  (u/check-args [(nat-int? msecs)
+                 (process/pid? pid)
+                 (fn? f)
+                 (vector? args)])
   (let [cancel-chan (async/chan)]
-     (process/spawn-opt
-       (process/proc-fn []
-         (let [self (process/self)]
-           (process/link pid)
-           (go
-             (async/<! cancel-chan)
-             (! self :cancel)))
-         (loop []
-           (process/receive!
-             :cancel :ok
-             [:EXIT _ _] (cancel cancel-chan)
-             (after (async/timeout msecs)
-               (process/spawn (process/proc-fn [] (apply f args)))
-               (recur)))))
-       []
-       {:flags {:trap-exit true} :name "timer-interval"})
-      cancel-chan))
+    (process/spawn-opt
+     (process/proc-fn []
+       (let [self (process/self)]
+         (process/link pid)
+         (go
+           (async/<! cancel-chan)
+           (! self :cancel)))
+       (loop []
+         (process/receive!
+          :cancel :ok
+          [:EXIT _ _] (cancel cancel-chan)
+          (after (async/timeout msecs)
+                 (process/spawn (process/proc-fn [] (apply f args)))
+                 (recur)))))
+     []
+     {:flags {:trap-exit true} :name "timer-interval"})
+    cancel-chan))
 
 ;; ====================================================================
 ;; API
@@ -70,10 +70,10 @@
          :ok
          [nil timeout]
          (process/spawn-opt
-           (process/proc-fn []
-             (try (apply f args) (catch Throwable t :ok)))
-           []
-           {:name "timer-action"})))
+          (process/proc-fn []
+            (try (apply f args) (catch Throwable t :ok)))
+          []
+          {:name "timer-action"})))
      cancel)))
 
 (defn cancel
@@ -92,7 +92,7 @@
 
   Throws on bad arguments."
   ([msecs message]
-    (send-after msecs (process/self) message))
+   (send-after msecs (process/self) message))
   ([msecs pid message]
    (u/check-args [(some? pid)])
    (apply-after msecs #(! pid message))))
@@ -115,7 +115,7 @@
   ([msecs]
    (kill-after msecs (process/self)))
   ([msecs pid]
-    (exit-after msecs pid :kill)))
+   (exit-after msecs pid :kill)))
 
 (defn apply-interval
   "Evaluates `(! pid message)` repeatedly at intervals of `msecs`.

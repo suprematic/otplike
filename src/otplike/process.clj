@@ -144,19 +144,19 @@
   (print-simple (pid->str o) w))
 
 (deftype TProcess
-  [pid
-   initial-call
-   start-ns
-   message-chan
-   message-q
-   control-chan
-   control-q
-   exit-reason
-   status
-   monitored-by
-   monitors
-   linked
-   flags])
+         [pid
+          initial-call
+          start-ns
+          message-chan
+          message-q
+          control-chan
+          control-q
+          exit-reason
+          status
+          monitored-by
+          monitors
+          linked
+          flags])
 
 (defn- new-process [initial-call flags]
   {:pre [(map? flags)]
@@ -493,7 +493,7 @@
         case-clauses (mapcat list (range) by-clause-matches)]
     `(let [^TProcess process# (self-process)
            message-q# (message-q* process#)
-           [mq# _#](reset-vals! message-q# (u/queue))
+           [mq# _#] (reset-vals! message-q# (u/queue))
            res# (loop [mq# mq#
                        new-mq# (u/queue)]
                   (if-let [[_# msg# :as m#] (peek mq#)]
@@ -668,7 +668,7 @@
                   ~@body))
             (!finish ~self-pid-sym :normal)
             (catch Throwable t#
-              (!finish ~self-pid-sym (ex->reason t#)))))) 
+              (!finish ~self-pid-sym (ex->reason t#))))))
       '~ns-fname)))
 
 (defmacro ^:no-doc await* [park? x]
@@ -878,10 +878,10 @@
         (-> old :trap-exit boolean)))))
 
 (defn registered
- "Returns a set of names of the processes that have been registered."
- []
- {:post [(set? %)]}
- (set (keys @*registered)))
+  "Returns a set of names of the processes that have been registered."
+  []
+  {:post [(set? %)]}
+  (set (keys @*registered)))
 
 (defn link
   "Creates a link between the calling process and another process

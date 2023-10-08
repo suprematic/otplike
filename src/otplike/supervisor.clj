@@ -159,13 +159,13 @@
 
   [1]: https://erldocs.com/current/doc/design_principles/sup_princ.html"
   (:require [clojure.spec.alpha :as spec]
-    [clojure.core.match :refer [match]]
-    [clojure.pprint :as pprint]
-    [otplike.spec-util :as spec-util]
-    [otplike.process :as process :refer [!]]
-    [otplike.gen-server :as gen-server]
-    [otplike.util :as util]
-    [otplike.logger :as log]))
+            [clojure.core.match :refer [match]]
+            [clojure.pprint :as pprint]
+            [otplike.spec-util :as spec-util]
+            [otplike.process :as process :refer [!]]
+            [otplike.gen-server :as gen-server]
+            [otplike.util :as util]
+            [otplike.logger :as log]))
 
 (when (and (= 1 (:major *clojure-version*))
            (< (:minor *clojure-version*) 9))
@@ -261,9 +261,9 @@
 
 (defn- report-error [message]
   (log/error
-    {:log :event
-     :what :error
-     :details message}))
+   {:log :event
+    :what :error
+    :details message}))
 
 (spec/fdef spec-problem
   :args (spec/cat :problem ::spec-problem)
@@ -304,22 +304,22 @@
   :ret ::process/async)
 (defn- shutdown [pid reason timeout]
   (process/async
-    (try
-      (process/exit pid reason)
-      (if (= :kill reason)
-        (process/selective-receive!
-          [:EXIT pid :killed] [:ok reason]
-          [:EXIT pid other-reason] [:error other-reason])
-        (process/selective-receive!
-          [:EXIT pid reason] [:ok reason]
-          [:EXIT pid other-reason] [:error other-reason]
-          (after timeout
-            (process/exit pid :kill)
-            (process/selective-receive!
-              [:EXIT pid other-reason] [:error other-reason]))))
-      (catch Throwable t
-        (println t)
-        [:panic (process/ex->reason t)]))))
+   (try
+     (process/exit pid reason)
+     (if (= :kill reason)
+       (process/selective-receive!
+        [:EXIT pid :killed] [:ok reason]
+        [:EXIT pid other-reason] [:error other-reason])
+       (process/selective-receive!
+        [:EXIT pid reason] [:ok reason]
+        [:EXIT pid other-reason] [:error other-reason]
+        (after timeout
+               (process/exit pid :kill)
+               (process/selective-receive!
+                [:EXIT pid other-reason] [:error other-reason]))))
+     (catch Throwable t
+       (println t)
+       [:panic (process/ex->reason t)]))))
 (spec-util/instrument `shutdown)
 
 (spec/fdef do-terminate-child
@@ -358,16 +358,16 @@
 (defn- terminate-children [children]
   ;;(printf "sup terminate all children%n")
   (process/async
-    (loop [children children
-           new-children '()]
-      (if (empty? children)
-        new-children
-        (let [child (first children)
-              children (rest children)
-              new-child (process/await! (terminate-child* child))]
-          (if (= :temporary (::restart child))
-            (recur children new-children)
-            (recur children (cons new-child new-children))))))))
+   (loop [children children
+          new-children '()]
+     (if (empty? children)
+       new-children
+       (let [child (first children)
+             children (rest children)
+             new-child (process/await! (terminate-child* child))]
+         (if (= :temporary (::restart child))
+           (recur children new-children)
+           (recur children (cons new-child new-children))))))))
 (spec-util/instrument `terminate-children)
 
 (spec/fdef dispatch-child-start
@@ -413,23 +413,23 @@
   :ret ::process/async)
 (defn- start-children [children]
   (process/async
-    (loop [to-start children
-           started []]
-      (if-let [child (first to-start)]
-        (match (process/await! (start-child* child))
-          [:ok started-child]
-          (do
+   (loop [to-start children
+          started []]
+     (if-let [child (first to-start)]
+       (match (process/await! (start-child* child))
+         [:ok started-child]
+         (do
             ;;(printf "sup child started, id=%s%n" (::id started-child))
-            (recur (rest to-start) (cons started-child started)))
-          [:error reason]
-          (let [stopped-child (assoc child ::pid nil)
-                new-children (concat (reverse (rest to-start))
-                                     (cons stopped-child started))]
-            (report-error [:start-error reason child])
+           (recur (rest to-start) (cons started-child started)))
+         [:error reason]
+         (let [stopped-child (assoc child ::pid nil)
+               new-children (concat (reverse (rest to-start))
+                                    (cons stopped-child started))]
+           (report-error [:start-error reason child])
             ;;(printf "sup start-child error, reason: %s%n" (pprint/write reason :length 3 :level 3 :stream nil))
-            [:error
-             [:failed-to-start-child (::id child) reason] child new-children]))
-        [:ok started]))))
+           [:error
+            [:failed-to-start-child (::id child) reason] child new-children]))
+       [:ok started]))))
 (spec-util/instrument `start-children)
 
 (spec/fdef child-by-pid
@@ -532,17 +532,17 @@
   [{id ::id :as child} {children ::children :as state}]
   ;;(println "strategy is 'one-for-all', restarting all children")
   (process/async
-    (let [terminated-children (process/await! (terminate-children children))]
-      (match (process/await! (start-children terminated-children))
-        [:ok started-children]
-        (assoc state ::children started-children)
+   (let [terminated-children (process/await! (terminate-children children))]
+     (match (process/await! (start-children terminated-children))
+       [:ok started-children]
+       (assoc state ::children started-children)
 
-        [:error reason ({::id failed-to-start-id} :as child1) new-children]
-        (let [new-children
-              (replace-child new-children (assoc child1 ::pid :restarting))]
-          (report-error [:start-error reason child1])
-          (gen-server/cast (process/self) [:restart failed-to-start-id])
-          (assoc state ::children new-children))))))
+       [:error reason ({::id failed-to-start-id} :as child1) new-children]
+       (let [new-children
+             (replace-child new-children (assoc child1 ::pid :restarting))]
+         (report-error [:start-error reason child1])
+         (gen-server/cast (process/self) [:restart failed-to-start-id])
+         (assoc state ::children new-children))))))
 (spec-util/instrument `restart-child--one-for-all)
 
 (spec/fdef restart-child--rest-for-one
@@ -552,18 +552,18 @@
   [{id ::id :as child} {children ::children :as state}]
   ;;(println "strategy is 'rest-for-one', restarting rest children")
   (process/async
-    (let [[after before] (split-children-after id children)
-          terminated-children (process/await! (terminate-children after))]
-      (match (process/await! (start-children terminated-children))
-        [:ok started-children]
-        (assoc state ::children (concat started-children before))
+   (let [[after before] (split-children-after id children)
+         terminated-children (process/await! (terminate-children after))]
+     (match (process/await! (start-children terminated-children))
+       [:ok started-children]
+       (assoc state ::children (concat started-children before))
 
-        [:error reason ({::id failed-to-start-id} :as child1) new-children]
-        (let [new-children
-              (replace-child new-children (assoc child1 ::pid :restarting))]
-          (report-error [:start-error reason child1])
-          (gen-server/cast (process/self) [:restart failed-to-start-id])
-          (assoc state ::children (concat new-children before)))))))
+       [:error reason ({::id failed-to-start-id} :as child1) new-children]
+       (let [new-children
+             (replace-child new-children (assoc child1 ::pid :restarting))]
+         (report-error [:start-error reason child1])
+         (gen-server/cast (process/self) [:restart failed-to-start-id])
+         (assoc state ::children (concat new-children before)))))))
 (spec-util/instrument `restart-child--rest-for-one)
 
 (spec/fdef restart-child*
@@ -770,32 +770,32 @@
 (defn- init [sup-fn args]
   ;;(printf "sup init: %s%n" args)
   (process/async
-    (match (process/await?! (apply sup-fn args))
-      [:ok [sup-spec child-specs]]
-      (do
+   (match (process/await?! (apply sup-fn args))
+     [:ok [sup-spec child-specs]]
+     (do
         ;;(printf "sup init sup-spec: %s%n" (pprint/write sup-spec :level 3 :stream nil))
         ;;(printf "sup init child-specs: %s%n" (pprint/write child-specs :level 3 :stream nil))
-        (match (check-spec ::sup-spec sup-spec :bad-supervisor-flags)
-          :ok :ok
-          [:error reason] (process/exit reason))
-        (match (check-child-specs child-specs)
-          :ok :ok
-          [:error reason] (process/exit reason))
-        (let [sup-flags (sup-flags sup-spec)
-              children (map spec->child child-specs)]
+       (match (check-spec ::sup-spec sup-spec :bad-supervisor-flags)
+         :ok :ok
+         [:error reason] (process/exit reason))
+       (match (check-child-specs child-specs)
+         :ok :ok
+         [:error reason] (process/exit reason))
+       (let [sup-flags (sup-flags sup-spec)
+             children (map spec->child child-specs)]
           ;;(printf "sup init sup-flags: %s%n" (pprint/write sup-flags :level 3 :stream nil))
           ;;(printf "sup init children: %s%n" (pprint/write children :level 3 :stream nil))
-          (match (process/await! (start-children children))
-            [:ok started-children]
-            [:ok (merge sup-flags
-                        {::children started-children
-                         ::restarts []})]
-            [:error reason _child new-children]
-            (do
-              (process/await! (terminate-children new-children))
-              [:stop [:shutdown reason]]))))
-      value
-      [:stop [:bad-return value]])))
+         (match (process/await! (start-children children))
+           [:ok started-children]
+           [:ok (merge sup-flags
+                       {::children started-children
+                        ::restarts []})]
+           [:error reason _child new-children]
+           (do
+             (process/await! (terminate-children new-children))
+             [:stop [:shutdown reason]]))))
+     value
+     [:stop [:bad-return value]])))
 (spec-util/instrument `init)
 
 (spec/fdef handle-call
@@ -855,7 +855,7 @@
       (match res
         [:ok new-state] [:noreply new-state]
         [:shutdown new-state] [:stop :shutdown new-state]))
-    
+
     message
     (do ;;(printf "sup %s -unexpected message: %s%n" (process/self) message)
       (process/async-value [:noreply state]))))
@@ -949,9 +949,9 @@
   [spec]
   (match (check-spec ::child-specs spec :bad-child-specs)
     :ok (if-let [[id _] (->> spec
-                          (map :id)
-                          (frequencies)
-                          (some #(if (> (val %) 1) %)))]
+                             (map :id)
+                             (frequencies)
+                             (some #(if (> (val %) 1) %)))]
           [:error [:bad-child-specs [:duplicate-child-id id]]]
           :ok)
     error error))
