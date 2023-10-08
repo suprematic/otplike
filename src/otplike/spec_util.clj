@@ -1,4 +1,4 @@
-(ns otplike.spec-util
+(ns ^:no-doc otplike.spec-util
   (:require [clojure.spec.alpha :as spec]))
 
 ; FIXME: workaround to ensure spec is reloaded after the namespace

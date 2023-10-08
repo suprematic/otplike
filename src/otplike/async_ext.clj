@@ -1,4 +1,4 @@
-(ns otplike.async-ext
+(ns ^:no-doc otplike.async-ext
   (:require [clojure.core.async.impl.protocols :as ap]
             [clojure.core.async.impl.dispatch :as dispatch]))
 
