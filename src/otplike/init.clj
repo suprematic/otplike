@@ -80,7 +80,7 @@
       (async/put! terminate-ch [::error (process/ex->reason t)]))))
 
 (defn init [args]
-  (let [args (some-> "system.edn" io/resource slurp read-string (u/deep-merge args))]
+  (let [args (u/deep-merge (some-> "system.edn" io/resource slurp read-string) args)]
     (let [ch (async/promise-chan)]
       (process/spawn-opt init-p [ch args] {:register ::init})
       (match (async/<!! ch)
