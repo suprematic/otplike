@@ -1,7 +1,7 @@
-(ns otplike.kernel
+(ns otplike.kernel.core
   (:require
    [otplike.supervisor :as supervisor]
-   [otplike.logger :as logger]))
+   [otplike.kernel.logger :as klogger]))
 
 (defn- sup-fn []
   [:ok
@@ -9,5 +9,5 @@
     []]])
 
 (defn start [{:keys [logger]}]
-  (logger/set-config! logger)
+  (klogger/set-config! logger)
   (supervisor/start-link sup-fn []))

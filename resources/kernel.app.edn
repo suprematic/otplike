@@ -1,9 +1,10 @@
 {:description "otplike kernel application"
  :applications []
- :namespaces  [otplike.kernel]
- :start-fn otplike.kernel/start
+ :namespaces  [otplike.kernel.core]
+ :start-fn otplike.kernel.core/start
  :environment
  {:logger
-  {:threshold :debug
-   :mask-keys #{:password :secret :secret-key}
-   :namespaces {}}}}
+  {:console
+   {:threshold :debug
+    :mask-keys #{:password :secret :secret-key}
+    :namespaces {}}}}}
