@@ -1,10 +1,13 @@
 (ns otplike.kernel.logger-console
   (:require
    [clojure.string :as str]
+   [clojure.core.match :refer [match]]
    [clojure.data.json :as json]
    [clojure.walk :as walk]
-   [otplike.process]
-   [otplike.util :as util])
+   [clojure.core.async :as async]
+   [otplike.process :as p]
+   [otplike.util :as u]
+   [otplike.kernel.logger :as klogger])
   (:import
    [java.time.format DateTimeFormatter]))
 
@@ -22,33 +25,30 @@
    :info 6
    :debug 7})
 
-(defn- lookup [config in]
+(defn- in-config* [config in]
   (let
-   [match
+   [config'
     (->>
      (get config :namespaces)
+     (u/name-keys))
+    in (name in)
+    match
+    (->>
+     config'
      (keys)
-     (map str)
      (sort-by count #(compare %2 %1))
      (filter #(str/starts-with? in %))
      (first))]
     (->
      config
      (merge
-      (get-in config [:namespaces match]))
-     (dissoc :namespaces)
+      (get config' match))
+     (dissoc :namespaces :mask-keys)
      (update
       :threshold
       #(get level-codes % -1)))))
 
-(defonce cache (atom {}))
-
-(defn- in-config [in]
-  (if-let [config (get @cache in)]
-    config
-    (let [config (lookup @config in)]
-      (swap! cache assoc in config)
-      config)))
+(def ^:private in-config (memoize in-config*))
 
 (defn- sanitize [message]
   (walk/postwalk
@@ -67,7 +67,7 @@
        (name node)
 
        (instance? java.lang.Throwable node)
-       (sanitize (util/exception node))
+       (sanitize (u/exception node))
 
        (instance? java.time.ZonedDateTime node)
        (.format DateTimeFormatter/ISO_OFFSET_DATE_TIME node)
@@ -77,23 +77,6 @@
 
        :else
        (str node)))
-   message))
-
-(defn- mask [{:keys [mask-keys]} message]
-  (walk/postwalk
-   (fn [node]
-     (cond
-       (map? node)
-       (->>
-        node
-        (map
-         (fn [[k v]]
-           (if (contains? mask-keys k)
-             [k "*********"]
-             [k v])))
-        (into {}))
-       :else
-       node))
    message))
 
 (defn- json-print [{:keys [pprint?]} message]
@@ -115,30 +98,41 @@
         (.println out to-print)
         (.print out to-print)))))
 
-(def my-ns
+(def ^:private my-ns
   (str *ns*))
 
-(defn enabled? [level in]
-  (let [{:keys [threshold]} (in-config in)]
+(defn- output [message]
+  (try
+    (json-print config message)
+    (catch Throwable t
+      (json-print ; must be safe
+       config
+       {:at my-ns
+        :in (str my-ns "/output")
+        :when
+        (.format DateTimeFormatter/ISO_OFFSET_DATE_TIME (java.time.ZonedDateTime/now))
+        :level :error
+        :log :event
+        :result :error
+        :text (.getMessage t)
+        :pid
+        (or otplike.process/*self* "noproc")
+        :details
+        {:input (str message)
+         :exception (u/exception t)}}))))
+
+(defn- filter-fn [config {:keys [level in]}]
+  (let [{:keys [threshold]} (in-config config in)]
     (<= (get level-codes level 999) threshold)))
 
-(defn output [message]
-  (let [message (mask @config message)]
-    (try
-      (json-print config message)
-      (catch Throwable t
-        (json-print ; must be safe
-         config
-         {:at my-ns
-          :in (str my-ns "/output")
-          :when
-          (.format DateTimeFormatter/ISO_OFFSET_DATE_TIME (java.time.ZonedDateTime/now))
-          :level :error
-          :log :event
-          :result :error
-          :text (.getMessage t)
-          :pid
-          (or otplike.process/*self* "noproc")
-          :details
-          {:input (str message)
-           :exception (util/exception t)}})))))
+(p/proc-defn p-log [config ch]
+  (loop []
+    (match (async/<! ch)
+      :close
+      nil
+
+      message
+      (let [message (klogger/mask config message)]
+        (when (filter-fn config message)
+          (output message))
+        (recur)))))

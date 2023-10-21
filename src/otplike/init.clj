@@ -2,12 +2,11 @@
   (:require
    [clojure.core.match :refer [match]]
    [clojure.core.async :as async]
+   [clojure.string :as str]
    [clojure.java.io :as io]
    [otplike.process :as process]
    [otplike.logger :as log]
    [otplike.util :as u]
-   [otplike.proc-util :as proc-util]
-   [otplike.gen-server :as gs]
    [otplike.application :as application])
   (:gen-class))
 
@@ -79,11 +78,25 @@
     (catch Throwable t
       (async/put! terminate-ch [::error (process/ex->reason t)]))))
 
+(def ^:private root
+  {:environment
+   {}})
+
 (defn init [args]
   (let
-   [args (u/deep-merge (some-> "system.edn" io/resource slurp read-string) args)
+   [system (some-> "system.edn" io/resource slurp read-string)
+    merged (u/deep-merge root system args)
     ch (async/promise-chan)]
-    (process/spawn-opt init-p [ch args] {:register ::init})
+
+    #_(klog/set-config! (get-in merged [:environment 'kernel :logger]))
+
+    (log/debug
+     {:in :init
+      :log :environment
+      :what :args
+      :details merged})
+
+    (process/spawn-opt init-p [ch merged] {:register ::init})
     (match (async/<!! ch)
       [::error reason]
       (do
@@ -97,16 +110,49 @@
       [::halt _ rc]
       (System/exit rc))))
 
+(defn- read-file [s]
+  (let
+   [[fname sections] (str/split s #":")
+    file
+    (if-let [file (io/file fname)]
+      (-> file slurp read-string)
+      (throw
+       (ex-info (format "file not found: %s" fname) {:file-name fname})))]
+
+    (cond
+      (and (vector? file) (empty? sections))
+      (->>
+       file
+       (map second)
+       (apply u/deep-merge))
+
+      (vector? file)
+      (let
+       [sections (str/split sections #",")
+        file (u/name-keys file)]
+        (->>
+         sections
+         (map
+          (fn [section]
+            (get file section)))
+         (filter some?)
+         (apply u/deep-merge)))
+
+      (map? file)
+      file
+
+      :else
+      (do
+        (println file)
+        (throw
+         (ex-info (format "file %s does not contain vector or map" fname) {:file-name fname :file file}))))))
+
 (defn -main [& args]
   (init
-   (->> args
-        (map
-         (fn [fname]
-           (if-let [file (io/file fname)]
-             (-> file slurp read-string)
-             (throw
-              (ex-info (format "file not found: %s" fname) {:file-name fname})))))
-        (reduce u/deep-merge nil))))
+   (->>
+    args
+    (map read-file)
+    (reduce u/deep-merge {}))))
 
 (defn halt
   ([]

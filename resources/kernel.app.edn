@@ -4,7 +4,9 @@
  :start-fn otplike.kernel.core/start
  :environment
  {:logger
-  {:console
-   {:threshold :debug
-    :mask-keys #{:password :secret :secret-key}
-    :namespaces {}}}}}
+  {:mask-keys #{:password :secret :secret-key}
+   :console
+   {:threshold :warning
+    :namespaces {}}
+   :otel
+   {}}}}

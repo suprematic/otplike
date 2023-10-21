@@ -1,18 +1,20 @@
 (ns otplike.logger
   (:require
-   [otplike.kernel.logger :as klogger]
-   [otplike.kernel.logger-console :as console]))
+   [otplike.kernel.logger :as logger]))
 
 ; FIXME move to kernel.console-logger
 (defn j-enabled? [category level]
-  (console/enabled? level category))
+  true
+  #_(console/enabled? level category))
 
 (defn j-log [category level message _]
   (let [category (str category)]
-    (klogger/log* category level {:text message :in category})))
+    (logger/log* category level {:text message :in category :src :j-log})))
 
 (defmacro log [level input]
-  `(klogger/log* ~*ns* ~level ~input))
+  `(logger/log* ~*ns* ~level ~input))
+
+#_(log :error {:message "error" :details {:password "123"}})
 
 (defmacro emergency [& args]
   `(log :emergency ~@args))
@@ -38,4 +40,4 @@
 (defmacro debug [& args]
   `(log :debug ~@args))
 
-#_(log :debug {:in :zzzz :x 1 :y :x})
+
