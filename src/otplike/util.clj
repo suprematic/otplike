@@ -58,7 +58,7 @@
   (if-let [fun-var (ns-resolve fun-ns fun-name)]
     (var-get fun-var)))
 
-(defn deep-merge [l r]
+(defn- deep-merge* [l r]
   (letfn
    [(merge-coll [l r coll-fn]
       (if (-> r meta :override)
@@ -72,7 +72,7 @@
       (nil? r) l
 
       (and (map? l) (map? r))
-      (merge-with deep-merge l r)
+      (merge-with deep-merge* l r)
 
       (and (vector? l) (vector? r))
       (merge-coll l r vector)
@@ -92,4 +92,21 @@
 
       :else l)))
 
+(defn deep-merge [& args]
+  (reduce
+   (fn [acc e]
+     (deep-merge* acc e))
+   {}
+   args))
+
 #_(deep-merge {:a 1 :b ^:distinct [-1 0]} {:b [0 1 2 3]})
+
+; apply name to every key 
+(defn name-keys [m]
+  (->>
+   m
+   (map
+    (fn [[k v]]
+      [(name k) v]))
+   (into {})))
+
