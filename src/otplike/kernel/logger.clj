@@ -41,7 +41,6 @@
 #_(mask {:password "123"})
 
 (defn log* [ns level {:keys [in] :as message}]
-  (assert (#{:emergency :alert :critical :error :warning :notice :info :debug} level))
   (let
    [at (str ns)
     message
