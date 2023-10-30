@@ -5,7 +5,8 @@
             [clojure.core.match :refer [match]]
             [clojure.spec.alpha :as spec]
             [otplike.util :as u]
-            [otplike.process :as process :refer [!]]))
+            [otplike.process :as process :refer [!]]
+            [otplike.kernel.tracing :as tracing]))
 
 (when (and (= 1 (:major *clojure-version*))
            (< (:minor *clojure-version*) 9))
@@ -129,11 +130,13 @@
       (reply from state)
       (process/async-value :recur))
 
-    [::call from request]
-    (do-handle-call impl from request state)
+    [::call from request tracing-context]
+    (tracing/with-context tracing-context
+      #(do-handle-call impl from request state))
 
-    [::cast request]
-    (cast-or-info ::cast impl request state)
+    [::cast request tracing-context]
+    (tracing/with-context tracing-context
+      #(cast-or-info ::cast impl request state))
 
     [:EXIT parent reason]
     (do-terminate impl reason state)
@@ -265,10 +268,10 @@
     (impl-ns :guard #(instance? clojure.lang.Namespace %))
     (coerce-ns impl-ns)))
 
-(defn ^:no-doc call* [server request timeout-ms args]
+(defn ^:no-doc call* [server request tracing-context timeout-ms args]
   (process/async
    (let [mref (process/monitor server)]
-     (! server [::call [mref (process/self)] request])
+     (! server [::call [mref (process/self)] request tracing-context])
      (process/selective-receive!
       [mref resp]
       (do
@@ -448,21 +451,23 @@
   gen-server process dying before or during the call."
   ([server request]
    `(let [server# ~server
-          request# ~request]
-      (process/await! (call* server# request# 5000 [server# request#]))))
+          request# ~request
+          context# (tracing/resolve-context)]
+      (process/await! (call* server# request# context# 5000 [server# request#]))))
   ([server request timeout-ms]
    `(let [server# ~server
           request# ~request
+          context# (tracing/resolve-context)
           timeout-ms# ~timeout-ms]
       (process/await!
-       (call* server# request# timeout-ms# [server# request# timeout-ms#])))))
+       (call* server# request# context# timeout-ms# [server# request# timeout-ms#])))))
 
 (defn call
   "The same as `call!` but returns async value."
   ([server request]
-   (call* server request 5000 [server request]))
+   (call* server request (tracing/resolve-context) 5000 [server request]))
   ([server request timeout-ms]
-   (call* server request timeout-ms [server request timeout-ms])))
+   (call* server request (tracing/resolve-context) timeout-ms [server request timeout-ms])))
 
 (defn cast
   "Sends an asynchronous request to the `server` and returns immediately,
@@ -472,7 +477,7 @@
   `request` is any form that is passed as the `request` argument to
   `handle-cast`."
   [server request]
-  (! server [::cast request]))
+  (! server [::cast request (tracing/resolve-context)]))
 
 (defn reply
   "This function can be used to explicitly send a reply to a client

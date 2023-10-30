@@ -4,7 +4,8 @@
    [otplike.supervisor :as supervisor]
    [otplike.kernel.logger :as klogger]
    [otplike.kernel.logger-console :as console]
-   [otplike.kernel.logger-otel :as otel]))
+   [otplike.kernel.logger-otel :as otel]
+   [otplike.kernel.tracing :as tracing]))
 
 (defn- sup-fn [{:keys [logger]}]
   [:ok
@@ -21,6 +22,14 @@
            [:ok (p/spawn-link otel/p-log [config klogger/otel-tap])]) []]})]]])
 
 (defn start [config]
+  (when-let [context-resolver (get-in config [:tracing :context-resolver])]
+    (try
+      (require (symbol (namespace context-resolver)))
+      (let [context-resolver (find-var context-resolver)]
+        (assert (ifn? context-resolver))
+        (tracing/set-context-resolver! context-resolver))
+      (catch Exception _
+        nil)))
   (supervisor/start-link sup-fn [config]))
 
 
