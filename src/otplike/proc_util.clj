@@ -55,3 +55,29 @@
             (finally
               (async/close! done#)))))
        (async/<!! done#))))
+
+(defn !chan
+  "Forwars messages to from `ch` to the calling process. If process does not exist or channel is closed - terminates.
+   If channel is closed and `close-reason` is provided - sends exit to the process with reason `close-reason`. If process terminates and
+   `close?` is true - closes the channel and drains remaining messages"
+  ([ch]
+   (!chan ch {}))
+  ([ch & {:keys [close-reason close?]}]
+   (let [target (process/self)]
+     (process/spawn
+      (process/proc-fn []
+        (loop []
+          (if-let [m (async/<! ch)]
+            (if (process/! target m)
+              (recur)
+              (if close?
+                (do
+                  (async/close! ch)
+                  (loop []
+                    (when (async/<! ch)
+                      (recur))))
+                (recur)))
+            (when close-reason
+              (process/exit target close-reason)))))))))
+
+

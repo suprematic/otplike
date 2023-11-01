@@ -6,6 +6,7 @@
    [clojure.walk :as walk]
    [clojure.core.async :as async]
    [otplike.process :as p]
+   [otplike.proc-util :as pu]
    [otplike.util :as u]
    [otplike.kernel.logger :as klogger])
   (:import
@@ -126,13 +127,18 @@
     (<= (get level-codes level 999) threshold)))
 
 (p/proc-defn p-log [config ch]
-  (loop []
-    (match (async/<! ch)
-      :close
-      nil
+  (p/flag :trap-exit true)
+  (pu/!chan ch {:close? true :close-reason :normal})
 
-      message
-      (let [message (klogger/mask config message)]
-        (when (filter-fn config message)
-          (output message))
-        (recur)))))
+  (loop [timeout :infinity reason nil]
+    (p/receive!
+     [:EXIT _ reason']
+     (recur 1000 reason')
+
+     message
+     (do
+       (let [message (klogger/mask config message)]
+         (when (filter-fn config message)
+           (output message)))
+       (recur timeout reason))
+     (after timeout (p/exit reason)))))
