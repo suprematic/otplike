@@ -1,0 +1,12 @@
+{:hooks
+ {:macroexpand
+  {otplike.process/receive! otplike.process/receive!
+   otplike.process/selective-receive! otplike.process/receive!}}
+
+ :linters
+ {:otplike/invalid-after {:level :error}}
+
+ :lint-as
+ {otplike.process/proc-defn clojure.core/defn
+  otplike.process/proc-defn- clojure.core/defn}}    
+ 
