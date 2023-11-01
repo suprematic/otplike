@@ -114,12 +114,6 @@
         (try
           (require ns :reload)
           (catch Exception e
-            (log/error
-             {:in :appmaster
-              :log :event
-              :what :error
-              :details
-              {:ns ns}})
             (process/exit [:exception (u/exception e false)]))))
 
       (let [start-fn (or (some-> start-fn resolve var-get) dummy-start)]
@@ -267,6 +261,14 @@
               (get-in by-pid [pid :application :name]))
       (update :by-pid dissoc pid)))
 
+(defn- terminate-started [state]
+  (process/async
+   (doseq [{:keys [pid]} (:started state)]
+     (process/exit pid :normal)
+     (process/selective-receive!
+      [:EXIT pid _]
+      nil))))
+
 (defn handle-call [message _reply-to {:keys [started environment by-name by-pid] :as state}]
   (process/async
    (match message
@@ -331,10 +333,15 @@
        (do
          (process/exit app-pid :normal)
          (process/selective-receive!
-          [:EXIT app-pid reason]
+          [:EXIT app-pid _reason]
           [:reply :ok
            (unregister state app-pid)]))
        [:reply [:error [:not-started name]] state])
+
+     [::terminate]
+     (do
+       (process/await! (terminate-started state))
+       [:stop :shutdown state])
 
      [::getenv name path default]
      (if-let [app (get by-name (symbol name))]
@@ -353,28 +360,15 @@
          :details
          {:pid pid
           :reason reason}})
-
        (if-let [{:keys [permanent?]} (get by-pid pid)]
-         (let [{:keys [started] :as state} (unregister state pid)]
+         (let [state (unregister state pid)]
            (if-not permanent?
              [:noreply state]
              (do
-               (doseq [{:keys [pid]} started]
-                 (process/exit pid :normal)
-                 (process/selective-receive!
-                  [:EXIT pid reason]
-                  (log/debug
-                   {:in :controller
-                    :log :event
-                    :what :app-exit
-                    :details
-                    {:pid pid
-                     :reason reason}})))
-               [:stop :shutdown (merge state initial-state)])))
+               (process/await!
+                (terminate-started state))
+               [:stop :shutdown state])))
          [:noreply state])))))
-
-(defn terminate [_reason state]
-  [:noreply state])
 
 (defn start-link [environment]
   (gs/start-link-ns ::application-controller [environment] {}))
@@ -396,6 +390,10 @@
 
 (defmacro start-all! [& args]
   `(process/await! (start-all ~@args)))
+
+(defmacro terminate! []
+  `(process/await!
+    (gs/call ::application-controller [::terminate])))
 
 (defn stop [name]
   (gs/call ::application-controller [::stop name] :infinity))

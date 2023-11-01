@@ -7,7 +7,8 @@
    [otplike.process :as process]
    [otplike.logger :as log]
    [otplike.util :as u]
-   [otplike.application :as application])
+   [otplike.application :as application]
+   [otplike.gen-server :as gs])
   (:gen-class))
 
 (process/proc-defn- init-p [terminate-ch {:keys [applications environment]}]
@@ -36,8 +37,7 @@
                   :details
                   {:application application
                    :reason reason}})
-                (process/! (process/self) [::halt 1]))
-
+                (application/terminate!))
               :ok
               (recur rest))))
 
@@ -51,28 +51,8 @@
              :details
              {:controller-pid controller-pid
               :reason reason}})
-           (async/put! terminate-ch [::error reason]))
-         [::halt rc]
-         (do
-           (log/debug
-            {:in :init-p
-             :log :request
-             :what :controller-halt
-             :details
-             {:controller-pid controller-pid
-              :rc rc}})
-           (process/exit controller-pid :shutdown)
-           (process/receive!
-            [:EXIT controller-pid reason]
-            (do
-              (log/debug
-               {:in :init-p
-                :log :event
-                :what :controller-exit
-                :details
-                {:controller-pid controller-pid
-                 :reason reason}})
-              (async/put! terminate-ch [::halt reason rc]))))))
+           (async/put! terminate-ch [::error reason]))))
+
       [:error reason]
       (async/put! terminate-ch [::error reason]))
     (catch Throwable t
@@ -106,9 +86,7 @@
           :what :terminated
           :details
           {:reason reason}})
-        (System/exit -1))
-      [::halt _ rc]
-      (System/exit rc))))
+        (System/exit -1)))))
 
 (defn- read-file [s]
   (let
