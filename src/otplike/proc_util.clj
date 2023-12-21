@@ -62,7 +62,7 @@
    `close?` is true - closes the channel and drains remaining messages"
   ([ch]
    (!chan ch {}))
-  ([ch & {:keys [close-reason close?]}]
+  ([ch {:keys [close-reason close?]}]
    (let [target (process/self)]
      (process/spawn
       (process/proc-fn []
