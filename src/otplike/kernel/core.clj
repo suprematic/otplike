@@ -8,18 +8,19 @@
    [otplike.kernel.tracing :as tracing]))
 
 (defn- sup-fn [{:keys [logger]}]
-  [:ok
-   [{:strategy :one-for-one}
-    [(let [config (:console logger)]
-       {:id :logger-console
-        :start
-        [(fn []
-           [:ok (p/spawn-link console/p-log [config klogger/console-tap])]) []]})
-     (let [config (:otel logger)]
-       {:id :logger-otel
-        :start
-        [(fn []
-           [:ok (p/spawn-link otel/p-log [config klogger/otel-tap])]) []]})]]])
+  (let [default (select-keys logger [:mask-keys])]
+    [:ok
+     [{:strategy :one-for-one}
+      [(let [config (merge default (:console logger))]
+         {:id :logger-console
+          :start
+          [(fn []
+             [:ok (p/spawn-link console/p-log [config klogger/console-tap])]) []]})
+       (let [config (merge default (:otel logger))]
+         {:id :logger-otel
+          :start
+          [(fn []
+             [:ok (p/spawn-link otel/p-log [config klogger/otel-tap])]) []]})]]]))
 
 (defn start [config]
   (when-let [context-resolver (get-in config [:tracing :context-resolver])]
