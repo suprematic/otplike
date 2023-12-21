@@ -91,39 +91,51 @@
 (defn- read-file [s]
   (let
    [[fname sections] (str/split s #":")
+
+    [fname required?]
+    (if (.endsWith fname "?")
+      [(.substring fname 0 (dec (.length fname))) false]
+      [fname true])
+
     file
-    (if-let [file (io/file fname)]
-      (-> file slurp read-string)
-      (throw
-       (ex-info (format "file not found: %s" fname) {:file-name fname})))]
+    (io/file fname)
 
-    (cond
-      (and (vector? file) (empty? sections))
-      (->>
-       file
-       (map second)
-       (apply u/deep-merge))
+    file
+    (when (.exists file)
+      (-> file slurp read-string))]
 
-      (vector? file)
-      (let
-       [sections (str/split sections #",")
-        file (u/name-keys file)]
-        (->>
-         sections
-         (map
-          (fn [section]
-            (get file section)))
-         (filter some?)
-         (apply u/deep-merge)))
-
-      (map? file)
-      file
-
-      :else
-      (do
-        (println file)
+    (if-not (some? file)
+      (when required?
         (throw
-         (ex-info (format "file %s does not contain vector or map" fname) {:file-name fname :file file}))))))
+         (ex-info (format "file not found: %s" fname) {:file-name fname})))
+
+      (cond
+        (and (vector? file) (empty? sections))
+        (->>
+         file
+         (map second)
+         (apply u/deep-merge))
+
+        (vector? file)
+        (let
+         [sections (str/split sections #",")
+          file (u/name-keys file)]
+          (->>
+           sections
+           (map
+            (fn [section]
+              (get file section)))
+           (filter some?)
+           (apply u/deep-merge)))
+
+        (map? file)
+        file
+
+        :else
+        (do
+          (println file)
+          (throw
+           (ex-info (format "file %s does not contain vector or map" fname) {:file-name fname :file file})))))))
 
 (defn -main [& args]
   (init
