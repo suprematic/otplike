@@ -97,7 +97,8 @@
     (locking out
       (if-not pprint?
         (.println out to-print)
-        (.print out to-print)))))
+        (.print out to-print))
+      (.flush out))))
 
 (def ^:private my-ns
   (str *ns*))
