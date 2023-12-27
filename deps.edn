@@ -16,38 +16,38 @@
   {:mvn/version "1.9.0-beta4"}}
 
  :aliases
- {:init
-  {:exec-fn otplike.init/init
-   :exec-args
-   {:environment
-    {kernel
-     {:logger
-      {:console
-       {:threshold :debug}}}}}}
+ {:otplike
+  {:main-opts ["-m" "otplike.init"]}
 
   :nrepl
   {:extra-deps
    {otplike/otplike.nrepl
     {:mvn/version "0.1.0-SNAPSHOT"}
     cider/cider-nrepl
-    {:mvn/version "0.38.1"}}
-   :exec-args
-   {:applications [otplike.nrepl]
-    :environment
-    {otplike.nrepl
-     {:middleware [cider.nrepl/cider-middleware]}}}}
+    {:mvn/version "0.38.1"}}}
 
   :otel
   {:extra-deps
-   {io.opentelemetry/opentelemetry-api
-    {:mvn/version "1.31.0"}}
+   {otplike/otplike.otel
+    {:local/root "../otplike.otel"}
+
+    io.opentelemetry/opentelemetry-exporter-otlp
+    {:mvn/version "1.33.0"}
+
+    io.opentelemetry/opentelemetry-exporter-logging
+    {:mvn/version "1.33.0"}
+
+    io.opentelemetry/opentelemetry-exporter-logging-otlp
+    {:mvn/version "1.33.0"}}
 
    :jvm-opts
    ["-javaagent:_hidden/opentelemetry-javaagent.jar"
+    "-Dotel.resource.attributes=service.namespace=otplike,service.name=otplike,service.instance.id=01,deployment.environment=dev"
+    "-Dotel.instrumentation.common.default-enabled=false"
     "-Dotel.javaagent.logging=simple"
     "-Dotel.traces.exporter=none"
     "-Dotel.metrics.exporter=none"
-    "-Dotel.logs.exporter=logging"]}
+    "-Dotel.logs.exporter=otlp"]}
 
   :build
   {:deps

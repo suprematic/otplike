@@ -1,44 +1,21 @@
 (ns otplike.kernel.logger
   (:require
-   [clojure.walk :as walk]
    [clojure.core.async :as async]
-   [otplike.process :as p]))
+   [otplike.process :as p]
+   [otplike.kernel.logger-console :as console]))
 
 (def ^:private sink (async/chan 16))
 
-(def ^:private mult
+(def mult
   (async/mult sink))
 
-(defn- tap []
-  (let [ch (async/chan 16)]
-    (async/tap mult ch)
-    ch))
+(def clog
+  (atom
+   (fn [m]
+     (console/log {:threshold :debug :mask-keys #{}} m))))
 
-(def console-tap
-  (tap))
-
-(def otel-tap
-  (tap))
-
-(defn mask [config message]
-  (let [mask-keys (get config :mask-keys)]
-    (walk/postwalk
-     (fn [node]
-       (cond
-         (map? node)
-         (->>
-          node
-          (map
-           (fn [[k v]]
-             (if (contains? mask-keys k)
-               [k "*********"]
-               [k v])))
-          (into {}))
-         :else
-         node))
-     message)))
-
-#_(mask {:password "123"})
+(defn configure! [config]
+  (reset! clog (partial console/log config)))
 
 (defn log* [ns level {:keys [in] :as message}]
   (let
@@ -57,4 +34,5 @@
        :id (str (java.util.UUID/randomUUID))
        :pid (or (some-> otplike.process/*self* otplike.process/pid->str) "noproc")
        :when (java.time.ZonedDateTime/now)}))]
+    (@clog message)
     (async/>!! sink message)))

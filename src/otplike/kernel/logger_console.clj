@@ -1,19 +1,12 @@
 (ns otplike.kernel.logger-console
   (:require
    [clojure.string :as str]
-   [clojure.core.match :refer [match]]
    [clojure.data.json :as json]
    [clojure.walk :as walk]
-   [clojure.core.async :as async]
    [otplike.process :as p]
-   [otplike.proc-util :as pu]
-   [otplike.util :as u]
-   [otplike.kernel.logger :as klogger])
+   [otplike.util :as u])
   (:import
    [java.time.format DateTimeFormatter]))
-
-(defonce config
-  (atom nil))
 
 ; as in RFC-5424
 (def level-codes
@@ -103,7 +96,7 @@
 (def ^:private my-ns
   (str *ns*))
 
-(defn- output [message]
+(defn- output [config message]
   (try
     (json-print config message)
     (catch Throwable t
@@ -127,19 +120,25 @@
   (let [{:keys [threshold]} (in-config config in)]
     (<= (get level-codes level 999) threshold)))
 
-(p/proc-defn p-log [config ch]
-  (p/flag :trap-exit true)
-  (pu/!chan ch {:close? true :close-reason :normal})
+(defn- mask [config message]
+  (let [mask-keys (get config :mask-keys)]
+    (walk/postwalk
+     (fn [node]
+       (cond
+         (map? node)
+         (->>
+          node
+          (map
+           (fn [[k v]]
+             (if (contains? mask-keys k)
+               [k "*********"]
+               [k v])))
+          (into {}))
+         :else
+         node))
+     message)))
 
-  (loop [timeout :infinity reason nil]
-    (p/receive!
-     [:EXIT _ reason']
-     (recur 1000 reason')
+(defn log [config message]
+  (when (filter-fn config message)
+    (->> message (mask config) (output config))))
 
-     message
-     (do
-       (let [message (klogger/mask config message)]
-         (when (filter-fn config message)
-           (output message)))
-       (recur timeout reason))
-     (after timeout (p/exit reason)))))

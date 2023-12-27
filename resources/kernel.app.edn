@@ -5,10 +5,8 @@
  :environment
  {:logger
   {:mask-keys #{:password :secret :secret-key}
-   :console
-   {:threshold :warning
-    :namespaces {}}
-   :otel
-   {}}
+   :threshold :warning
+   :namespaces {}}
+
   :tracing
   {:context-resolver steffan-westcott.clj-otel.context/dyn}}}
