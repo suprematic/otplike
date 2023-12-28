@@ -54,11 +54,8 @@
        (or (string? node) (coll? node))
        node
 
-       (keyword? node)
-       (name node)
-
-       (symbol? node)
-       (name node)
+       (or (keyword? node) (symbol? node))
+       (u/strks node)
 
        (instance? java.lang.Throwable node)
        (sanitize (u/exception node))

@@ -110,3 +110,12 @@
       [(name k) v]))
    (into {})))
 
+; convert keyword/symbol with optional namespace to string. string arg is returned as-is
+(defn strks [k-or-s]
+  (when (some? k-or-s)
+    (if-not (string? k-or-s)
+      (let [name (name k-or-s)]
+        (if-let [ns (namespace k-or-s)]
+          (str ns "/" name)
+          name))
+      k-or-s)))
