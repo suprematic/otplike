@@ -12,7 +12,7 @@
 (def clog
   (atom
    (fn [m]
-     (console/log {:threshold :debug :mask-keys #{}} m))))
+     (console/log {:threshold :warning :mask-keys #{}} m))))
 
 (defn configure! [config]
   (reset! clog (partial console/log config)))
