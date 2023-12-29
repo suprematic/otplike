@@ -9,7 +9,7 @@
 
 (defn j-log [category level message _]
   (let [category (str category)]
-    (logger/log* category level {:text message :in category :src :j-log})))
+    (logger/log* category level {:message message :in category :src :slf4j})))
 
 (defmacro log [level input]
   `(logger/log* ~*ns* ~level ~input))
