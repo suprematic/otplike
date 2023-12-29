@@ -6,7 +6,4 @@
  {:logger
   {:mask-keys #{:password :secret :secret-key}
    :threshold :warning
-   :namespaces {}}
-
-  :tracing
-  {:context-resolver steffan-westcott.clj-otel.context/dyn}}}
+   :namespaces {}}}}
