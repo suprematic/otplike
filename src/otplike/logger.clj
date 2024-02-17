@@ -2,17 +2,15 @@
   (:require
    [otplike.kernel.logger :as logger]))
 
-; FIXME move to kernel.console-logger
 (defn j-enabled? [category level]
-  true
-  #_(console/enabled? level category))
+  (logger/enabled? level category))
 
 (defn j-log [category level message _]
   (let [category (str category)]
-    (logger/log* category level {:message message :in category :src :slf4j})))
+    (logger/log category level {:message message :in category :src :slf4j})))
 
 (defmacro log [level input]
-  `(logger/log* ~*ns* ~level ~input))
+  `(logger/log ~*ns* ~level ~input))
 
 #_(log :error {:message "error" :details {:password "123"}})
 
