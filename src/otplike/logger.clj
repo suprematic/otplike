@@ -5,9 +5,14 @@
 (defn j-enabled? [category level]
   (logger/enabled? level category))
 
-(defn j-log [category level message _]
+(defn j-log [category level message exception]
   (let [category (str category)]
-    (logger/log category level {:message message :in category :src :slf4j})))
+    (logger/log
+     category level
+     (merge
+      {:message message :in category :src :slf4j}
+      (when exception
+        {:exception exception})))))
 
 (defmacro log [level input]
   `(logger/log ~*ns* ~level ~input))
